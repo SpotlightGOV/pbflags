@@ -23,3 +23,7 @@ clients/java/build/
 .vscode/
 *.iml
 workspace/
+.classpath
+.project
+.settings/
+**/bin/

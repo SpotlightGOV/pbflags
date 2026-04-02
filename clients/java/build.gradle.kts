@@ -38,6 +38,15 @@ dependencies {
     implementation("io.grpc:grpc-netty-shaded:$grpcVersion")
     implementation("org.slf4j:slf4j-api:2.0.16")
     compileOnly("javax.annotation:javax.annotation-api:1.3.2")
+
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testImplementation("io.grpc:grpc-inprocess:$grpcVersion")
+    testImplementation("io.grpc:grpc-testing:$grpcVersion")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 protobuf {
