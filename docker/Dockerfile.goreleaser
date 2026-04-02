@@ -1,0 +1,9 @@
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates
+COPY pbflags-server /usr/local/bin/pbflags-server
+COPY pbflags-sync /usr/local/bin/pbflags-sync
+
+EXPOSE 9200 9201
+
+ENTRYPOINT ["pbflags-server"]

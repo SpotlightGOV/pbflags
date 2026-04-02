@@ -1,0 +1,69 @@
+version: 2
+
+builds:
+  - id: pbflags-server
+    main: ./cmd/pbflags-server
+    binary: pbflags-server
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+  - id: protoc-gen-pbflags
+    main: ./cmd/protoc-gen-pbflags
+    binary: protoc-gen-pbflags
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+  - id: pbflags-sync
+    main: ./cmd/pbflags-sync
+    binary: pbflags-sync
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+
+archives:
+  - id: pbflags-server
+    builds: [pbflags-server]
+    name_template: "pbflags-server_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: darwin
+        format: zip
+
+  - id: protoc-gen-pbflags
+    builds: [protoc-gen-pbflags]
+    name_template: "protoc-gen-pbflags_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: darwin
+        format: zip
+
+  - id: pbflags-sync
+    builds: [pbflags-sync]
+    name_template: "pbflags-sync_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: darwin
+        format: zip
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+dockers:
+  - image_templates:
+      - "spotlightgov/pbflags-server:{{ .Version }}"
+      - "spotlightgov/pbflags-server:latest"
+    dockerfile: docker/Dockerfile.goreleaser
+    ids: [pbflags-server, pbflags-sync]
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"

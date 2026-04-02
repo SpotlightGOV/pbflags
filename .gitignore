@@ -9,9 +9,10 @@ CLAUDE.md
 CLAUDE.local.md
 mail/
 
-# Go
-pbflags-server
-protoc-gen-pbflags
+# Go build artifacts (root only, not cmd/ subdirectories)
+/pbflags-server
+/protoc-gen-pbflags
+/pbflags-sync
 
 # Java
 clients/java/.gradle/
