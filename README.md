@@ -122,7 +122,7 @@ pbflags-server \
 ### Docker Hub
 
 ```bash
-docker pull spotlightgov/pbflags-server
+docker pull ghcr.io/spotlightgov/pbflags-server
 ```
 
 ## Configuration
