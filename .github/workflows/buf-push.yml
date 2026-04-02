@@ -1,0 +1,19 @@
+name: Buf Push
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "proto/**"
+      - "buf.yaml"
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bufbuild/buf-setup-action@v1
+      - uses: bufbuild/buf-push-action@v1
+        with:
+          input: proto
+          buf_token: ${{ secrets.BUF_TOKEN }}
