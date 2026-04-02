@@ -61,12 +61,15 @@ changelog:
       - "^test:"
 
 dockers_v2:
-  - image_templates:
-      - "ghcr.io/spotlightgov/pbflags-server:{{ .Version }}"
-      - "ghcr.io/spotlightgov/pbflags-server:latest"
+  - images:
+      - "ghcr.io/spotlightgov/pbflags-server"
+    tags:
+      - "{{ .Version }}"
+      - latest
     dockerfile: docker/Dockerfile.goreleaser
     ids: [pbflags-server, pbflags-sync]
-    build_flag_templates:
+    labels:
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+    flags:
       - "--pull"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.source={{.GitURL}}"
