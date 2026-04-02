@@ -1,7 +1,10 @@
+import com.google.protobuf.gradle.id
+
 plugins {
     java
     `java-library`
     `maven-publish`
+    id("com.google.protobuf") version "0.9.4"
 }
 
 group = "io.pbflags"
@@ -18,14 +21,43 @@ repositories {
     mavenCentral()
 }
 
-dependencies {
-    api("com.google.protobuf:protobuf-java:4.29.3")
-    api("io.grpc:grpc-stub:1.70.0")
-    api("io.grpc:grpc-protobuf:1.70.0")
+val protocVersion = "4.29.3"
+val grpcVersion = "1.70.0"
 
-    implementation("io.grpc:grpc-netty-shaded:1.70.0")
+dependencies {
+    api("com.google.protobuf:protobuf-java:$protocVersion")
+    api("io.grpc:grpc-stub:$grpcVersion")
+    api("io.grpc:grpc-protobuf:$grpcVersion")
+
+    implementation("io.grpc:grpc-netty-shaded:$grpcVersion")
     implementation("org.slf4j:slf4j-api:2.0.16")
     compileOnly("javax.annotation:javax.annotation-api:1.3.2")
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:$protocVersion"
+    }
+    plugins {
+        id("grpc") {
+            artifact = "io.grpc:protoc-gen-grpc-java:$grpcVersion"
+        }
+    }
+    generateProtoTasks {
+        all().forEach { task ->
+            task.plugins {
+                id("grpc")
+            }
+        }
+    }
+}
+
+sourceSets {
+    main {
+        proto {
+            srcDir("../../proto")
+        }
+    }
 }
 
 publishing {

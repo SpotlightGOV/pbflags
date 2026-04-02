@@ -25,6 +25,21 @@ services:
       timeout: 3s
       retries: 5
 
+  sync:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    entrypoint: ["pbflags-sync"]
+    command:
+      - --database=postgres://admin:admin@db:5432/pbflags?sslmode=disable
+      - --descriptors=/config/descriptors.pb
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../internal/evaluator/testdata/descriptors.pb:/config/descriptors.pb:ro
+    restart: "no"
+
   pbflags:
     build:
       context: ..
@@ -40,6 +55,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      sync:
+        condition: service_completed_successfully
+    volumes:
+      - ../internal/evaluator/testdata/descriptors.pb:/config/descriptors.pb:ro
 
 volumes:
   pbflags-pgdata:
