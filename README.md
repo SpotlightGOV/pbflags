@@ -64,6 +64,34 @@ go install github.com/SpotlightGOV/pbflags/cmd/protoc-gen-pbflags@latest
 buf generate
 ```
 
+Example `buf.gen.yaml` for Go:
+
+```yaml
+version: v2
+plugins:
+  - local: protoc-gen-pbflags
+    out: gen/flags
+    opt:
+      - lang=go
+      - package_prefix=github.com/yourorg/yourrepo/gen/flags
+inputs:
+  - directory: proto
+```
+
+Example for Java:
+
+```yaml
+version: v2
+plugins:
+  - local: protoc-gen-pbflags
+    out: src/main/java
+    opt:
+      - lang=java
+      - java_package=com.yourorg.flags.generated
+inputs:
+  - directory: proto
+```
+
 ### 3. Use in your application (Go)
 
 ```go
@@ -78,7 +106,7 @@ frequency := client.DigestFrequency(ctx)           // string
 ### 4. Use in your application (Java)
 
 ```java
-// Create via factory method
+// Create via factory method (framework-agnostic)
 NotificationsFlags flags = NotificationsFlags.forEvaluator(evaluator);
 
 // Type-safe flag access
@@ -86,9 +114,60 @@ boolean emailEnabled = flags.emailEnabled().get(userId);
 String frequency = flags.digestFrequency().get();
 ```
 
+#### Java client setup
+
+```java
+// Simple: connect by target address
+FlagEvaluatorClient client = new FlagEvaluatorClient("localhost:9201");
+
+// Advanced: custom channel (TLS, interceptors, in-process testing)
+ManagedChannel channel = ManagedChannelBuilder.forTarget("localhost:9201")
+    .useTransportSecurity()
+    .build();
+FlagEvaluatorClient client = FlagEvaluatorClient.forChannel(channel);
+```
+
+#### Java testing
+
+```java
+// Add test dependency
+// testImplementation("org.spotlightgov.pbflags:pbflags-java-testing:0.3.0")
+
+class MyTest {
+  @RegisterExtension
+  static final TestFlagExtension flags = new TestFlagExtension();
+
+  @Test
+  void testOverride() {
+    flags.set("notifications/1", false);
+    var nf = NotificationsFlags.forEvaluator(flags.evaluator());
+    assertFalse(nf.emailEnabled().get());
+  }
+}
+```
+
+#### Dagger integration (opt-in)
+
+Add `java_dagger=true` to codegen options to generate a Dagger `@Module` with `@Binds` entries and `@Inject`/`@Singleton` annotations on implementations:
+
+```yaml
+opt:
+  - lang=java
+  - java_package=com.yourorg.flags.generated
+  - java_dagger=true
+```
+
+This generates `FlagRegistryModule.java` which binds each `*Flags` interface to its `*FlagsImpl`. Include the module in your Dagger component and inject the interfaces directly.
+
 ## Running the Server
 
-### Docker Compose (quickest)
+### Docker (multi-arch: amd64 + arm64)
+
+```bash
+docker pull ghcr.io/spotlightgov/pbflags-server
+```
+
+### Docker Compose (local development)
 
 ```bash
 docker compose -f docker/docker-compose.yml up
@@ -119,10 +198,23 @@ pbflags-server \
   --listen=:9201
 ```
 
-### Docker Hub
+### Database schema sync
 
 ```bash
-docker pull ghcr.io/spotlightgov/pbflags-server
+# Sync flag definitions from descriptors.pb into PostgreSQL
+pbflags-sync \
+  --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable \
+  --descriptors=descriptors.pb
+```
+
+## Proto Definitions (BSR)
+
+Proto definitions are published to the [Buf Schema Registry](https://buf.build/spotlightgov/pbflags). Consumers can depend on them directly:
+
+```yaml
+# buf.yaml
+deps:
+  - buf.build/spotlightgov/pbflags
 ```
 
 ## Configuration
@@ -164,16 +256,16 @@ pbflags/
 ├── gen/                    # Generated Go protobuf code
 ├── cmd/
 │   ├── pbflags-server/     # Evaluator server binary
-│   └── protoc-gen-pbflags/ # Code generation plugin
+│   ├── pbflags-sync/       # Database schema sync from descriptors
+│   └── protoc-gen-pbflags/ # Code generation plugin (Go, Java)
 ├── internal/
 │   ├── evaluator/          # Evaluation engine, caching, health tracking
 │   ├── admin/              # Admin API (flag management, audit log)
 │   └── codegen/            # Code generators (Go, Java)
-├── clients/
-│   └── java/               # Java client library (Gradle)
+├── clients/java/           # Java client library (Gradle)
+├── clients/java/testing/   # Java test utilities (InMemoryFlagEvaluator, JUnit 5)
 ├── db/migrations/          # PostgreSQL schema
-├── docker/                 # Dockerfile and docker-compose
-└── Makefile
+└── docker/                 # Dockerfile and docker-compose
 ```
 
 ## Clients
@@ -181,7 +273,8 @@ pbflags/
 | Language | Status | Package |
 |---|---|---|
 | Go | Stable | `go get github.com/SpotlightGOV/pbflags` |
-| Java | Stable | `org.spotlightgov.pbflags:pbflags-java` |
+| Java | Stable | `org.spotlightgov.pbflags:pbflags-java` ([Maven Central](https://central.sonatype.com/artifact/org.spotlightgov.pbflags/pbflags-java)) |
+| Java Testing | Stable | `org.spotlightgov.pbflags:pbflags-java-testing` |
 | TypeScript | Planned | - |
 | Rust | Planned | - |
 | Node | Planned | - |
