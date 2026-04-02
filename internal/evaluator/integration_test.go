@@ -3,6 +3,7 @@ package evaluator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"sync/atomic"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
@@ -488,3 +490,150 @@ func TestAllFlagTypes(t *testing.T) {
 	val, _ = env.evaluator.Evaluate(ctx, "notifications.score_threshold", "")
 	require.InDelta(t, 0.95, val.GetDoubleValue(), 0.001)
 }
+
+// --- Additional tests ported from spotlightgov ---
+
+func seedAllFlags(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	seedFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER", 1, nil)
+	seedFlag(t, pool, "notifications", "notifications.digest_frequency", "STRING", "GLOBAL", 2, nil)
+	seedFlag(t, pool, "notifications", "notifications.max_retries", "INT64", "GLOBAL", 3, nil)
+	seedFlag(t, pool, "notifications", "notifications.score_threshold", "DOUBLE", "GLOBAL", 4, nil)
+}
+
+func setOverride(t *testing.T, pool *pgxpool.Pool, flagID, entityID, state string, value *pbflagsv1.FlagValue) {
+	t.Helper()
+	var valBytes []byte
+	if value != nil {
+		var err error
+		valBytes, err = proto.Marshal(value)
+		require.NoError(t, err)
+	}
+	_, err := pool.Exec(context.Background(), `
+		INSERT INTO feature_flags.flag_overrides (flag_id, entity_id, state, value)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (flag_id, entity_id) DO UPDATE SET state = EXCLUDED.state, value = EXCLUDED.value`,
+		flagID, entityID, state, valBytes)
+	require.NoError(t, err)
+}
+
+// TestGlobalKillOverridesEntityOverride verifies global kill takes precedence over overrides.
+func TestGlobalKillOverridesEntityOverride(t *testing.T) {
+	defs := notificationsDefs()
+	env := setupIntegration(t, defs)
+	ctx := context.Background()
+
+	seedAllFlags(t, env.pool)
+
+	// Set an entity override.
+	setOverride(t, env.pool, "notifications.email_enabled", "user-99", "ENABLED", boolVal(false))
+	env.cache.FlushAll()
+	env.cache.WaitAll()
+
+	val, src := env.evaluator.Evaluate(ctx, "notifications.email_enabled", "user-99")
+	require.False(t, val.GetBoolValue())
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, src)
+
+	// Now globally kill the flag.
+	setFlagState(t, env.pool, "notifications.email_enabled", "KILLED", nil)
+	ks, err := env.fetcher.GetKilledFlags(ctx)
+	require.NoError(t, err)
+	env.cache.SetKillSet(ks)
+	env.cache.FlushAll()
+	env.cache.WaitAll()
+
+	// Global kill should override the entity override.
+	val, src = env.evaluator.Evaluate(ctx, "notifications.email_enabled", "user-99")
+	require.True(t, val.GetBoolValue()) // compiled default
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED, src)
+}
+
+// TestUnknownFlagEval verifies unknown flags return nil value with DEFAULT source.
+func TestUnknownFlagEval(t *testing.T) {
+	defs := notificationsDefs()
+	env := setupIntegration(t, defs)
+	seedAllFlags(t, env.pool)
+
+	val, src := env.evaluator.Evaluate(context.Background(), "nonexistent/1", "")
+	require.Nil(t, val)
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
+}
+
+// TestConcurrentEval verifies concurrent evaluations are safe (no panics, no data races).
+func TestConcurrentEval(t *testing.T) {
+	defs := notificationsDefs()
+	env := setupIntegration(t, defs)
+	ctx := context.Background()
+
+	seedAllFlags(t, env.pool)
+	setFlagState(t, env.pool, "notifications.email_enabled", "ENABLED", boolVal(false))
+
+	const goroutines = 20
+	errc := make(chan error, goroutines)
+	for i := range goroutines {
+		go func() {
+			val, _ := env.evaluator.Evaluate(ctx, "notifications.email_enabled", fmt.Sprintf("user-%d", i))
+			if val.GetBoolValue() != false {
+				errc <- fmt.Errorf("concurrent eval: got %v, want false", val)
+				return
+			}
+			errc <- nil
+		}()
+	}
+	for range goroutines {
+		assert.NoError(t, <-errc)
+	}
+}
+
+// TestOverrideStaleCacheDuringOutage verifies stale override is served when fetcher fails.
+func TestOverrideStaleCacheDuringOutage(t *testing.T) {
+	defs := notificationsDefs()
+	env := setupIntegration(t, defs)
+	ctx := context.Background()
+
+	seedAllFlags(t, env.pool)
+
+	ff := &failableFetcher{real: env.fetcher}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	eval := NewEvaluator(env.registry, env.cache, ff, logger)
+
+	// Set override and prime the cache.
+	setOverride(t, env.pool, "notifications.email_enabled", "user-stale", "ENABLED", boolVal(false))
+	env.cache.FlushAll()
+	env.cache.WaitAll()
+
+	val, src := eval.Evaluate(ctx, "notifications.email_enabled", "user-stale")
+	require.False(t, val.GetBoolValue())
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, src)
+
+	// Make fetcher fail, expire cache — override should be served from stale cache.
+	ff.failing.Store(true)
+	env.cache.FlushAll()
+	env.cache.WaitAll()
+
+	val, src = eval.Evaluate(ctx, "notifications.email_enabled", "user-stale")
+	require.False(t, val.GetBoolValue())
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED, src)
+}
+
+// TestNilDefaultValue verifies a flag not in the registry returns nil value safely.
+func TestNilDefaultValue(t *testing.T) {
+	defs := notificationsDefs()
+	env := setupIntegration(t, defs)
+	ctx := context.Background()
+
+	// Insert a flag with no corresponding registry entry.
+	_, err := env.pool.Exec(ctx, `
+		INSERT INTO feature_flags.features (feature_id) VALUES ('niltest') ON CONFLICT DO NOTHING`)
+	require.NoError(t, err)
+	_, err = env.pool.Exec(ctx, `
+		INSERT INTO feature_flags.flags (flag_id, feature_id, field_number, flag_type, layer, state)
+		VALUES ('niltest/1', 'niltest', 1, 'BOOL', 'GLOBAL', 'DEFAULT')
+		ON CONFLICT DO NOTHING`)
+	require.NoError(t, err)
+
+	val, src := env.evaluator.Evaluate(ctx, "niltest/1", "")
+	require.Nil(t, val)
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
+}
+
