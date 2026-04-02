@@ -62,10 +62,7 @@ changelog:
 
 dockers_v2:
   - images:
-      - "ghcr.io/spotlightgov/pbflags-server"
-    tags:
-      - "{{ .Version }}"
-      - latest
+      - "ghcr.io/spotlightgov/pbflags-server:{{ .Version }}-amd64"
     dockerfile: docker/Dockerfile.goreleaser
     ids: [pbflags-server, pbflags-sync]
     labels:
@@ -73,3 +70,28 @@ dockers_v2:
       org.opencontainers.image.source: "{{ .GitURL }}"
     flags:
       - "--pull"
+    goos: linux
+    goarch: amd64
+
+  - images:
+      - "ghcr.io/spotlightgov/pbflags-server:{{ .Version }}-arm64"
+    dockerfile: docker/Dockerfile.goreleaser
+    ids: [pbflags-server, pbflags-sync]
+    labels:
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+    flags:
+      - "--pull"
+    goos: linux
+    goarch: arm64
+
+docker_manifests:
+  - name_template: "ghcr.io/spotlightgov/pbflags-server:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/spotlightgov/pbflags-server:{{ .Version }}-amd64"
+      - "ghcr.io/spotlightgov/pbflags-server:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/spotlightgov/pbflags-server:latest"
+    image_templates:
+      - "ghcr.io/spotlightgov/pbflags-server:{{ .Version }}-amd64"
+      - "ghcr.io/spotlightgov/pbflags-server:{{ .Version }}-arm64"
