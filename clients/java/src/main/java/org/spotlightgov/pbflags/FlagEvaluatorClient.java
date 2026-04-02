@@ -42,7 +42,18 @@ public final class FlagEvaluatorClient implements FlagEvaluator {
     logger.info("FlagEvaluatorClient connecting to {}", target);
   }
 
-  /** Package-private constructor for testing with an injected stub. */
+  /**
+   * Creates a client backed by the given channel. Use this for custom channel configuration (TLS,
+   * interceptors, load balancing) or testing with {@code InProcessChannelBuilder}.
+   *
+   * <p>The caller is responsible for shutting down the channel, or may call {@link #shutdown()}
+   * which will shut down the provided channel.
+   */
+  public static FlagEvaluatorClient forChannel(ManagedChannel channel) {
+    return new FlagEvaluatorClient(
+        channel, FlagEvaluatorServiceGrpc.newBlockingStub(channel));
+  }
+
   FlagEvaluatorClient(
       ManagedChannel channel, FlagEvaluatorServiceGrpc.FlagEvaluatorServiceBlockingStub stub) {
     this.channel = channel;
