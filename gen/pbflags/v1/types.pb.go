@@ -272,8 +272,8 @@ const file_pbflags_v1_types_proto_rawDesc = "" +
 	"\x11STATE_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rSTATE_ENABLED\x10\x01\x12\x11\n" +
 	"\rSTATE_DEFAULT\x10\x02\x12\x10\n" +
-	"\fSTATE_KILLED\x10\x03BQ\n" +
-	"\x13io.pbflags.v1.protoP\x01Z8github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1b\x06proto3"
+	"\fSTATE_KILLED\x10\x03B_\n" +
+	"!org.spotlightgov.pbflags.v1.protoP\x01Z8github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1b\x06proto3"
 
 var (
 	file_pbflags_v1_types_proto_rawDescOnce sync.Once

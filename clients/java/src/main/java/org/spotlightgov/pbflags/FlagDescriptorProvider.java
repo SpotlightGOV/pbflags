@@ -1,4 +1,4 @@
-package io.pbflags;
+package org.spotlightgov.pbflags;
 
 import com.google.protobuf.Descriptors.FileDescriptor;
 import java.util.List;

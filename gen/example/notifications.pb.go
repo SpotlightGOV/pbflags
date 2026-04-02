@@ -116,8 +116,8 @@ const file_example_notifications_proto_rawDesc = "" +
 	"maxRetries\x12g\n" +
 	"\x0fscore_threshold\x18\x04 \x01(\x01B>\xca\xf3\x18:\n" +
 	")Score threshold for notification triggers\x12\v\"\t\t\x00\x00\x00\x00\x00\x00\xe8?\x18\x01R\x0escoreThreshold:K\xc2\xf3\x18G\n" +
-	"\rnotifications\x12'Controls notification delivery behavior\x1a\rplatform-teamBS\n" +
-	"\x18io.pbflags.example.protoP\x01Z5github.com/SpotlightGOV/pbflags/gen/example;examplepbb\x06proto3"
+	"\rnotifications\x12'Controls notification delivery behavior\x1a\rplatform-teamBa\n" +
+	"&org.spotlightgov.pbflags.example.protoP\x01Z5github.com/SpotlightGOV/pbflags/gen/example;examplepbb\x06proto3"
 
 var (
 	file_example_notifications_proto_rawDescOnce sync.Once

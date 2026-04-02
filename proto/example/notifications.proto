@@ -5,7 +5,7 @@ import "pbflags/options.proto";
 
 option go_package = "github.com/SpotlightGOV/pbflags/gen/example;examplepb";
 option java_multiple_files = true;
-option java_package = "io.pbflags.example.proto";
+option java_package = "org.spotlightgov.pbflags.example.proto";
 
 // Notifications demonstrates how to define a feature with multiple flags.
 // Each field annotated with (pbflags.flag) becomes a runtime-configurable flag.

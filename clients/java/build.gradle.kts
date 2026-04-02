@@ -7,7 +7,7 @@ plugins {
     id("com.google.protobuf") version "0.9.4"
 }
 
-group = "io.pbflags"
+group = "org.spotlightgov.pbflags"
 version = "0.1.0"
 
 java {

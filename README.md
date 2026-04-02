@@ -181,7 +181,7 @@ pbflags/
 | Language | Status | Package |
 |---|---|---|
 | Go | Stable | `go get github.com/SpotlightGOV/pbflags` |
-| Java | Stable | `io.pbflags:pbflags-java` |
+| Java | Stable | `org.spotlightgov.pbflags:pbflags-java` |
 | TypeScript | Planned | - |
 | Rust | Planned | - |
 | Node | Planned | - |

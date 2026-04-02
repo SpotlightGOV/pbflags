@@ -454,8 +454,8 @@ const file_pbflags_options_proto_rawDesc = "" +
 	"\n" +
 	"LAYER_USER\x10\x02:W\n" +
 	"\afeature\x12\x1f.google.protobuf.MessageOptions\x18\xb8\x8e\x03 \x01(\v2\x17.pbflags.FeatureOptionsR\afeature\x88\x01\x01:L\n" +
-	"\x04flag\x12\x1d.google.protobuf.FieldOptions\x18\xb9\x8e\x03 \x01(\v2\x14.pbflags.FlagOptionsR\x04flag\x88\x01\x01BK\n" +
-	"\x10io.pbflags.protoP\x01Z5github.com/SpotlightGOV/pbflags/gen/pbflags;pbflagspbb\x06proto3"
+	"\x04flag\x12\x1d.google.protobuf.FieldOptions\x18\xb9\x8e\x03 \x01(\v2\x14.pbflags.FlagOptionsR\x04flag\x88\x01\x01BY\n" +
+	"\x1eorg.spotlightgov.pbflags.protoP\x01Z5github.com/SpotlightGOV/pbflags/gen/pbflags;pbflagspbb\x06proto3"
 
 var (
 	file_pbflags_options_proto_rawDescOnce sync.Once

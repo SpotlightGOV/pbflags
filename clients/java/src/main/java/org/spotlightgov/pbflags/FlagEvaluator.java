@@ -1,4 +1,4 @@
-package io.pbflags;
+package org.spotlightgov.pbflags;
 
 import javax.annotation.Nullable;
 

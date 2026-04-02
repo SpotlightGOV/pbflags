@@ -5,7 +5,7 @@ import "pbflags/v1/types.proto";
 
 option go_package = "github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1";
 option java_multiple_files = true;
-option java_package = "io.pbflags.v1.proto";
+option java_package = "org.spotlightgov.pbflags.v1.proto";
 
 // FlagEvaluator is the evaluation API exposed to application clients.
 // It evaluates flags locally and fetches state from the admin server on demand.

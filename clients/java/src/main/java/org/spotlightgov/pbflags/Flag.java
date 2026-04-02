@@ -1,4 +1,4 @@
-package io.pbflags;
+package org.spotlightgov.pbflags;
 
 /**
  * A typed feature flag. Evaluation never throws — all exceptions are caught internally, logged, and

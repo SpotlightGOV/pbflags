@@ -1036,8 +1036,8 @@ const file_pbflags_v1_evaluator_proto_rawDesc = "" +
 	"\x06Health\x12\x19.pbflags.v1.HealthRequest\x1a\x1a.pbflags.v1.HealthResponse\x12Q\n" +
 	"\fGetFlagState\x12\x1f.pbflags.v1.GetFlagStateRequest\x1a .pbflags.v1.GetFlagStateResponse\x12W\n" +
 	"\x0eGetKilledFlags\x12!.pbflags.v1.GetKilledFlagsRequest\x1a\".pbflags.v1.GetKilledFlagsResponse\x12Q\n" +
-	"\fGetOverrides\x12\x1f.pbflags.v1.GetOverridesRequest\x1a .pbflags.v1.GetOverridesResponseBQ\n" +
-	"\x13io.pbflags.v1.protoP\x01Z8github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1b\x06proto3"
+	"\fGetOverrides\x12\x1f.pbflags.v1.GetOverridesRequest\x1a .pbflags.v1.GetOverridesResponseB_\n" +
+	"!org.spotlightgov.pbflags.v1.protoP\x01Z8github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1b\x06proto3"
 
 var (
 	file_pbflags_v1_evaluator_proto_rawDescOnce sync.Once

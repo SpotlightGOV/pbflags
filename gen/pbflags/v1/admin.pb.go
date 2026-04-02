@@ -1020,8 +1020,8 @@ const file_pbflags_v1_admin_proto_rawDesc = "" +
 	"\x0fUpdateFlagState\x12\".pbflags.v1.UpdateFlagStateRequest\x1a#.pbflags.v1.UpdateFlagStateResponse\x12Z\n" +
 	"\x0fSetFlagOverride\x12\".pbflags.v1.SetFlagOverrideRequest\x1a#.pbflags.v1.SetFlagOverrideResponse\x12c\n" +
 	"\x12RemoveFlagOverride\x12%.pbflags.v1.RemoveFlagOverrideRequest\x1a&.pbflags.v1.RemoveFlagOverrideResponse\x12N\n" +
-	"\vGetAuditLog\x12\x1e.pbflags.v1.GetAuditLogRequest\x1a\x1f.pbflags.v1.GetAuditLogResponseBQ\n" +
-	"\x13io.pbflags.v1.protoP\x01Z8github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1b\x06proto3"
+	"\vGetAuditLog\x12\x1e.pbflags.v1.GetAuditLogRequest\x1a\x1f.pbflags.v1.GetAuditLogResponseB_\n" +
+	"!org.spotlightgov.pbflags.v1.protoP\x01Z8github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1b\x06proto3"
 
 var (
 	file_pbflags_v1_admin_proto_rawDescOnce sync.Once

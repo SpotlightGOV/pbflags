@@ -1,12 +1,12 @@
-package io.pbflags;
+package org.spotlightgov.pbflags;
 
-import io.pbflags.v1.proto.EvaluateRequest;
-import io.pbflags.v1.proto.EvaluateResponse;
-import io.pbflags.v1.proto.EvaluatorStatus;
-import io.pbflags.v1.proto.FlagEvaluatorServiceGrpc;
-import io.pbflags.v1.proto.FlagValue;
-import io.pbflags.v1.proto.HealthRequest;
-import io.pbflags.v1.proto.HealthResponse;
+import org.spotlightgov.pbflags.v1.proto.EvaluateRequest;
+import org.spotlightgov.pbflags.v1.proto.EvaluateResponse;
+import org.spotlightgov.pbflags.v1.proto.EvaluatorStatus;
+import org.spotlightgov.pbflags.v1.proto.FlagEvaluatorServiceGrpc;
+import org.spotlightgov.pbflags.v1.proto.FlagValue;
+import org.spotlightgov.pbflags.v1.proto.HealthRequest;
+import org.spotlightgov.pbflags.v1.proto.HealthResponse;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.StatusRuntimeException;

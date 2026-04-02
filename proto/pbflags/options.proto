@@ -6,7 +6,7 @@ import "google/protobuf/wrappers.proto";
 
 option go_package = "github.com/SpotlightGOV/pbflags/gen/pbflags;pbflagspb";
 option java_multiple_files = true;
-option java_package = "io.pbflags.proto";
+option java_package = "org.spotlightgov.pbflags.proto";
 
 // Applied to a message to mark it as a feature.
 message FeatureOptions {

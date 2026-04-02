@@ -1,4 +1,4 @@
-package io.pbflags;
+package org.spotlightgov.pbflags;
 
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;

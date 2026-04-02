@@ -1,4 +1,4 @@
-package io.pbflags;
+package org.spotlightgov.pbflags;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;

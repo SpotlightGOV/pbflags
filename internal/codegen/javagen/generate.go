@@ -65,8 +65,8 @@ func generateInterface(plugin *protogen.Plugin, feat *featureInfo, flags []flagI
 
 	p("package ", javaPackage, ";")
 	p()
-	p("import io.pbflags.Flag;")
-	p("import io.pbflags.FlagEvaluator;")
+	p("import org.spotlightgov.pbflags.Flag;")
+	p("import org.spotlightgov.pbflags.FlagEvaluator;")
 	p()
 	p("/**")
 	p(" * Generated type-safe flag accessors for the {@code ", feat.id, "} feature.")
@@ -134,8 +134,8 @@ func generateImpl(plugin *protogen.Plugin, feat *featureInfo, flags []flagInfo, 
 
 	p("package ", javaPackage, ";")
 	p()
-	p("import io.pbflags.Flag;")
-	p("import io.pbflags.FlagEvaluator;")
+	p("import org.spotlightgov.pbflags.Flag;")
+	p("import org.spotlightgov.pbflags.FlagEvaluator;")
 	p()
 	p("/** Generated implementation of {@link ", interfaceName, "}. */")
 	p("public final class ", className, " implements ", interfaceName, " {")

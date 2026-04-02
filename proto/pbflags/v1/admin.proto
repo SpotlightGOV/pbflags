@@ -7,7 +7,7 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1";
 option java_multiple_files = true;
-option java_package = "io.pbflags.v1.proto";
+option java_package = "org.spotlightgov.pbflags.v1.proto";
 
 // FlagAdmin is the UI-facing API for flag management. Used by admin
 // dashboards to manage flag state, overrides, and view audit logs.
