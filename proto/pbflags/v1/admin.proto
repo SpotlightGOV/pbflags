@@ -1,0 +1,112 @@
+syntax = "proto3";
+package pbflags.v1;
+
+import "pbflags/options.proto";
+import "pbflags/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1";
+option java_multiple_files = true;
+option java_package = "io.pbflags.v1.proto";
+
+// FlagAdmin is the UI-facing API for flag management. Used by admin
+// dashboards to manage flag state, overrides, and view audit logs.
+// Flag definitions are read directly from descriptors.pb via filesystem mount.
+service FlagAdminService {
+  rpc ListFeatures(ListFeaturesRequest) returns (ListFeaturesResponse);
+  rpc GetFlag(GetFlagRequest) returns (GetFlagResponse);
+  rpc UpdateFlagState(UpdateFlagStateRequest) returns (UpdateFlagStateResponse);
+  rpc SetFlagOverride(SetFlagOverrideRequest) returns (SetFlagOverrideResponse);
+  rpc RemoveFlagOverride(RemoveFlagOverrideRequest) returns (RemoveFlagOverrideResponse);
+  rpc GetAuditLog(GetAuditLogRequest) returns (GetAuditLogResponse);
+}
+
+message ListFeaturesRequest {}
+
+message ListFeaturesResponse {
+  repeated FeatureDetail features = 1;
+}
+
+message FeatureDetail {
+  string feature_id = 1;
+  string description = 2;
+  string owner = 3;
+  repeated FlagDetail flags = 4;
+}
+
+message FlagDetail {
+  string flag_id = 1;
+  string display_name = 2;
+  string description = 3;
+  FlagType flag_type = 4;
+  pbflags.Layer layer = 5;
+  State state = 6;
+  FlagValue default_value = 7;
+  FlagValue current_value = 8;
+  repeated FlagOverrideDetail overrides = 9;
+
+  // Metadata from proto descriptors.
+  pbflags.SupportedValues supported_values = 10;
+  bool archived = 11;
+}
+
+message FlagOverrideDetail {
+  string entity_id = 1;
+  State state = 2;
+  FlagValue value = 3;
+}
+
+message GetFlagRequest {
+  string flag_id = 1;
+}
+
+message GetFlagResponse {
+  FlagDetail flag = 1;
+}
+
+message UpdateFlagStateRequest {
+  string flag_id = 1;
+  State state = 2;
+  FlagValue value = 3;  // Optional: set value at the same time.
+  string actor = 4;
+}
+
+message UpdateFlagStateResponse {}
+
+// Validates: flag must have a non-GLOBAL layer. Value type must match flag type.
+message SetFlagOverrideRequest {
+  string flag_id = 1;
+  string entity_id = 2;
+  State state = 3;
+  FlagValue value = 4;  // Required when state is ENABLED, ignored otherwise.
+  string actor = 5;
+}
+
+message SetFlagOverrideResponse {}
+
+message RemoveFlagOverrideRequest {
+  string flag_id = 1;
+  string entity_id = 2;
+  string actor = 3;
+}
+
+message RemoveFlagOverrideResponse {}
+
+message GetAuditLogRequest {
+  string flag_id = 1;  // Optional: filter by flag. Empty = all flags.
+  int32 limit = 2;     // Max entries to return. Default 50.
+}
+
+message GetAuditLogResponse {
+  repeated AuditLogEntry entries = 1;
+}
+
+message AuditLogEntry {
+  int64 id = 1;
+  string flag_id = 2;
+  string action = 3;
+  FlagValue old_value = 4;
+  FlagValue new_value = 5;
+  string actor = 6;
+  google.protobuf.Timestamp created_at = 7;
+}

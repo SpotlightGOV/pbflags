@@ -1,0 +1,39 @@
+syntax = "proto3";
+package pbflags.v1;
+
+option go_package = "github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1";
+option java_multiple_files = true;
+option java_package = "io.pbflags.v1.proto";
+
+// FlagValue is the typed value container used end-to-end: from definition
+// through admin server through evaluator to client. No string encoding anywhere.
+// The admin server stores these as serialized protobuf bytes (opaque).
+message FlagValue {
+  oneof value {
+    bool bool_value = 1;
+    string string_value = 2;
+    int64 int64_value = 3;
+    double double_value = 4;
+  }
+}
+
+// FlagType enumerates the supported proto field types for flag definitions.
+// Matches the proto field types used in feature proto messages.
+enum FlagType {
+  FLAG_TYPE_UNSPECIFIED = 0;
+  FLAG_TYPE_BOOL = 1;
+  FLAG_TYPE_STRING = 2;
+  FLAG_TYPE_INT64 = 3;
+  FLAG_TYPE_DOUBLE = 4;
+}
+
+// State is the runtime state of a flag or override.
+enum State {
+  STATE_UNSPECIFIED = 0;
+  STATE_ENABLED = 1;
+  STATE_DEFAULT = 2;
+  STATE_KILLED = 3;
+}
+
+// Layer and SupportedValues are defined in pbflags/options.proto (the single
+// owner). Import that file to use them in the v1 API surface.

@@ -1,0 +1,47 @@
+syntax = "proto3";
+package example;
+
+import "pbflags/options.proto";
+
+option go_package = "github.com/SpotlightGOV/pbflags/gen/example;examplepb";
+option java_multiple_files = true;
+option java_package = "io.pbflags.example.proto";
+
+// Notifications demonstrates how to define a feature with multiple flags.
+// Each field annotated with (pbflags.flag) becomes a runtime-configurable flag.
+message Notifications {
+  option (pbflags.feature) = {
+    id: "notifications"
+    description: "Controls notification delivery behavior"
+    owner: "platform-team"
+  };
+
+  // Enable email notifications globally or per-user.
+  bool email_enabled = 1 [(pbflags.flag) = {
+    description: "Enable email notifications"
+    default: { bool_value: { value: true } }
+    layer: LAYER_USER
+  }];
+
+  // How often to send digest emails.
+  string digest_frequency = 2 [(pbflags.flag) = {
+    description: "How often to send digest emails"
+    default: { string_value: { value: "daily" } }
+    supported_values: { string_values: ["hourly", "daily", "weekly"] }
+    layer: LAYER_GLOBAL
+  }];
+
+  // Maximum retry attempts for notification delivery.
+  int64 max_retries = 3 [(pbflags.flag) = {
+    description: "Maximum retry attempts"
+    default: { int64_value: { value: 3 } }
+    layer: LAYER_GLOBAL
+  }];
+
+  // Minimum score threshold for triggering notifications.
+  double score_threshold = 4 [(pbflags.flag) = {
+    description: "Score threshold for notification triggers"
+    default: { double_value: { value: 0.75 } }
+    layer: LAYER_GLOBAL
+  }];
+}

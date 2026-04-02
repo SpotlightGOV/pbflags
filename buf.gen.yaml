@@ -1,0 +1,14 @@
+version: v2
+plugins:
+  # Go protobuf generation.
+  - protoc_builtin: go
+    out: gen
+    opt:
+      - paths=source_relative
+  # Go Connect RPC generation.
+  - local: protoc-gen-connect-go
+    out: gen
+    opt:
+      - paths=source_relative
+inputs:
+  - directory: proto

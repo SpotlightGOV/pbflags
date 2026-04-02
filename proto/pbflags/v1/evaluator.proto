@@ -1,0 +1,135 @@
+syntax = "proto3";
+package pbflags.v1;
+
+import "pbflags/v1/types.proto";
+
+option go_package = "github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1";
+option java_multiple_files = true;
+option java_package = "io.pbflags.v1.proto";
+
+// FlagEvaluator is the evaluation API exposed to application clients.
+// It evaluates flags locally and fetches state from the admin server on demand.
+service FlagEvaluatorService {
+  // Evaluate a single flag with optional entity context.
+  rpc Evaluate(EvaluateRequest) returns (EvaluateResponse);
+
+  // Bulk evaluate flags. Reduces round trips for page loads.
+  rpc BulkEvaluate(BulkEvaluateRequest) returns (BulkEvaluateResponse);
+
+  // Evaluator health and degradation status.
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // Fetch state for a single flag. Called on-demand on cache miss.
+  rpc GetFlagState(GetFlagStateRequest) returns (GetFlagStateResponse);
+
+  // Lightweight poll for killed flags only. Called every ~30s.
+  rpc GetKilledFlags(GetKilledFlagsRequest) returns (GetKilledFlagsResponse);
+
+  // Fetch overrides for a specific entity. Called on cache miss.
+  rpc GetOverrides(GetOverridesRequest) returns (GetOverridesResponse);
+}
+
+message EvaluateRequest {
+  string flag_id = 1;
+  string entity_id = 2;  // Empty for global-only evaluation.
+}
+
+message EvaluateResponse {
+  string flag_id = 1;
+  FlagValue value = 2;
+  EvaluationSource source = 3;
+}
+
+// EvaluationSource indicates where the resolved value came from.
+enum EvaluationSource {
+  EVALUATION_SOURCE_UNSPECIFIED = 0;
+  EVALUATION_SOURCE_DEFAULT = 1;       // Compiled default (last resort)
+  EVALUATION_SOURCE_GLOBAL = 2;        // Server global state (fresh)
+  EVALUATION_SOURCE_OVERRIDE = 3;      // Server per-entity override (fresh)
+  EVALUATION_SOURCE_KILLED = 4;        // Kill switch active
+  EVALUATION_SOURCE_CACHED = 5;        // Stale cache (server unreachable)
+  EVALUATION_SOURCE_ARCHIVED = 6;      // Archived flag's last known value
+}
+
+message BulkEvaluateRequest {
+  // Empty = all known flags. Populated = only these.
+  repeated string flag_ids = 1;
+  string entity_id = 2;  // Applied to all flags in the batch.
+}
+
+message BulkEvaluateResponse {
+  repeated EvaluateResponse evaluations = 1;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  EvaluatorStatus status = 1;
+  // Time since last successful admin server contact.
+  int64 seconds_since_server_contact = 2;
+  // Number of flags with cached state (fresh or stale).
+  int32 cached_flag_count = 3;
+  // Consecutive server failures (drives backoff).
+  int32 consecutive_failures = 4;
+}
+
+enum EvaluatorStatus {
+  EVALUATOR_STATUS_UNSPECIFIED = 0;
+  EVALUATOR_STATUS_CONNECTING = 1;  // Startup, no server contact yet
+  EVALUATOR_STATUS_SERVING = 2;     // Fully connected, fetches succeeding
+  EVALUATOR_STATUS_DEGRADED = 3;    // Server unreachable, serving from stale cache + defaults
+}
+
+// EvaluatorMode controls whether the evaluator runs as a standalone root
+// (with its own admin server) or as a lightweight proxy.
+enum EvaluatorMode {
+  EVALUATOR_MODE_UNSPECIFIED = 0;
+  EVALUATOR_MODE_ROOT = 1;   // Full evaluator with embedded admin server
+  EVALUATOR_MODE_PROXY = 2;  // Lightweight proxy, delegates to a root evaluator
+}
+
+// Messages for flag state RPCs.
+
+message GetFlagStateRequest {
+  string flag_id = 1;
+}
+
+message GetFlagStateResponse {
+  FlagState flag = 1;
+  bool archived = 2;
+}
+
+message FlagState {
+  string flag_id = 1;
+  State state = 2;
+  FlagValue value = 3;
+}
+
+message GetKilledFlagsRequest {}
+
+message GetKilledFlagsResponse {
+  repeated string flag_ids = 1;
+  repeated KilledOverride killed_overrides = 2;
+}
+
+message KilledOverride {
+  string flag_id = 1;
+  string entity_id = 2;
+}
+
+message GetOverridesRequest {
+  string entity_id = 1;
+  // Empty = all flags. Populated = only these.
+  repeated string flag_ids = 2;
+}
+
+message GetOverridesResponse {
+  repeated OverrideState overrides = 1;
+}
+
+message OverrideState {
+  string flag_id = 1;
+  string entity_id = 2;
+  State state = 3;
+  FlagValue value = 4;
+}

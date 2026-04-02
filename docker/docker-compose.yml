@@ -1,0 +1,45 @@
+# Local development setup for pbflags (combined mode).
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml up --build
+#
+# Ports:
+#   - 9200: Admin API (HTTP/Connect)
+#   - 9201: Evaluator API (HTTP/Connect)
+#   - 5433: PostgreSQL
+services:
+  db:
+    image: postgres:18-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: pbflags
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+    volumes:
+      - ../db/migrations/001_schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pbflags-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d pbflags"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  pbflags:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command:
+      - --database=postgres://admin:admin@db:5432/pbflags?sslmode=disable
+      - --descriptors=/config/descriptors.pb
+      - --listen=0.0.0.0:9201
+      - --admin=0.0.0.0:9200
+    ports:
+      - "9200:9200"
+      - "9201:9201"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pbflags-pgdata:

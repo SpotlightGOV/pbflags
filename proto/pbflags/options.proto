@@ -1,0 +1,76 @@
+syntax = "proto3";
+package pbflags;
+
+import "google/protobuf/descriptor.proto";
+import "google/protobuf/wrappers.proto";
+
+option go_package = "github.com/SpotlightGOV/pbflags/gen/pbflags;pbflagspb";
+option java_multiple_files = true;
+option java_package = "io.pbflags.proto";
+
+// Applied to a message to mark it as a feature.
+message FeatureOptions {
+  // Stable identifier for this feature. Used as the DB primary key.
+  // MUST be unique across all features. MUST NOT change once set.
+  // Convention: snake_case, e.g., "notifications", "billing_v2".
+  string id = 1;
+
+  string description = 2;
+  // Owner team for the feature (for UI grouping / contact).
+  string owner = 3;
+}
+
+// Applied to a field to mark it as a flag.
+message FlagOptions {
+  string description = 1;
+
+  // Default value (type must match the field type).
+  FlagDefault default = 2;
+
+  // Which layer this flag varies by. Treated as GLOBAL if unset.
+  // Note: proto3 will yield LAYER_UNSPECIFIED (0) when not set.
+  // Schema sync and evaluation MUST treat UNSPECIFIED as GLOBAL.
+  Layer layer = 3;
+
+  // Suggested values for the UI dropdown. Not enforced at evaluation time.
+  // Can be overridden in the UI when setting values.
+  SupportedValues supported_values = 4;
+}
+
+// Uses wrapper types to distinguish "default is false/0" from "no default set."
+// In proto3, bare bool false and int64 0 are default values and won't serialize
+// in a oneof, making them indistinguishable from "not set."
+message FlagDefault {
+  oneof value {
+    google.protobuf.BoolValue bool_value = 1;
+    google.protobuf.StringValue string_value = 2;
+    google.protobuf.Int64Value int64_value = 3;
+    google.protobuf.DoubleValue double_value = 4;
+  }
+}
+
+message SupportedValues {
+  // At most one of these should be populated, matching the flag's field type.
+  // Validated at schema sync time (not enforced by proto structure).
+  repeated string string_values = 1;
+  repeated int64 int64_values = 2;
+  repeated double double_values = 3;
+  // (bool flags don't need supported_values — it's always true/false)
+}
+
+enum Layer {
+  LAYER_UNSPECIFIED = 0;  // Treated as GLOBAL by schema sync and evaluation.
+  LAYER_GLOBAL = 1;
+  LAYER_USER = 2;
+  // Additional layers (e.g., LAYER_BUSINESS = 3) are added here.
+  // Each new layer requires entity resolution in the client.
+}
+
+// Extension field numbers 51000-51001 are reserved for pbflags.
+extend google.protobuf.MessageOptions {
+  optional FeatureOptions feature = 51000;
+}
+
+extend google.protobuf.FieldOptions {
+  optional FlagOptions flag = 51001;
+}

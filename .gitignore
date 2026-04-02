@@ -1,0 +1,24 @@
+# Gas Town workspace
+.runtime/
+.claude/
+.logs/
+.beads/
+__pycache__/
+state.json
+CLAUDE.md
+CLAUDE.local.md
+mail/
+
+# Go
+pbflags-server
+protoc-gen-pbflags
+
+# Java
+clients/java/.gradle/
+clients/java/build/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+workspace/
