@@ -4,7 +4,9 @@ plugins {
     java
     `java-library`
     `maven-publish`
+    signing
     id("com.google.protobuf") version "0.9.4"
+    id("io.github.gradle-nexus.publish-plugin") version "2.0.0"
 }
 
 group = "org.spotlightgov.pbflags"
@@ -70,11 +72,41 @@ publishing {
                 url.set("https://github.com/SpotlightGOV/pbflags")
                 licenses {
                     license {
-                        name.set("Apache License 2.0")
-                        url.set("https://www.apache.org/licenses/LICENSE-2.0")
+                        name.set("MIT License")
+                        url.set("https://opensource.org/licenses/MIT")
                     }
+                }
+                developers {
+                    developer {
+                        id.set("spotlightgov")
+                        name.set("SpotlightGOV")
+                        url.set("https://github.com/SpotlightGOV")
+                    }
+                }
+                scm {
+                    connection.set("scm:git:git://github.com/SpotlightGOV/pbflags.git")
+                    developerConnection.set("scm:git:ssh://github.com/SpotlightGOV/pbflags.git")
+                    url.set("https://github.com/SpotlightGOV/pbflags")
                 }
             }
         }
     }
+}
+
+nexusPublishing {
+    repositories {
+        sonatype {
+            nexusUrl.set(uri("https://ossrh-staging-api.central.sonatype.com/service/local/"))
+            snapshotRepositoryUrl.set(uri("https://central.sonatype.com/repository/maven-snapshots/"))
+            username.set(System.getenv("OSSRH_USERNAME") ?: "")
+            password.set(System.getenv("OSSRH_TOKEN") ?: "")
+        }
+    }
+}
+
+signing {
+    val signingKey = System.getenv("GPG_PRIVATE_KEY") ?: ""
+    val signingPassword = (System.getenv("GPG_PASSPHRASE") ?: "").trim()
+    useInMemoryPgpKeys(signingKey, signingPassword)
+    sign(publishing.publications["mavenJava"])
 }
