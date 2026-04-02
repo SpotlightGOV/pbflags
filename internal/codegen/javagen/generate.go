@@ -19,7 +19,10 @@ type featureEntry struct {
 }
 
 // Generate produces Java flag client code for all feature messages.
-func Generate(plugin *protogen.Plugin, javaPackage string) error {
+// If dagger is true, generates a Dagger @Module and adds @Inject/@Singleton to impls.
+func Generate(plugin *protogen.Plugin, javaPackage string, dagger ...bool) error {
+	emitDagger := len(dagger) > 0 && dagger[0]
+	_ = emitDagger // used below
 	var features []featureEntry
 	for _, f := range plugin.Files {
 		if !f.Generate {
@@ -47,8 +50,14 @@ func Generate(plugin *protogen.Plugin, javaPackage string) error {
 		if err := generateInterface(plugin, entry.feat, entry.flags, javaPackage, pkgDir); err != nil {
 			return fmt.Errorf("generating interface for %s: %w", entry.feat.id, err)
 		}
-		if err := generateImpl(plugin, entry.feat, entry.flags, javaPackage, pkgDir); err != nil {
+		if err := generateImpl(plugin, entry.feat, entry.flags, javaPackage, pkgDir, emitDagger); err != nil {
 			return fmt.Errorf("generating impl for %s: %w", entry.feat.id, err)
+		}
+	}
+
+	if emitDagger {
+		if err := generateDaggerModule(plugin, features, javaPackage, pkgDir); err != nil {
+			return fmt.Errorf("generating Dagger module: %w", err)
 		}
 	}
 
@@ -123,7 +132,7 @@ func generateInterface(plugin *protogen.Plugin, feat *featureInfo, flags []flagI
 	return nil
 }
 
-func generateImpl(plugin *protogen.Plugin, feat *featureInfo, flags []flagInfo, javaPackage, pkgDir string) error {
+func generateImpl(plugin *protogen.Plugin, feat *featureInfo, flags []flagInfo, javaPackage, pkgDir string, dagger bool) error {
 	pascalFeat := toPascalCase(feat.id)
 	interfaceName := pascalFeat + "Flags"
 	className := pascalFeat + "FlagsImpl"
@@ -136,8 +145,15 @@ func generateImpl(plugin *protogen.Plugin, feat *featureInfo, flags []flagInfo, 
 	p()
 	p("import org.spotlightgov.pbflags.Flag;")
 	p("import org.spotlightgov.pbflags.FlagEvaluator;")
+	if dagger {
+		p("import javax.inject.Inject;")
+		p("import javax.inject.Singleton;")
+	}
 	p()
 	p("/** Generated implementation of {@link ", interfaceName, "}. */")
+	if dagger {
+		p("@Singleton")
+	}
 	p("public final class ", className, " implements ", interfaceName, " {")
 	p()
 
@@ -146,6 +162,9 @@ func generateImpl(plugin *protogen.Plugin, feat *featureInfo, flags []flagInfo, 
 	}
 	p()
 
+	if dagger {
+		p("  @Inject")
+	}
 	p("  public ", className, "(FlagEvaluator evaluator) {")
 	for _, fl := range flags {
 		p("    this.", fl.camelName, " =")
@@ -160,6 +179,34 @@ func generateImpl(plugin *protogen.Plugin, feat *featureInfo, flags []flagInfo, 
 		p("    return ", fl.camelName, ";")
 		p("  }")
 		p()
+	}
+
+	p("}")
+
+	return nil
+}
+
+func generateDaggerModule(plugin *protogen.Plugin, features []featureEntry, javaPackage, pkgDir string) error {
+	outPath := pkgDir + "/FlagRegistryModule.java"
+	g := plugin.NewGeneratedFile(outPath, "")
+	p := g.P
+
+	p("package ", javaPackage, ";")
+	p()
+	p("import dagger.Binds;")
+	p("import dagger.Module;")
+	p()
+	p("/** Generated Dagger module binding feature flag interfaces to their implementations. */")
+	p("@Module")
+	p("public interface FlagRegistryModule {")
+
+	for _, entry := range features {
+		pascalFeat := toPascalCase(entry.feat.id)
+		interfaceName := pascalFeat + "Flags"
+		implName := pascalFeat + "FlagsImpl"
+		p()
+		p("  @Binds")
+		p("  ", interfaceName, " bind", pascalFeat, "Flags(", implName, " impl);")
 	}
 
 	p("}")

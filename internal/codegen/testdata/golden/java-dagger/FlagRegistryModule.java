@@ -1,0 +1,12 @@
+package org.spotlightgov.pbflags.generated;
+
+import dagger.Binds;
+import dagger.Module;
+
+/** Generated Dagger module binding feature flag interfaces to their implementations. */
+@Module
+public interface FlagRegistryModule {
+
+  @Binds
+  NotificationsFlags bindNotificationsFlags(NotificationsFlagsImpl impl);
+}

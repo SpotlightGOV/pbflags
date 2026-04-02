@@ -1,0 +1,49 @@
+package org.spotlightgov.pbflags.generated;
+
+import org.spotlightgov.pbflags.Flag;
+import org.spotlightgov.pbflags.FlagEvaluator;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+
+/** Generated implementation of {@link NotificationsFlags}. */
+@Singleton
+public final class NotificationsFlagsImpl implements NotificationsFlags {
+
+  private final Flag<Boolean> emailEnabled;
+  private final Flag<String> digestFrequency;
+  private final Flag<Long> maxRetries;
+  private final Flag<Double> scoreThreshold;
+
+  @Inject
+  public NotificationsFlagsImpl(FlagEvaluator evaluator) {
+    this.emailEnabled =
+        evaluator.flag(EMAIL_ENABLED_ID, Boolean.class, EMAIL_ENABLED_DEFAULT);
+    this.digestFrequency =
+        evaluator.flag(DIGEST_FREQUENCY_ID, String.class, DIGEST_FREQUENCY_DEFAULT);
+    this.maxRetries =
+        evaluator.flag(MAX_RETRIES_ID, Long.class, MAX_RETRIES_DEFAULT);
+    this.scoreThreshold =
+        evaluator.flag(SCORE_THRESHOLD_ID, Double.class, SCORE_THRESHOLD_DEFAULT);
+  }
+
+  @Override
+  public Flag<Boolean> emailEnabled() {
+    return emailEnabled;
+  }
+
+  @Override
+  public Flag<String> digestFrequency() {
+    return digestFrequency;
+  }
+
+  @Override
+  public Flag<Long> maxRetries() {
+    return maxRetries;
+  }
+
+  @Override
+  public Flag<Double> scoreThreshold() {
+    return scoreThreshold;
+  }
+
+}

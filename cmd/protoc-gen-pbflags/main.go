@@ -28,6 +28,7 @@ func main() {
 	lang := flags.String("lang", "", "output language: go, java, typescript, rust, node")
 	packagePrefix := flags.String("package_prefix", "", "Go import path prefix for generated packages")
 	javaPackage := flags.String("java_package", "", "Java package for generated classes")
+	javaDagger := flags.Bool("java_dagger", false, "generate Dagger @Module and add @Inject/@Singleton to Java impls")
 
 	opts := protogen.Options{ParamFunc: flags.Set}
 	opts.Run(func(plugin *protogen.Plugin) error {
@@ -39,7 +40,7 @@ func main() {
 			if *javaPackage == "" {
 				return fmt.Errorf("protoc-gen-pbflags: --java_package is required for lang=java")
 			}
-			return javagen.Generate(plugin, *javaPackage)
+			return javagen.Generate(plugin, *javaPackage, *javaDagger)
 		case "typescript":
 			_, _ = fmt.Fprintf(os.Stderr, "protoc-gen-pbflags: typescript output not yet implemented\n")
 			return nil

@@ -124,6 +124,32 @@ func TestGoldenJava(t *testing.T) {
 	}
 }
 
+func TestGoldenJavaDagger(t *testing.T) {
+	root := projectRoot(t)
+	pluginBin := buildPlugin(t, root)
+	goldenDir := filepath.Join(root, "internal", "codegen", "testdata", "golden", "java-dagger")
+
+	daggerFiles := []string{"NotificationsFlags.java", "NotificationsFlagsImpl.java", "FlagRegistryModule.java"}
+
+	if *update {
+		tmpDir := t.TempDir()
+		generateWithBuf(t, root, pluginBin, tmpDir, "java", "java_dagger=true")
+		for _, f := range daggerFiles {
+			generated := findFile(t, tmpDir, f)
+			copyFile(t, generated, filepath.Join(goldenDir, f))
+		}
+		t.Log("updated golden Java Dagger files")
+		return
+	}
+
+	tmpDir := t.TempDir()
+	generateWithBuf(t, root, pluginBin, tmpDir, "java", "java_dagger=true")
+	for _, f := range daggerFiles {
+		generated := findFile(t, tmpDir, f)
+		compareFiles(t, filepath.Join(goldenDir, f), generated)
+	}
+}
+
 func findFile(t *testing.T, dir, name string) string {
 	t.Helper()
 	var found string
