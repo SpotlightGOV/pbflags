@@ -139,7 +139,7 @@ class MyTest {
 
   @Test
   void testOverride() {
-    flags.set("notifications/1", false);
+    flags.set(NotificationsFlags.EMAIL_ENABLED_ID, false);
     var nf = NotificationsFlags.forEvaluator(flags.evaluator());
     assertFalse(nf.emailEnabled().get());
   }
