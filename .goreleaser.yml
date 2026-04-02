@@ -27,25 +27,28 @@ builds:
 
 archives:
   - id: pbflags-server
-    builds: [pbflags-server]
+    ids: [pbflags-server]
     name_template: "pbflags-server_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
     format_overrides:
       - goos: darwin
-        format: zip
+        formats: [zip]
 
   - id: protoc-gen-pbflags
-    builds: [protoc-gen-pbflags]
+    ids: [protoc-gen-pbflags]
     name_template: "protoc-gen-pbflags_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
     format_overrides:
       - goos: darwin
-        format: zip
+        formats: [zip]
 
   - id: pbflags-sync
-    builds: [pbflags-sync]
+    ids: [pbflags-sync]
     name_template: "pbflags-sync_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
     format_overrides:
       - goos: darwin
-        format: zip
+        formats: [zip]
 
 checksum:
   name_template: "checksums.txt"
@@ -57,7 +60,7 @@ changelog:
       - "^docs:"
       - "^test:"
 
-dockers:
+dockers_v2:
   - image_templates:
       - "ghcr.io/spotlightgov/pbflags-server:{{ .Version }}"
       - "ghcr.io/spotlightgov/pbflags-server:latest"
