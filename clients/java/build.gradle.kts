@@ -10,7 +10,11 @@ plugins {
 }
 
 group = "org.spotlightgov.pbflags"
-version = "0.1.0"
+version = providers.environmentVariable("RELEASE_VERSION").map { it.trim().removePrefix("v") }.orElse(
+    providers.exec {
+        commandLine("git", "describe", "--tags", "--abbrev=0")
+    }.standardOutput.asText.map { it.trim().removePrefix("v") }
+).getOrElse("0.0.0-SNAPSHOT")
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21

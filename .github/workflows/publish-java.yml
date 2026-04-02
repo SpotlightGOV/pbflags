@@ -20,6 +20,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: gradle publishToSonatype closeAndReleaseSonatypeStagingRepository
         env:
+          RELEASE_VERSION: ${{ github.ref_name }}
           OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
           OSSRH_TOKEN: ${{ secrets.OSSRH_TOKEN }}
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
