@@ -4,6 +4,7 @@ package javagen
 import (
 	"fmt"
 	"math"
+	"path/filepath"
 	"strings"
 
 	"google.golang.org/protobuf/compiler/protogen"
@@ -59,6 +60,10 @@ func Generate(plugin *protogen.Plugin, javaPackage string, dagger ...bool) error
 		if err := generateDaggerModule(plugin, features, javaPackage, pkgDir); err != nil {
 			return fmt.Errorf("generating Dagger module: %w", err)
 		}
+	}
+
+	if err := generateDescriptorProvider(plugin, features, javaPackage, pkgDir); err != nil {
+		return fmt.Errorf("generating descriptor provider: %w", err)
 	}
 
 	return nil
@@ -212,6 +217,114 @@ func generateDaggerModule(plugin *protogen.Plugin, features []featureEntry, java
 	p("}")
 
 	return nil
+}
+
+func generateDescriptorProvider(plugin *protogen.Plugin, features []featureEntry, javaPackage, pkgDir string) error {
+	// Collect unique proto source files.
+	seen := map[string]bool{}
+	var files []*protogen.File
+	for _, entry := range features {
+		path := entry.protoSrc.Desc.Path()
+		if !seen[path] {
+			seen[path] = true
+			files = append(files, entry.protoSrc)
+		}
+	}
+
+	outPath := pkgDir + "/PbflagsFlagDescriptorProvider.java"
+	g := plugin.NewGeneratedFile(outPath, "")
+	p := g.P
+
+	p("package ", javaPackage, ";")
+	p()
+	p("import com.google.protobuf.Descriptors.FileDescriptor;")
+	p("import org.spotlightgov.pbflags.FlagDescriptorProvider;")
+	p("import java.util.Arrays;")
+	p("import java.util.List;")
+	p()
+	p("/** Generated {@link FlagDescriptorProvider} for feature flag proto descriptors. */")
+	p("public final class PbflagsFlagDescriptorProvider implements FlagDescriptorProvider {")
+	p()
+	p("  @Override")
+	p("  public List<FileDescriptor> fileDescriptors() {")
+	p("    return Arrays.asList(")
+	for i, f := range files {
+		ref := protoOuterClassRef(f)
+		comma := ","
+		if i == len(files)-1 {
+			comma = ""
+		}
+		p("        ", ref, ".getDescriptor()", comma)
+	}
+	p("    );")
+	p("  }")
+	p("}")
+
+	return nil
+}
+
+// protoOuterClassRef returns the fully qualified Java outer class reference for a proto file.
+// This is the class that holds the static getDescriptor() method for the file.
+func protoOuterClassRef(f *protogen.File) string {
+	javaPkg := f.Proto.GetOptions().GetJavaPackage()
+	if javaPkg == "" {
+		javaPkg = string(f.Proto.GetPackage())
+	}
+
+	outerClass := f.Proto.GetOptions().GetJavaOuterClassname()
+	if outerClass == "" {
+		outerClass = protoFileToOuterClass(f)
+	}
+
+	return javaPkg + "." + outerClass
+}
+
+// protoFileToOuterClass derives the Java outer class name from a proto file,
+// following protoc's algorithm: CamelCase the filename, append "OuterClass" if
+// it conflicts with a top-level message, enum, or service name.
+func protoFileToOuterClass(f *protogen.File) string {
+	base := filepath.Base(f.Proto.GetName())
+	base = strings.TrimSuffix(base, filepath.Ext(base))
+	name := toUnderscoreCamelCase(base)
+
+	// Check for conflicts with top-level declarations.
+	for _, msg := range f.Messages {
+		if string(msg.Desc.Name()) == name {
+			return name + "OuterClass"
+		}
+	}
+	for _, e := range f.Enums {
+		if string(e.Desc.Name()) == name {
+			return name + "OuterClass"
+		}
+	}
+	for _, s := range f.Services {
+		if string(s.Desc.Name()) == name {
+			return name + "OuterClass"
+		}
+	}
+
+	return name
+}
+
+// toUnderscoreCamelCase converts a proto filename base (e.g. "my_file") to CamelCase ("MyFile"),
+// matching protoc's java_outer_classname derivation.
+func toUnderscoreCamelCase(s string) string {
+	var result strings.Builder
+	upper := true
+	for _, c := range s {
+		if c == '_' || c == '-' {
+			upper = true
+			continue
+		}
+		if upper {
+			result.WriteRune(rune(strings.ToUpper(string(c))[0]))
+			upper = false
+		} else {
+			result.WriteRune(c)
+		}
+	}
+	return result.String()
 }
 
 // --- Types ---

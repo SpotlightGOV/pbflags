@@ -1,0 +1,17 @@
+package org.spotlightgov.pbflags.generated;
+
+import com.google.protobuf.Descriptors.FileDescriptor;
+import org.spotlightgov.pbflags.FlagDescriptorProvider;
+import java.util.Arrays;
+import java.util.List;
+
+/** Generated {@link FlagDescriptorProvider} for feature flag proto descriptors. */
+public final class PbflagsFlagDescriptorProvider implements FlagDescriptorProvider {
+
+  @Override
+  public List<FileDescriptor> fileDescriptors() {
+    return Arrays.asList(
+        org.spotlightgov.pbflags.example.proto.NotificationsOuterClass.getDescriptor()
+    );
+  }
+}

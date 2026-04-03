@@ -103,7 +103,7 @@ func TestGoldenJava(t *testing.T) {
 	pluginBin := buildPlugin(t, root)
 	goldenDir := filepath.Join(root, "internal", "codegen", "testdata", "golden", "java")
 
-	javaFiles := []string{"NotificationsFlags.java", "NotificationsFlagsImpl.java"}
+	javaFiles := []string{"NotificationsFlags.java", "NotificationsFlagsImpl.java", "PbflagsFlagDescriptorProvider.java"}
 
 	if *update {
 		tmpDir := t.TempDir()
@@ -129,7 +129,7 @@ func TestGoldenJavaDagger(t *testing.T) {
 	pluginBin := buildPlugin(t, root)
 	goldenDir := filepath.Join(root, "internal", "codegen", "testdata", "golden", "java-dagger")
 
-	daggerFiles := []string{"NotificationsFlags.java", "NotificationsFlagsImpl.java", "FlagRegistryModule.java"}
+	daggerFiles := []string{"NotificationsFlags.java", "NotificationsFlagsImpl.java", "FlagRegistryModule.java", "PbflagsFlagDescriptorProvider.java"}
 
 	if *update {
 		tmpDir := t.TempDir()

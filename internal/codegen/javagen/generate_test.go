@@ -133,6 +133,23 @@ func TestParseDoubleWrapper(t *testing.T) {
 	}
 }
 
+func TestToUnderscoreCamelCase(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"notifications", "Notifications"},
+		{"my_service", "MyService"},
+		{"hello-world", "HelloWorld"},
+		{"simple", "Simple"},
+		{"a_b_c", "ABC"},
+	}
+	for _, tt := range tests {
+		if got := toUnderscoreCamelCase(tt.in); got != tt.want {
+			t.Errorf("toUnderscoreCamelCase(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestParseFeatureMessage(t *testing.T) {
 	var b []byte
 	b = protowire.AppendTag(b, 1, protowire.BytesType)
