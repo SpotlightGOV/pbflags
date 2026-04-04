@@ -46,6 +46,7 @@ import (
 
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
 	"github.com/SpotlightGOV/pbflags/internal/admin"
+	adminweb "github.com/SpotlightGOV/pbflags/internal/admin/web"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 )
 
@@ -251,6 +252,12 @@ func startAdmin(ctx context.Context, cfg evaluator.Config, pool *pgxpool.Pool, d
 	mux := http.NewServeMux()
 	adminPath, adminHandler := pbflagsv1connect.NewFlagAdminServiceHandler(adminService)
 	mux.Handle(adminPath, adminHandler)
+
+	webHandler, err := adminweb.NewHandler(store, adminLogger)
+	if err != nil {
+		return fmt.Errorf("create web handler: %w", err)
+	}
+	webHandler.Register(mux)
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := pool.Ping(r.Context()); err != nil {

@@ -1,0 +1,69 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pbflags admin</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div class="shell">
+    <nav class="sidebar">
+      <div class="sidebar-brand">
+        <h1>pb<span>flags</span></h1>
+        <div class="version">admin console</div>
+      </div>
+      <div class="sidebar-nav">
+        <a href="/"
+           hx-get="/" hx-target="#content" hx-push-url="true"
+           {{if eq .Page "dashboard"}}class="active"{{end}}>
+          <span class="nav-icon">&#9632;</span> Dashboard
+        </a>
+        <a href="/audit"
+           hx-get="/audit" hx-target="#content" hx-push-url="true"
+           {{if eq .Page "audit"}}class="active"{{end}}>
+          <span class="nav-icon">&#9776;</span> Audit Log
+        </a>
+      </div>
+      <div class="sidebar-stats">
+        {{if .FlagCount}}flags: <span class="stat-val">{{.FlagCount}}</span>{{end}}
+      </div>
+    </nav>
+    <main class="main" id="content">
+      {{if eq .Page "dashboard"}}{{template "dashboard_content" .}}{{end}}
+      {{if eq .Page "flag"}}{{template "flag_content" .}}{{end}}
+      {{if eq .Page "audit"}}{{template "audit_content" .}}{{end}}
+    </main>
+  </div>
+  <script>
+    // Update active nav on htmx navigation.
+    document.body.addEventListener('htmx:pushedIntoHistory', function(e) {
+      document.querySelectorAll('.sidebar-nav a').forEach(function(a) {
+        a.classList.remove('active');
+        var href = a.getAttribute('href');
+        if (href === '/' && location.pathname === '/') a.classList.add('active');
+        else if (href !== '/' && location.pathname.startsWith(href)) a.classList.add('active');
+      });
+    });
+
+    // Toast helper.
+    function showToast(msg) {
+      var t = document.createElement('div');
+      t.className = 'toast';
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(function() { t.remove(); }, 2500);
+    }
+
+    // Show toast on successful state changes.
+    document.body.addEventListener('htmx:afterSwap', function(e) {
+      var trigger = e.detail.requestConfig;
+      if (trigger && trigger.verb !== 'get') {
+        showToast('Updated successfully');
+      }
+    });
+  </script>
+</body>
+</html>
+{{end}}
