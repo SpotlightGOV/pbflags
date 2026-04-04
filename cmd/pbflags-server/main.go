@@ -35,9 +35,12 @@ import (
 	"syscall"
 	"time"
 
+	"connectrpc.com/connect"
+	"connectrpc.com/otelconnect"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
@@ -96,6 +99,12 @@ func run(configPath string, logger *slog.Logger) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	shutdownTracer, err := evaluator.InitTracer(ctx, "pbflags-server", version)
+	if err != nil {
+		return fmt.Errorf("init tracer: %w", err)
+	}
+	defer shutdownTracer(context.Background())
+
 	defs, err := evaluator.ParseDescriptorFile(cfg.Descriptors)
 	if err != nil {
 		return fmt.Errorf("parse descriptors: %w", err)
@@ -107,6 +116,7 @@ func run(configPath string, logger *slog.Logger) error {
 
 	metrics := evaluator.NewMetrics(prometheus.DefaultRegisterer)
 	tracker := evaluator.NewHealthTracker(metrics)
+	tracer := otel.Tracer("pbflags/evaluator")
 
 	cache, err := evaluator.NewCacheStore(evaluator.CacheStoreConfig{
 		FlagTTL:         cfg.Cache.FlagTTL,
@@ -137,7 +147,7 @@ func run(configPath string, logger *slog.Logger) error {
 		}
 		logger.Info("database connected (root mode)")
 
-		dbFetcher := evaluator.NewDBFetcher(pool, tracker, logger.With("component", "db-fetcher"), metrics)
+		dbFetcher := evaluator.NewDBFetcher(pool, tracker, logger.With("component", "db-fetcher"), metrics, tracer)
 		fetcher = dbFetcher
 		killFetcher = dbFetcher
 		state = dbFetcher
@@ -148,13 +158,18 @@ func run(configPath string, logger *slog.Logger) error {
 			}
 		}
 	} else {
-		client := evaluator.NewFlagServerClient(cfg.Server, tracker, cfg.Cache.FetchTimeout, metrics)
+		otelInt, err := otelconnect.NewInterceptor()
+		if err != nil {
+			return fmt.Errorf("create otel interceptor: %w", err)
+		}
+		client := evaluator.NewFlagServerClient(cfg.Server, tracker, cfg.Cache.FetchTimeout, metrics,
+			connect.WithInterceptors(otelInt))
 		fetcher = client
 		killFetcher = client
 		state = client.StateServer()
 	}
 
-	eval := evaluator.NewEvaluator(reg, cache, fetcher, logger, metrics)
+	eval := evaluator.NewEvaluator(reg, cache, fetcher, logger, metrics, tracer)
 
 	sighupCh := make(chan os.Signal, 1)
 	signal.Notify(sighupCh, syscall.SIGHUP)
@@ -179,8 +194,14 @@ func run(configPath string, logger *slog.Logger) error {
 		func() float64 { return float64(cache.OverrideCacheSize()) },
 	))
 
+	serverOtelInt, err := otelconnect.NewInterceptor()
+	if err != nil {
+		return fmt.Errorf("create server otel interceptor: %w", err)
+	}
+
 	mux := http.NewServeMux()
-	evalPath, evalHandler := pbflagsv1connect.NewFlagEvaluatorServiceHandler(svc)
+	evalPath, evalHandler := pbflagsv1connect.NewFlagEvaluatorServiceHandler(svc,
+		connect.WithInterceptors(serverOtelInt))
 	mux.Handle(evalPath, evalHandler)
 	mux.Handle("/metrics", promhttp.Handler())
 

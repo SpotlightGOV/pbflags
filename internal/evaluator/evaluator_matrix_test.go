@@ -54,7 +54,7 @@ func TestEval_GlobalEnabled_WithValue(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src, "source")
@@ -67,7 +67,7 @@ func TestEval_GlobalEnabled_NilValue(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: nil},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -80,7 +80,7 @@ func TestEval_GlobalDefault(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT, Value: nil},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -93,7 +93,7 @@ func TestEval_GlobalKilled(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_KILLED, Value: boolVal(true)},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -104,7 +104,7 @@ func TestEval_UnknownFlag_FetchReturnsNil(t *testing.T) {
 	cache := newTestCache(t)
 	reg := newTestRegistry()
 	fetcher := &stubFetcher{flagState: nil}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "unknown/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -123,7 +123,7 @@ func TestEval_KillSet_GlobalKill(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED, src, "source")
@@ -145,7 +145,7 @@ func TestEval_KillSet_EntityKill(t *testing.T) {
 		},
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: strVal("global")},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "user-1")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source (entity kill)")
@@ -166,7 +166,7 @@ func TestEval_KillSet_EntityKill_DifferentEntityNotAffected(t *testing.T) {
 			{FlagID: "f/1", EntityID: "user-2", State: pbflagsv1.State_STATE_ENABLED, Value: strVal("custom")},
 		},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "user-2")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, src, "source")
@@ -183,7 +183,7 @@ func TestEval_Override_Enabled(t *testing.T) {
 			{FlagID: "f/1", EntityID: "user-1", State: pbflagsv1.State_STATE_ENABLED, Value: strVal("per-user")},
 		},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "user-1")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, src, "source")
@@ -198,7 +198,7 @@ func TestEval_Override_Default_FallsToCompiledDefault(t *testing.T) {
 			{FlagID: "f/1", EntityID: "user-1", State: pbflagsv1.State_STATE_DEFAULT, Value: nil},
 		},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "user-1")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -213,7 +213,7 @@ func TestEval_Override_Killed_FallsToCompiledDefault(t *testing.T) {
 			{FlagID: "f/1", EntityID: "user-1", State: pbflagsv1.State_STATE_KILLED, Value: nil},
 		},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "user-1")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -226,7 +226,7 @@ func TestEval_Override_GlobalLayer_SkipsOverridePath(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "user-1")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src, "source (override skipped for global layer)")
@@ -240,7 +240,7 @@ func TestEval_Override_NoMatch_FallsToGlobal(t *testing.T) {
 		overrides: []*CachedOverride{},
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: strVal("global-val")},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "user-1")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src, "source")
@@ -255,7 +255,7 @@ func TestEval_ArchivedFlag_WithValue(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true), Archived: true},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_ARCHIVED, src, "source")
@@ -268,7 +268,7 @@ func TestEval_ArchivedFlag_NilValue(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: nil, Archived: true},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -286,7 +286,7 @@ func TestEval_StaleOverride_FallbackOnFetchFailure(t *testing.T) {
 			{FlagID: "f/1", EntityID: "user-1", State: pbflagsv1.State_STATE_ENABLED, Value: strVal("stale-override")},
 		},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 	eval.Evaluate(context.Background(), "f/1", "user-1")
 
 	time.Sleep(100 * time.Millisecond)
@@ -307,7 +307,7 @@ func TestEval_AllFetchesFail_CompiledDefault(t *testing.T) {
 		overErr: errors.New("unreachable"),
 		flagErr: errors.New("unreachable"),
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "user-1")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -325,7 +325,7 @@ func TestEval_OnDemandFetch_CachesFlagState(t *testing.T) {
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
 		counter:   &callCount,
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	eval.Evaluate(context.Background(), "f/1", "")
 	waitCaches(cache)
@@ -392,7 +392,7 @@ func TestEval_NeverReturnsError(t *testing.T) {
 			if sc.killSet != nil {
 				cache.SetKillSet(sc.killSet)
 			}
-			eval := NewEvaluator(sc.reg, cache, sc.fetcher, slog.Default(), NewNoopMetrics())
+			eval := NewEvaluator(sc.reg, cache, sc.fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 			val, src := eval.Evaluate(context.Background(), sc.flagID, sc.entity)
 			_ = val
 			_ = src
@@ -421,7 +421,7 @@ func TestEval_AllValueTypes(t *testing.T) {
 			fetcher := &stubFetcher{
 				flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: tt.value},
 			}
-			eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+			eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 			val, src := eval.Evaluate(context.Background(), "f/1", "")
 			require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src, "source")
@@ -444,7 +444,7 @@ func TestEval_ConcurrentEvaluate(t *testing.T) {
 			{FlagID: "f/2", EntityID: "u1", State: pbflagsv1.State_STATE_ENABLED, Value: strVal("override")},
 		},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	errc := make(chan error, 100)
 	for i := 0; i < 100; i++ {

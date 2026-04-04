@@ -9,6 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
@@ -22,15 +24,20 @@ type DBFetcher struct {
 	tracker *HealthTracker
 	logger  *slog.Logger
 	metrics *Metrics
+	tracer  trace.Tracer
 }
 
 // NewDBFetcher creates a fetcher backed by direct database access.
-func NewDBFetcher(pool *pgxpool.Pool, tracker *HealthTracker, logger *slog.Logger, m *Metrics) *DBFetcher {
-	return &DBFetcher{pool: pool, tracker: tracker, logger: logger, metrics: m}
+func NewDBFetcher(pool *pgxpool.Pool, tracker *HealthTracker, logger *slog.Logger, m *Metrics, tracer trace.Tracer) *DBFetcher {
+	return &DBFetcher{pool: pool, tracker: tracker, logger: logger, metrics: m, tracer: tracer}
 }
 
 // FetchFlagState implements Fetcher.
 func (f *DBFetcher) FetchFlagState(ctx context.Context, flagID string) (*CachedFlagState, error) {
+	ctx, span := f.tracer.Start(ctx, "DBFetcher.FetchFlagState",
+		trace.WithAttributes(attribute.String("flag_id", flagID)))
+	defer span.End()
+
 	timer := prometheus.NewTimer(f.metrics.FetchDuration.WithLabelValues("db", "flag_state"))
 	defer timer.ObserveDuration()
 
@@ -63,6 +70,10 @@ func (f *DBFetcher) FetchFlagState(ctx context.Context, flagID string) (*CachedF
 
 // FetchOverrides implements Fetcher.
 func (f *DBFetcher) FetchOverrides(ctx context.Context, entityID string, flagIDs []string) ([]*CachedOverride, error) {
+	ctx, span := f.tracer.Start(ctx, "DBFetcher.FetchOverrides",
+		trace.WithAttributes(attribute.String("entity_id", entityID)))
+	defer span.End()
+
 	timer := prometheus.NewTimer(f.metrics.FetchDuration.WithLabelValues("db", "overrides"))
 	defer timer.ObserveDuration()
 
@@ -105,6 +116,9 @@ func (f *DBFetcher) FetchOverrides(ctx context.Context, entityID string, flagIDs
 
 // GetKilledFlags implements KillFetcher.
 func (f *DBFetcher) GetKilledFlags(ctx context.Context) (*KillSet, error) {
+	ctx, span := f.tracer.Start(ctx, "DBFetcher.GetKilledFlags")
+	defer span.End()
+
 	timer := prometheus.NewTimer(f.metrics.FetchDuration.WithLabelValues("db", "killed_flags"))
 	defer timer.ObserveDuration()
 

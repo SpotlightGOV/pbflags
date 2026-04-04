@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"go.opentelemetry.io/otel"
 )
 
 // KillFetcher fetches the current kill set. Implemented by both
@@ -62,7 +64,12 @@ func (p *KillPoller) Run(ctx context.Context) {
 	}
 }
 
+var pollerTracer = otel.Tracer("pbflags/poller")
+
 func (p *KillPoller) poll(ctx context.Context) {
+	ctx, span := pollerTracer.Start(ctx, "KillPoller.poll")
+	defer span.End()
+
 	fetchCtx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 
