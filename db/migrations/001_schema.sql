@@ -1,3 +1,4 @@
+-- +goose Up
 -- pbflags schema. Apply to PostgreSQL before starting pbflags-server in root mode.
 
 CREATE SCHEMA IF NOT EXISTS feature_flags;
@@ -56,3 +57,14 @@ CREATE TABLE feature_flags.flag_audit_log (
 );
 
 CREATE INDEX idx_audit_flag ON feature_flags.flag_audit_log(flag_id, created_at DESC);
+
+-- +goose Down
+DROP INDEX IF EXISTS feature_flags.idx_audit_flag;
+DROP TABLE IF EXISTS feature_flags.flag_audit_log;
+DROP INDEX IF EXISTS feature_flags.idx_overrides_killed;
+DROP INDEX IF EXISTS feature_flags.idx_overrides_entity;
+DROP TABLE IF EXISTS feature_flags.flag_overrides;
+DROP INDEX IF EXISTS feature_flags.idx_flags_killed;
+DROP TABLE IF EXISTS feature_flags.flags;
+DROP TABLE IF EXISTS feature_flags.features;
+DROP SCHEMA IF EXISTS feature_flags;

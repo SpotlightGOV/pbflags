@@ -44,6 +44,7 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
+	"github.com/SpotlightGOV/pbflags/db"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
 	"github.com/SpotlightGOV/pbflags/internal/admin"
 	adminweb "github.com/SpotlightGOV/pbflags/internal/admin/web"
@@ -59,6 +60,7 @@ func main() {
 	descriptors := flag.String("descriptors", "", "Path to descriptors.pb")
 	listen := flag.String("listen", "", "Evaluator listen address")
 	serverURL := flag.String("server", "", "Upstream evaluator URL (proxy mode)")
+	upgrade := flag.Bool("upgrade", false, "Run database migrations and exit")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -68,6 +70,24 @@ func main() {
 	setEnvIfFlag("PBFLAGS_DESCRIPTORS", *descriptors)
 	setEnvIfFlag("PBFLAGS_LISTEN", *listen)
 	setEnvIfFlag("PBFLAGS_SERVER", *serverURL)
+
+	if *upgrade {
+		dsn := *databaseURL
+		if dsn == "" {
+			dsn = os.Getenv("PBFLAGS_DATABASE")
+		}
+		if dsn == "" {
+			fmt.Fprintln(os.Stderr, "error: --database or PBFLAGS_DATABASE required for --upgrade")
+			os.Exit(1)
+		}
+		logger.Info("running database migrations")
+		if err := db.Migrate(context.Background(), dsn); err != nil {
+			logger.Error("migration failed", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("migrations complete")
+		return
+	}
 
 	if err := run(*configPath, logger); err != nil {
 		logger.Error("fatal", "error", err)

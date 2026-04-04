@@ -198,6 +198,18 @@ pbflags-server \
   --listen=:9201
 ```
 
+### Database Migrations
+
+Schema is managed by [goose](https://github.com/pressly/goose). Run migrations before first startup or after upgrading:
+
+```bash
+pbflags-server \
+  --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable \
+  --upgrade
+```
+
+This applies all pending migrations and exits. Migration state is tracked in the `goose_db_version` table.
+
 ### Database schema sync
 
 ```bash
@@ -206,6 +218,36 @@ pbflags-sync \
   --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable \
   --descriptors=descriptors.pb
 ```
+
+## Admin Web UI
+
+When running in combined mode (`--admin`), pbflags serves an embedded web dashboard for flag management. The UI is built with server-rendered HTML and htmx.
+
+### Features
+
+- **Dashboard**: Overview of all features and flags with inline state toggles (ENABLED/DEFAULT/KILLED)
+- **Flag Detail**: Per-flag view with state/value editing, override management (USER layer flags), and recent audit history
+- **Audit Log**: Filterable log of all state changes with actor attribution
+- **Override Management**: Add and remove per-entity overrides for USER layer flags
+
+### Enabling
+
+Pass the `--admin` flag (or set `PBFLAGS_ADMIN`) to start the admin UI:
+
+```bash
+pbflags-server \
+  --database=postgres://... \
+  --descriptors=descriptors.pb \
+  --admin=:9200
+```
+
+The admin UI is then available at `http://localhost:9200/`.
+
+### Security
+
+- **CSRF protection**: All mutating requests (POST/DELETE) require a valid CSRF token via double-submit cookie pattern. htmx sends the token automatically.
+- **Input validation**: Flag IDs are validated against the `feature_id/field_number` format before processing.
+- **Internal network only**: The admin UI has no authentication. Deploy it behind a VPN, bastion, or internal network. Do not expose it to the public internet.
 
 ## Proto Definitions (BSR)
 
@@ -261,6 +303,7 @@ pbflags/
 ├── internal/
 │   ├── evaluator/          # Evaluation engine, caching, health tracking
 │   ├── admin/              # Admin API (flag management, audit log)
+│   │   └── web/            # Embedded web UI (htmx dashboard)
 │   └── codegen/            # Code generators (Go, Java)
 ├── clients/java/           # Java client library (Gradle)
 ├── clients/java/testing/   # Java test utilities (InMemoryFlagEvaluator, JUnit 5)

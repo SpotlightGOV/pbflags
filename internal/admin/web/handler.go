@@ -5,12 +5,15 @@ package web
 
 import (
 	"embed"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -25,9 +28,10 @@ var assets embed.FS
 
 // Handler serves the admin web UI.
 type Handler struct {
-	store  *admin.Store
-	logger *slog.Logger
-	tmpl   *template.Template
+	store    *admin.Store
+	logger   *slog.Logger
+	tmpl     *template.Template
+	staticFS fs.FS
 }
 
 // NewHandler creates a web UI handler backed by the given store.
@@ -55,24 +59,100 @@ func NewHandler(store *admin.Store, logger *slog.Logger) (*Handler, error) {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
 
-	return &Handler{store: store, logger: logger, tmpl: tmpl}, nil
+	staticFS, err := fs.Sub(assets, "assets/static")
+	if err != nil {
+		return nil, fmt.Errorf("static fs: %w", err)
+	}
+
+	return &Handler{store: store, logger: logger, tmpl: tmpl, staticFS: staticFS}, nil
 }
 
-// Register adds web UI routes to the given mux.
+// Register adds web UI routes to the given mux, wrapped with CSRF protection.
 func (h *Handler) Register(mux *http.ServeMux) {
+	// Internal mux for route matching; CSRF middleware wraps the whole thing.
+	inner := http.NewServeMux()
+
 	// Static assets (CSS).
-	staticFS, _ := fs.Sub(assets, "assets/static")
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	inner.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(h.staticFS))))
 
 	// Pages.
-	mux.HandleFunc("GET /{$}", h.dashboard)
-	mux.HandleFunc("GET /flags/{flagID...}", h.flagDetail)
-	mux.HandleFunc("GET /audit", h.auditLog)
+	inner.HandleFunc("GET /{$}", h.dashboard)
+	inner.HandleFunc("GET /flags/{flagID...}", h.flagDetail)
+	inner.HandleFunc("GET /audit", h.auditLog)
 
 	// htmx API endpoints.
-	mux.HandleFunc("POST /api/flags/{flagID...}/state", h.updateFlagState)
-	mux.HandleFunc("POST /api/flags/{flagID...}/overrides", h.setOverride)
-	mux.HandleFunc("DELETE /api/flags/{flagID...}/overrides/{entityID}", h.removeOverride)
+	inner.HandleFunc("POST /api/flags/{flagID...}/state", h.updateFlagState)
+	inner.HandleFunc("POST /api/flags/{flagID...}/overrides", h.setOverride)
+	inner.HandleFunc("DELETE /api/flags/{flagID...}/overrides/{entityID}", h.removeOverride)
+
+	mux.Handle("/", h.csrfProtect(inner))
+}
+
+// ---------------------------------------------------------------------------
+// CSRF protection (double-submit cookie)
+// ---------------------------------------------------------------------------
+
+const (
+	csrfCookieName = "pbflags_csrf"
+	csrfHeaderName = "X-CSRF-Token"
+	csrfFormField  = "csrf_token"
+	csrfTokenLen   = 32
+)
+
+// csrfProtect wraps a handler to enforce CSRF validation on mutating requests.
+// GET/HEAD/OPTIONS requests get a token set (or refreshed); POST/PUT/DELETE
+// requests must present a matching token via header or form field.
+func (h *Handler) csrfProtect(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			h.ensureCSRFCookie(w, r)
+			next.ServeHTTP(w, r)
+		default:
+			if !h.validCSRFToken(r) {
+				http.Error(w, "invalid or missing CSRF token", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		}
+	})
+}
+
+func (h *Handler) ensureCSRFCookie(w http.ResponseWriter, r *http.Request) {
+	if _, err := r.Cookie(csrfCookieName); err == nil {
+		return // already set
+	}
+	token := generateCSRFToken()
+	http.SetCookie(w, &http.Cookie{
+		Name:     csrfCookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: false, // JS needs to read it for htmx
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func (h *Handler) validCSRFToken(r *http.Request) bool {
+	cookie, err := r.Cookie(csrfCookieName)
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+
+	// Accept token from header (htmx) or form field (plain forms).
+	token := r.Header.Get(csrfHeaderName)
+	if token == "" {
+		token = r.FormValue(csrfFormField)
+	}
+
+	return token != "" && token == cookie.Value
+}
+
+func generateCSRFToken() string {
+	b := make([]byte, csrfTokenLen)
+	if _, err := rand.Read(b); err != nil {
+		panic("csrf: failed to generate random token: " + err.Error())
+	}
+	return hex.EncodeToString(b)
 }
 
 // ---------------------------------------------------------------------------
@@ -104,6 +184,10 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 	flagID := r.PathValue("flagID")
 	if flagID == "" {
 		http.Error(w, "missing flag_id", http.StatusBadRequest)
+		return
+	}
+	if !validFlagID.MatchString(flagID) {
+		http.Error(w, "invalid flag_id format: expected feature_id/field_number", http.StatusBadRequest)
 		return
 	}
 
@@ -173,6 +257,10 @@ func (h *Handler) auditLog(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) updateFlagState(w http.ResponseWriter, r *http.Request) {
 	flagID := r.PathValue("flagID")
+	if !validFlagID.MatchString(flagID) {
+		http.Error(w, "invalid flag_id format", http.StatusBadRequest)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
@@ -215,7 +303,10 @@ func (h *Handler) updateFlagState(w http.ResponseWriter, r *http.Request) {
 
 	// If targeting #content (flag detail page), render full detail view.
 	if r.Header.Get("HX-Target") == "content" {
-		entries, _ := h.store.GetAuditLog(r.Context(), flagID, 20)
+		entries, err := h.store.GetAuditLog(r.Context(), flagID, 20)
+		if err != nil {
+			h.logger.Error("get audit log after state update", "flag_id", flagID, "error", err)
+		}
 		h.render(w, "flag_content", map[string]any{
 			"Flag":    flag,
 			"Audit":   entries,
@@ -232,6 +323,10 @@ func (h *Handler) updateFlagState(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) setOverride(w http.ResponseWriter, r *http.Request) {
 	flagID := r.PathValue("flagID")
+	if !validFlagID.MatchString(flagID) {
+		http.Error(w, "invalid flag_id format", http.StatusBadRequest)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
@@ -283,6 +378,10 @@ func (h *Handler) setOverride(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) removeOverride(w http.ResponseWriter, r *http.Request) {
 	flagID := r.PathValue("flagID")
+	if !validFlagID.MatchString(flagID) {
+		http.Error(w, "invalid flag_id format", http.StatusBadRequest)
+		return
+	}
 	entityID := r.PathValue("entityID")
 
 	actor := "admin-ui"
@@ -449,6 +548,13 @@ func countFlags(features []*pbflagsv1.FeatureDetail) int {
 	}
 	return n
 }
+
+// ---------------------------------------------------------------------------
+// Input validation
+// ---------------------------------------------------------------------------
+
+// validFlagID matches feature_id/field_number, e.g. "notifications/1".
+var validFlagID = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*(/[0-9]+)+$`)
 
 // ---------------------------------------------------------------------------
 // Value parsing for form submissions
