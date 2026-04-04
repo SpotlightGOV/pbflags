@@ -17,7 +17,7 @@ func TestService_Evaluate(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 	tracker := NewHealthTracker(NewNoopMetrics())
 	svc := NewService(eval, reg, tracker, cache, nil)
 
@@ -40,7 +40,7 @@ func TestService_BulkEvaluate_SpecificFlags(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 	tracker := NewHealthTracker(NewNoopMetrics())
 	svc := NewService(eval, reg, tracker, cache, nil)
 
@@ -59,7 +59,7 @@ func TestService_BulkEvaluate_AllFlags(t *testing.T) {
 		globalFlag("f/3", int64Val(5)),
 	)
 	fetcher := &stubFetcher{}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 	tracker := NewHealthTracker(NewNoopMetrics())
 	svc := NewService(eval, reg, tracker, cache, nil)
 
@@ -79,7 +79,7 @@ func TestService_BulkEvaluate_WithEntityId(t *testing.T) {
 			{FlagID: "f/1", EntityID: "user-42", State: pbflagsv1.State_STATE_ENABLED, Value: strVal("override-1")},
 		},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 	tracker := NewHealthTracker(NewNoopMetrics())
 	svc := NewService(eval, reg, tracker, cache, nil)
 
@@ -111,7 +111,7 @@ func TestService_Health(t *testing.T) {
 	tracker := NewHealthTracker(NewNoopMetrics())
 	reg := newTestRegistry()
 	fetcher := &stubFetcher{}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 	svc := NewService(eval, reg, tracker, cache, nil)
 
 	resp, err := svc.Health(context.Background(), connect.NewRequest(&pbflagsv1.HealthRequest{}))

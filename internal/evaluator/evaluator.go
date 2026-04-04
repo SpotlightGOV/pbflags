@@ -4,6 +4,9 @@ import (
 	"context"
 	"log/slog"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
 
@@ -21,28 +24,37 @@ type Evaluator struct {
 	fetcher  Fetcher
 	logger   *slog.Logger
 	metrics  *Metrics
+	tracer   trace.Tracer
 }
 
 // NewEvaluator creates an Evaluator.
-func NewEvaluator(reg *Registry, cache *CacheStore, fetcher Fetcher, logger *slog.Logger, m *Metrics) *Evaluator {
+func NewEvaluator(reg *Registry, cache *CacheStore, fetcher Fetcher, logger *slog.Logger, m *Metrics, tracer trace.Tracer) *Evaluator {
 	return &Evaluator{
 		registry: reg,
 		cache:    cache,
 		fetcher:  fetcher,
 		logger:   logger,
 		metrics:  m,
+		tracer:   tracer,
 	}
 }
 
 // Evaluate resolves a single flag for an optional entity.
 func (e *Evaluator) Evaluate(ctx context.Context, flagID, entityID string) (value *pbflagsv1.FlagValue, source pbflagsv1.EvaluationSource) {
+	ctx, span := e.tracer.Start(ctx, "Evaluator.Evaluate",
+		trace.WithAttributes(
+			attribute.String("flag_id", flagID),
+			attribute.String("entity_id", entityID),
+		))
+	defer func() {
+		span.SetAttributes(attribute.String("source", sourceLabel(source)))
+		span.End()
+		e.metrics.EvaluationsTotal.WithLabelValues(sourceLabel(source), "ok").Inc()
+	}()
+
 	defaults := e.registry.Load()
 	def, known := defaults.Get(flagID)
 	defaultValue := def.Default // may be nil if unknown
-
-	defer func() {
-		e.metrics.EvaluationsTotal.WithLabelValues(sourceLabel(source), "ok").Inc()
-	}()
 
 	// 1. Kill set check — highest priority.
 	ks := e.cache.GetKillSet()
@@ -75,6 +87,7 @@ func (e *Evaluator) resolveOverride(
 	override := e.cache.GetOverride(flagID, entityID)
 	if override != nil {
 		e.metrics.CacheHitsTotal.WithLabelValues("overrides").Inc()
+		trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("cache_hit", true))
 	} else {
 		e.metrics.CacheMissesTotal.WithLabelValues("overrides").Inc()
 		fetched, err := e.fetcher.FetchOverrides(ctx, entityID, []string{flagID})
@@ -121,6 +134,7 @@ func (e *Evaluator) resolveGlobal(
 
 	if state != nil {
 		e.metrics.CacheHitsTotal.WithLabelValues("flags").Inc()
+		trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("cache_hit", true))
 	} else {
 		e.metrics.CacheMissesTotal.WithLabelValues("flags").Inc()
 		fetched, err := e.fetcher.FetchFlagState(ctx, flagID)

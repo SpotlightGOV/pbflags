@@ -72,7 +72,7 @@ func TestEvaluate_IncrementsEvaluationCounter(t *testing.T) {
 			Value:  boolVal(true),
 		},
 	}
-	eval := NewEvaluator(r, cache, fetcher, slog.Default(), m)
+	eval := NewEvaluator(r, cache, fetcher, slog.Default(), m, noopTracer())
 
 	eval.Evaluate(context.Background(), "f/1", "")
 
@@ -109,7 +109,7 @@ func TestEvaluate_IncrementsCacheHitOnKillSet(t *testing.T) {
 
 	r := registryWith(globalFlag("f/1", boolVal(false)))
 	fetcher := &stubFetcher{}
-	eval := NewEvaluator(r, cache, fetcher, slog.Default(), m)
+	eval := NewEvaluator(r, cache, fetcher, slog.Default(), m, noopTracer())
 
 	_, src := eval.Evaluate(context.Background(), "f/1", "")
 	assert.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED, src)

@@ -7,10 +7,15 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
 )
+
+var clientTracer = otel.Tracer("pbflags/client")
 
 // FlagServerClient talks to the upstream evaluator's FlagEvaluatorService via Connect.
 type FlagServerClient struct {
@@ -21,9 +26,9 @@ type FlagServerClient struct {
 }
 
 // NewFlagServerClient creates a Connect client for the upstream evaluator.
-func NewFlagServerClient(serverURL string, tracker *HealthTracker, fetchTimeout time.Duration, m *Metrics) *FlagServerClient {
+func NewFlagServerClient(serverURL string, tracker *HealthTracker, fetchTimeout time.Duration, m *Metrics, opts ...connect.ClientOption) *FlagServerClient {
 	return &FlagServerClient{
-		eval:    pbflagsv1connect.NewFlagEvaluatorServiceClient(http.DefaultClient, serverURL),
+		eval:    pbflagsv1connect.NewFlagEvaluatorServiceClient(http.DefaultClient, serverURL, opts...),
 		tracker: tracker,
 		timeout: fetchTimeout,
 		metrics: m,
@@ -32,6 +37,9 @@ func NewFlagServerClient(serverURL string, tracker *HealthTracker, fetchTimeout 
 
 // GetKilledFlags fetches the current kill set from the server.
 func (c *FlagServerClient) GetKilledFlags(ctx context.Context) (*KillSet, error) {
+	ctx, span := clientTracer.Start(ctx, "FlagServerClient.GetKilledFlags")
+	defer span.End()
+
 	timer := prometheus.NewTimer(c.metrics.FetchDuration.WithLabelValues("upstream", "killed_flags"))
 	defer timer.ObserveDuration()
 
@@ -57,6 +65,10 @@ func (c *FlagServerClient) GetKilledFlags(ctx context.Context) (*KillSet, error)
 
 // FetchFlagState implements Fetcher.
 func (c *FlagServerClient) FetchFlagState(ctx context.Context, flagID string) (*CachedFlagState, error) {
+	ctx, span := clientTracer.Start(ctx, "FlagServerClient.FetchFlagState",
+		trace.WithAttributes(attribute.String("flag_id", flagID)))
+	defer span.End()
+
 	timer := prometheus.NewTimer(c.metrics.FetchDuration.WithLabelValues("upstream", "flag_state"))
 	defer timer.ObserveDuration()
 
@@ -85,6 +97,10 @@ func (c *FlagServerClient) FetchFlagState(ctx context.Context, flagID string) (*
 
 // FetchOverrides implements Fetcher.
 func (c *FlagServerClient) FetchOverrides(ctx context.Context, entityID string, flagIDs []string) ([]*CachedOverride, error) {
+	ctx, span := clientTracer.Start(ctx, "FlagServerClient.FetchOverrides",
+		trace.WithAttributes(attribute.String("entity_id", entityID)))
+	defer span.End()
+
 	timer := prometheus.NewTimer(c.metrics.FetchDuration.WithLabelValues("upstream", "overrides"))
 	defer timer.ObserveDuration()
 

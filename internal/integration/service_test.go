@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/protobuf/proto"
@@ -125,6 +126,7 @@ func setupServiceEnv(t *testing.T) *serviceTestEnv {
 	defaults := evaluator.NewDefaults(defs)
 	reg := evaluator.NewRegistry(defaults)
 	noopM := evaluator.NewNoopMetrics()
+	noopT := tracenoop.NewTracerProvider().Tracer("test")
 	tracker := evaluator.NewHealthTracker(noopM)
 
 	cache, err := evaluator.NewCacheStore(evaluator.CacheStoreConfig{
@@ -133,8 +135,8 @@ func setupServiceEnv(t *testing.T) *serviceTestEnv {
 	})
 	require.NoError(t, err)
 
-	dbFetcher := evaluator.NewDBFetcher(pool, tracker, logger, noopM)
-	eval := evaluator.NewEvaluator(reg, cache, dbFetcher, logger, noopM)
+	dbFetcher := evaluator.NewDBFetcher(pool, tracker, logger, noopM, noopT)
+	eval := evaluator.NewEvaluator(reg, cache, dbFetcher, logger, noopM, noopT)
 
 	pollerCtx, pollerCancel := context.WithCancel(ctx)
 	poller := evaluator.NewKillPoller(dbFetcher, cache, tracker, 200*time.Millisecond, 2*time.Second, logger, noopM)

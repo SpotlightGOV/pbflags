@@ -8,8 +8,15 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
+
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
+
+func noopTracer() trace.Tracer {
+	return tracenoop.NewTracerProvider().Tracer("test")
+}
 
 // stubFetcher implements Fetcher for testing.
 type stubFetcher struct {
@@ -64,7 +71,7 @@ func TestResolveGlobal_StaleCache(t *testing.T) {
 			Value:  serverValue,
 		},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "test-flag", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src, "expected GLOBAL source")
@@ -88,7 +95,7 @@ func TestResolveGlobal_NoStaleCache_FallsToDefault(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagErr: errors.New("server unreachable"),
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "test-flag", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "expected DEFAULT source with no stale cache")
@@ -120,7 +127,7 @@ func TestResolveOverride_StaleCache(t *testing.T) {
 		},
 	})
 
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "test-flag", "entity-1")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, src, "expected OVERRIDE source")
