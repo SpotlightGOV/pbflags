@@ -20,15 +20,17 @@ type Evaluator struct {
 	cache    *CacheStore
 	fetcher  Fetcher
 	logger   *slog.Logger
+	metrics  *Metrics
 }
 
 // NewEvaluator creates an Evaluator.
-func NewEvaluator(reg *Registry, cache *CacheStore, fetcher Fetcher, logger *slog.Logger) *Evaluator {
+func NewEvaluator(reg *Registry, cache *CacheStore, fetcher Fetcher, logger *slog.Logger, m *Metrics) *Evaluator {
 	return &Evaluator{
 		registry: reg,
 		cache:    cache,
 		fetcher:  fetcher,
 		logger:   logger,
+		metrics:  m,
 	}
 }
 
@@ -38,9 +40,14 @@ func (e *Evaluator) Evaluate(ctx context.Context, flagID, entityID string) (valu
 	def, known := defaults.Get(flagID)
 	defaultValue := def.Default // may be nil if unknown
 
+	defer func() {
+		e.metrics.EvaluationsTotal.WithLabelValues(sourceLabel(source), "ok").Inc()
+	}()
+
 	// 1. Kill set check — highest priority.
 	ks := e.cache.GetKillSet()
 	if ks.IsKilled(flagID) {
+		e.metrics.CacheHitsTotal.WithLabelValues("kill_set").Inc()
 		return defaultValue, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED
 	}
 
@@ -66,7 +73,10 @@ func (e *Evaluator) resolveOverride(
 	}
 
 	override := e.cache.GetOverride(flagID, entityID)
-	if override == nil {
+	if override != nil {
+		e.metrics.CacheHitsTotal.WithLabelValues("overrides").Inc()
+	} else {
+		e.metrics.CacheMissesTotal.WithLabelValues("overrides").Inc()
 		fetched, err := e.fetcher.FetchOverrides(ctx, entityID, []string{flagID})
 		if err != nil {
 			e.logger.Debug("override fetch failed", "flag_id", flagID, "entity_id", entityID, "error", err)
@@ -109,7 +119,10 @@ func (e *Evaluator) resolveGlobal(
 ) (*pbflagsv1.FlagValue, pbflagsv1.EvaluationSource) {
 	state := e.cache.GetFlagState(flagID)
 
-	if state == nil {
+	if state != nil {
+		e.metrics.CacheHitsTotal.WithLabelValues("flags").Inc()
+	} else {
+		e.metrics.CacheMissesTotal.WithLabelValues("flags").Inc()
 		fetched, err := e.fetcher.FetchFlagState(ctx, flagID)
 		if err != nil {
 			e.logger.Debug("flag state fetch failed", "flag_id", flagID, "error", err)

@@ -124,7 +124,8 @@ func setupServiceEnv(t *testing.T) *serviceTestEnv {
 	defs := notificationsDefs()
 	defaults := evaluator.NewDefaults(defs)
 	reg := evaluator.NewRegistry(defaults)
-	tracker := evaluator.NewHealthTracker()
+	noopM := evaluator.NewNoopMetrics()
+	tracker := evaluator.NewHealthTracker(noopM)
 
 	cache, err := evaluator.NewCacheStore(evaluator.CacheStoreConfig{
 		FlagTTL: 100 * time.Millisecond, OverrideTTL: 100 * time.Millisecond,
@@ -132,11 +133,11 @@ func setupServiceEnv(t *testing.T) *serviceTestEnv {
 	})
 	require.NoError(t, err)
 
-	dbFetcher := evaluator.NewDBFetcher(pool, tracker, logger)
-	eval := evaluator.NewEvaluator(reg, cache, dbFetcher, logger)
+	dbFetcher := evaluator.NewDBFetcher(pool, tracker, logger, noopM)
+	eval := evaluator.NewEvaluator(reg, cache, dbFetcher, logger, noopM)
 
 	pollerCtx, pollerCancel := context.WithCancel(ctx)
-	poller := evaluator.NewKillPoller(dbFetcher, cache, tracker, 200*time.Millisecond, 2*time.Second, logger)
+	poller := evaluator.NewKillPoller(dbFetcher, cache, tracker, 200*time.Millisecond, 2*time.Second, logger, noopM)
 	go poller.Run(pollerCtx)
 
 	svc := evaluator.NewService(eval, reg, tracker, cache, dbFetcher)

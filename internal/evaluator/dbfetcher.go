@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/proto"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
@@ -20,15 +21,19 @@ type DBFetcher struct {
 	pool    *pgxpool.Pool
 	tracker *HealthTracker
 	logger  *slog.Logger
+	metrics *Metrics
 }
 
 // NewDBFetcher creates a fetcher backed by direct database access.
-func NewDBFetcher(pool *pgxpool.Pool, tracker *HealthTracker, logger *slog.Logger) *DBFetcher {
-	return &DBFetcher{pool: pool, tracker: tracker, logger: logger}
+func NewDBFetcher(pool *pgxpool.Pool, tracker *HealthTracker, logger *slog.Logger, m *Metrics) *DBFetcher {
+	return &DBFetcher{pool: pool, tracker: tracker, logger: logger, metrics: m}
 }
 
 // FetchFlagState implements Fetcher.
 func (f *DBFetcher) FetchFlagState(ctx context.Context, flagID string) (*CachedFlagState, error) {
+	timer := prometheus.NewTimer(f.metrics.FetchDuration.WithLabelValues("db", "flag_state"))
+	defer timer.ObserveDuration()
+
 	var stateStr string
 	var valueBytes []byte
 	var archivedAt *time.Time
@@ -58,6 +63,9 @@ func (f *DBFetcher) FetchFlagState(ctx context.Context, flagID string) (*CachedF
 
 // FetchOverrides implements Fetcher.
 func (f *DBFetcher) FetchOverrides(ctx context.Context, entityID string, flagIDs []string) ([]*CachedOverride, error) {
+	timer := prometheus.NewTimer(f.metrics.FetchDuration.WithLabelValues("db", "overrides"))
+	defer timer.ObserveDuration()
+
 	var rows pgx.Rows
 	var err error
 	if len(flagIDs) == 0 {
@@ -97,6 +105,9 @@ func (f *DBFetcher) FetchOverrides(ctx context.Context, entityID string, flagIDs
 
 // GetKilledFlags implements KillFetcher.
 func (f *DBFetcher) GetKilledFlags(ctx context.Context) (*KillSet, error) {
+	timer := prometheus.NewTimer(f.metrics.FetchDuration.WithLabelValues("db", "killed_flags"))
+	defer timer.ObserveDuration()
+
 	ks := &KillSet{
 		FlagIDs:         make(map[string]struct{}),
 		KilledOverrides: make(map[KillKey]struct{}),

@@ -9,7 +9,7 @@ import (
 )
 
 func TestHealthTracker_InitialState(t *testing.T) {
-	ht := NewHealthTracker()
+	ht := NewHealthTracker(NewNoopMetrics())
 	require.Equal(t, pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_CONNECTING, ht.Status(), "initial status")
 	require.Equal(t, int32(0), ht.ConsecutiveFailures(), "initial failures")
 	require.Equal(t, int64(0), ht.SecondsSinceContact(), "initial seconds since contact")
@@ -17,14 +17,14 @@ func TestHealthTracker_InitialState(t *testing.T) {
 }
 
 func TestHealthTracker_ConnectingToServing(t *testing.T) {
-	ht := NewHealthTracker()
+	ht := NewHealthTracker(NewNoopMetrics())
 	ht.RecordSuccess()
 	require.Equal(t, pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_SERVING, ht.Status(), "status after success")
 	require.Equal(t, int32(0), ht.ConsecutiveFailures(), "failures after success")
 }
 
 func TestHealthTracker_ServingToDegraded(t *testing.T) {
-	ht := NewHealthTracker()
+	ht := NewHealthTracker(NewNoopMetrics())
 	ht.RecordSuccess()
 
 	ht.RecordFailure()
@@ -38,7 +38,7 @@ func TestHealthTracker_ServingToDegraded(t *testing.T) {
 }
 
 func TestHealthTracker_DegradedToServing(t *testing.T) {
-	ht := NewHealthTracker()
+	ht := NewHealthTracker(NewNoopMetrics())
 	ht.RecordSuccess()
 	for i := 0; i < 5; i++ {
 		ht.RecordFailure()
@@ -59,7 +59,7 @@ func TestHealthTracker_BackoffMultiplier(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		ht := NewHealthTracker()
+		ht := NewHealthTracker(NewNoopMetrics())
 		for i := 0; i < tt.failures; i++ {
 			ht.RecordFailure()
 		}
@@ -68,7 +68,7 @@ func TestHealthTracker_BackoffMultiplier(t *testing.T) {
 }
 
 func TestHealthTracker_BackoffResetsOnSuccess(t *testing.T) {
-	ht := NewHealthTracker()
+	ht := NewHealthTracker(NewNoopMetrics())
 	for i := 0; i < 10; i++ {
 		ht.RecordFailure()
 	}
@@ -79,7 +79,7 @@ func TestHealthTracker_BackoffResetsOnSuccess(t *testing.T) {
 }
 
 func TestHealthTracker_SecondsSinceContact(t *testing.T) {
-	ht := NewHealthTracker()
+	ht := NewHealthTracker(NewNoopMetrics())
 	require.Equal(t, int64(0), ht.SecondsSinceContact(), "seconds before contact")
 
 	ht.RecordSuccess()

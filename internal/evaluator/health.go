@@ -13,12 +13,14 @@ type HealthTracker struct {
 	status              pbflagsv1.EvaluatorStatus
 	consecutiveFailures int32
 	lastSuccessTime     time.Time
+	metrics             *Metrics
 }
 
 // NewHealthTracker creates a tracker starting in CONNECTING state.
-func NewHealthTracker() *HealthTracker {
+func NewHealthTracker(m *Metrics) *HealthTracker {
 	return &HealthTracker{
-		status: pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_CONNECTING,
+		status:  pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_CONNECTING,
+		metrics: m,
 	}
 }
 
@@ -29,6 +31,7 @@ func (t *HealthTracker) RecordSuccess() {
 	t.consecutiveFailures = 0
 	t.lastSuccessTime = time.Now()
 	t.status = pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_SERVING
+	t.metrics.ConsecutiveFails.Set(0)
 }
 
 // RecordFailure increments the failure counter and may transition to DEGRADED.
@@ -36,6 +39,7 @@ func (t *HealthTracker) RecordFailure() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.consecutiveFailures++
+	t.metrics.ConsecutiveFails.Set(float64(t.consecutiveFailures))
 	if t.consecutiveFailures >= 3 {
 		t.status = pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_DEGRADED
 	}

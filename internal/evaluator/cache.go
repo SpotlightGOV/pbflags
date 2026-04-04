@@ -187,6 +187,15 @@ func (s *CacheStore) CachedFlagCount() int32 {
 	return int32(m.KeysAdded() - m.KeysEvicted())
 }
 
+// OverrideCacheSize returns the approximate number of cached overrides.
+func (s *CacheStore) OverrideCacheSize() int64 {
+	m := s.overrideCache.Metrics
+	if m == nil {
+		return 0
+	}
+	return int64(m.KeysAdded() - m.KeysEvicted())
+}
+
 // GetOverride returns the cached override, or nil on miss.
 func (s *CacheStore) GetOverride(flagID, entityID string) *CachedOverride {
 	val, ok := s.overrideCache.Get(flagID + ":" + entityID)
