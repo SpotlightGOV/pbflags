@@ -1,0 +1,179 @@
+{{define "flag_content"}}
+<div class="breadcrumb">
+  <a href="/" hx-get="/" hx-target="#content" hx-push-url="true">dashboard</a>
+  <span class="sep">/</span>
+  <span class="current">{{.FlagID}}</span>
+</div>
+
+<div class="flag-detail-header">
+  <div class="flag-detail-info">
+    <div class="flag-id">{{.Flag.FlagId}}</div>
+    {{if .Flag.Description}}<div class="flag-description">{{.Flag.Description}}</div>{{end}}
+    <div class="flag-detail-badges">
+      <span class="badge badge-type">{{typeLabel .Flag.FlagType}}</span>
+      <span class="badge badge-layer {{if isUserLayer .Flag.Layer}}badge-layer-user{{end}}">
+        {{layerLabel .Flag.Layer}}
+      </span>
+    </div>
+  </div>
+  <div class="flag-detail-state">
+    <span class="state-pill {{stateClass .Flag.State}}">{{stateLabel .Flag.State}}</span>
+  </div>
+</div>
+
+<!-- State & Value -->
+<div class="detail-section" id="state-section">
+  <div class="detail-section-header">
+    <h3>State &amp; Value</h3>
+  </div>
+  <div class="detail-section-body">
+    <div class="value-grid">
+      <div class="value-cell">
+        <label>Current Value</label>
+        <div class="val">{{flagValue .Flag.CurrentValue}}</div>
+      </div>
+      <div class="value-cell">
+        <label>Default Value</label>
+        <div class="val">{{flagValue .Flag.DefaultValue}}</div>
+      </div>
+      <div class="value-cell">
+        <label>Feature</label>
+        <div class="val">{{.Feature}}</div>
+      </div>
+    </div>
+
+    <form class="state-change-form" style="margin-top: 16px"
+          hx-post="/api/flags/{{.Flag.FlagId}}/state"
+          hx-target="#content"
+          hx-swap="innerHTML"
+          hx-vals='{"flag_type":"{{.Flag.FlagType}}"}'>
+      <select name="state">
+        <option value="ENABLED" {{if eq (stateLabel .Flag.State) "ENABLED"}}selected{{end}}>ENABLED</option>
+        <option value="DEFAULT" {{if eq (stateLabel .Flag.State) "DEFAULT"}}selected{{end}}>DEFAULT</option>
+        <option value="KILLED" {{if eq (stateLabel .Flag.State) "KILLED"}}selected{{end}}>KILLED</option>
+      </select>
+      <input type="text" name="value" placeholder="value (optional)"
+             style="width: 160px">
+      <input type="text" name="actor" placeholder="actor" value="admin-ui"
+             style="width: 120px">
+      <button type="submit" class="btn btn-primary">Update State</button>
+      <span class="htmx-indicator">saving...</span>
+    </form>
+  </div>
+</div>
+
+<!-- Overrides -->
+{{if isUserLayer .Flag.Layer}}
+<div id="overrides-section">
+  {{template "overrides_section" dict "Flag" .Flag}}
+</div>
+{{end}}
+
+<!-- Audit Log (recent) -->
+<div class="detail-section">
+  <div class="detail-section-header">
+    <h3>Recent Activity</h3>
+    <a class="btn btn-sm" href="/audit?flag_id={{.Flag.FlagId}}"
+       hx-get="/audit?flag_id={{.Flag.FlagId}}" hx-target="#content" hx-push-url="true">
+      View Full Log
+    </a>
+  </div>
+  {{if .Audit}}
+  <table class="audit-table">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Action</th>
+        <th>Change</th>
+        <th>Actor</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Audit}}
+      <tr>
+        <td class="audit-time">{{if .CreatedAt}}{{timeAgo .CreatedAt.AsTime}}{{end}}</td>
+        <td><span class="audit-action {{if eq .Action "UPDATE_STATE"}}audit-action-update{{else if eq .Action "CREATE_OVERRIDE"}}audit-action-create{{else if eq .Action "REMOVE_OVERRIDE"}}audit-action-remove{{else}}audit-action-update{{end}}">{{.Action}}</span></td>
+        <td>
+          <span class="audit-values">
+            <span class="old-val">{{flagValue .OldValue}}</span>
+            <span class="arrow">&rarr;</span>
+            <span class="new-val">{{flagValue .NewValue}}</span>
+          </span>
+        </td>
+        <td class="audit-actor">{{.Actor}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <div class="empty-state">No audit entries for this flag.</div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "overrides_section"}}
+<div class="detail-section">
+  <div class="detail-section-header">
+    <h3>Entity Overrides</h3>
+    <span class="badge badge-layer badge-layer-user" style="font-size:10px">USER layer</span>
+  </div>
+  {{if .Flag.Overrides}}
+  <table class="override-table">
+    <thead>
+      <tr>
+        <th>Entity ID</th>
+        <th>State</th>
+        <th>Value</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Flag.Overrides}}
+      <tr class="override-row">
+        <td><span class="entity-id">{{.EntityId}}</span></td>
+        <td><span class="state-pill {{stateClass .State}}">{{stateLabel .State}}</span></td>
+        <td><span class="value-display">{{flagValue .Value}}</span></td>
+        <td style="text-align:right">
+          <button class="btn btn-sm btn-danger"
+                  hx-delete="/api/flags/{{$.Flag.FlagId}}/overrides/{{.EntityId}}"
+                  hx-target="#overrides-section"
+                  hx-swap="innerHTML"
+                  hx-confirm="Remove override for {{.EntityId}}?">Remove</button>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <div class="empty-state" style="padding: 20px">No entity overrides configured.</div>
+  {{end}}
+
+  <form class="override-form"
+        hx-post="/api/flags/{{.Flag.FlagId}}/overrides"
+        hx-target="#overrides-section"
+        hx-swap="innerHTML"
+        hx-vals='{"flag_type":"{{.Flag.FlagType}}"}'>
+    <div class="field">
+      <label>Entity ID</label>
+      <input type="text" name="entity_id" placeholder="user-123" required style="width: 140px">
+    </div>
+    <div class="field">
+      <label>State</label>
+      <select name="state" style="width: 110px">
+        <option value="ENABLED">ENABLED</option>
+        <option value="DEFAULT">DEFAULT</option>
+        <option value="KILLED">KILLED</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Value</label>
+      <input type="text" name="value" placeholder="value" style="width: 120px">
+    </div>
+    <div class="field">
+      <label>Actor</label>
+      <input type="text" name="actor" value="admin-ui" style="width: 100px">
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Add Override</button>
+  </form>
+</div>
+{{end}}

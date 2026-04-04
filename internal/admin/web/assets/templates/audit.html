@@ -1,0 +1,72 @@
+{{define "audit_content"}}
+<div class="page-header">
+  <h2>Audit Log</h2>
+  <div class="subtitle">
+    {{if .FlagFilter}}Filtered by <strong>{{.FlagFilter}}</strong>{{else}}All flag changes{{end}}
+  </div>
+</div>
+
+<div class="filter-bar">
+  <label>Filter by flag:</label>
+  <form style="display:flex; gap:8px; align-items:center"
+        hx-get="/audit" hx-target="#content" hx-push-url="true">
+    <input type="text" name="flag_id" value="{{.FlagFilter}}"
+           placeholder="e.g. notifications/1" style="width: 220px">
+    <button type="submit" class="btn btn-sm">Filter</button>
+    {{if .FlagFilter}}
+    <a class="btn btn-sm" href="/audit"
+       hx-get="/audit" hx-target="#content" hx-push-url="true">Clear</a>
+    {{end}}
+  </form>
+</div>
+
+<div class="detail-section">
+  {{if .Entries}}
+  <table class="audit-table">
+    <thead>
+      <tr>
+        <th style="width:10%">Time</th>
+        <th style="width:22%">Flag</th>
+        <th style="width:18%">Action</th>
+        <th style="width:30%">Change</th>
+        <th style="width:20%">Actor</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Entries}}
+      <tr>
+        <td class="audit-time">{{if .CreatedAt}}{{timeAgo .CreatedAt.AsTime}}{{end}}</td>
+        <td>
+          <a class="flag-name" href="/flags/{{.FlagId}}"
+             hx-get="/flags/{{.FlagId}}" hx-target="#content" hx-push-url="true">
+            {{.FlagId}}
+          </a>
+        </td>
+        <td>
+          <span class="audit-action
+            {{if eq .Action "UPDATE_STATE"}}audit-action-update
+            {{else if eq .Action "CREATE_OVERRIDE"}}audit-action-create
+            {{else if eq .Action "UPDATE_OVERRIDE"}}audit-action-update
+            {{else if eq .Action "REMOVE_OVERRIDE"}}audit-action-remove
+            {{end}}">{{.Action}}</span>
+        </td>
+        <td>
+          <span class="audit-values">
+            <span class="old-val">{{flagValue .OldValue}}</span>
+            <span class="arrow">&rarr;</span>
+            <span class="new-val">{{flagValue .NewValue}}</span>
+          </span>
+        </td>
+        <td class="audit-actor">{{.Actor}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <div class="empty-state">
+    <div class="empty-icon">&#9776;</div>
+    <div>No audit entries{{if .FlagFilter}} for {{.FlagFilter}}{{end}}.</div>
+  </div>
+  {{end}}
+</div>
+{{end}}
