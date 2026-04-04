@@ -18,7 +18,7 @@ func TestNewMetrics_RegistersAllFamilies(t *testing.T) {
 	require.NotNil(t, m)
 
 	// Observe at least once so counters/histograms appear in Gather.
-	m.EvaluationsTotal.WithLabelValues("test", "global", "ok").Inc()
+	m.EvaluationsTotal.WithLabelValues("global", "ok").Inc()
 	m.CacheHitsTotal.WithLabelValues("flags").Inc()
 	m.CacheMissesTotal.WithLabelValues("overrides").Inc()
 	m.FetchDuration.WithLabelValues("db", "flag_state").Observe(0.001)
@@ -51,7 +51,7 @@ func TestNewNoopMetrics_DoesNotPanic(t *testing.T) {
 	m := NewNoopMetrics()
 	require.NotNil(t, m)
 	// Exercise all counters/gauges to ensure they are non-nil and functional.
-	m.EvaluationsTotal.WithLabelValues("f/1", "global", "ok").Inc()
+	m.EvaluationsTotal.WithLabelValues("global", "ok").Inc()
 	m.CacheHitsTotal.WithLabelValues("flags").Inc()
 	m.CacheMissesTotal.WithLabelValues("overrides").Inc()
 	m.KillSetSize.Set(3)
@@ -89,7 +89,6 @@ func TestEvaluate_IncrementsEvaluationCounter(t *testing.T) {
 			for _, lp := range metric.GetLabel() {
 				labels[lp.GetName()] = lp.GetValue()
 			}
-			assert.Equal(t, "f/1", labels["feature"])
 			assert.Equal(t, "global", labels["source"])
 			assert.Equal(t, "ok", labels["status"])
 			return

@@ -22,8 +22,8 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	m := &Metrics{
 		EvaluationsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "pbflags_evaluations_total",
-			Help: "Total flag evaluations by feature, source, and status.",
-		}, []string{"feature", "source", "status"}),
+			Help: "Total flag evaluations by source and status.",
+		}, []string{"source", "status"}),
 
 		CacheHitsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "pbflags_cache_hits_total",
@@ -77,7 +77,7 @@ func NewNoopMetrics() *Metrics {
 		EvaluationsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "pbflags_evaluations_total",
 			Help: "Total flag evaluations.",
-		}, []string{"feature", "source", "status"}),
+		}, []string{"source", "status"}),
 
 		CacheHitsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "pbflags_cache_hits_total",

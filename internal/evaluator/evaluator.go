@@ -41,7 +41,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, flagID, entityID string) (valu
 	defaultValue := def.Default // may be nil if unknown
 
 	defer func() {
-		e.metrics.EvaluationsTotal.WithLabelValues(flagID, sourceLabel(source), "ok").Inc()
+		e.metrics.EvaluationsTotal.WithLabelValues(sourceLabel(source), "ok").Inc()
 	}()
 
 	// 1. Kill set check — highest priority.
