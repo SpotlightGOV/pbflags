@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/prometheus/client_golang/prometheus"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
@@ -16,19 +17,24 @@ type FlagServerClient struct {
 	eval    pbflagsv1connect.FlagEvaluatorServiceClient
 	tracker *HealthTracker
 	timeout time.Duration
+	metrics *Metrics
 }
 
 // NewFlagServerClient creates a Connect client for the upstream evaluator.
-func NewFlagServerClient(serverURL string, tracker *HealthTracker, fetchTimeout time.Duration) *FlagServerClient {
+func NewFlagServerClient(serverURL string, tracker *HealthTracker, fetchTimeout time.Duration, m *Metrics) *FlagServerClient {
 	return &FlagServerClient{
 		eval:    pbflagsv1connect.NewFlagEvaluatorServiceClient(http.DefaultClient, serverURL),
 		tracker: tracker,
 		timeout: fetchTimeout,
+		metrics: m,
 	}
 }
 
 // GetKilledFlags fetches the current kill set from the server.
 func (c *FlagServerClient) GetKilledFlags(ctx context.Context) (*KillSet, error) {
+	timer := prometheus.NewTimer(c.metrics.FetchDuration.WithLabelValues("upstream", "killed_flags"))
+	defer timer.ObserveDuration()
+
 	resp, err := c.eval.GetKilledFlags(ctx, connect.NewRequest(&pbflagsv1.GetKilledFlagsRequest{}))
 	if err != nil {
 		c.tracker.RecordFailure()
@@ -51,6 +57,9 @@ func (c *FlagServerClient) GetKilledFlags(ctx context.Context) (*KillSet, error)
 
 // FetchFlagState implements Fetcher.
 func (c *FlagServerClient) FetchFlagState(ctx context.Context, flagID string) (*CachedFlagState, error) {
+	timer := prometheus.NewTimer(c.metrics.FetchDuration.WithLabelValues("upstream", "flag_state"))
+	defer timer.ObserveDuration()
+
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
@@ -76,6 +85,9 @@ func (c *FlagServerClient) FetchFlagState(ctx context.Context, flagID string) (*
 
 // FetchOverrides implements Fetcher.
 func (c *FlagServerClient) FetchOverrides(ctx context.Context, entityID string, flagIDs []string) ([]*CachedOverride, error) {
+	timer := prometheus.NewTimer(c.metrics.FetchDuration.WithLabelValues("upstream", "overrides"))
+	defer timer.ObserveDuration()
+
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 

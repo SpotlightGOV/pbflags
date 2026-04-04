@@ -17,8 +17,8 @@ func TestService_Evaluate(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default())
-	tracker := NewHealthTracker()
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	tracker := NewHealthTracker(NewNoopMetrics())
 	svc := NewService(eval, reg, tracker, cache, nil)
 
 	resp, err := svc.Evaluate(context.Background(), connect.NewRequest(&pbflagsv1.EvaluateRequest{
@@ -40,8 +40,8 @@ func TestService_BulkEvaluate_SpecificFlags(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default())
-	tracker := NewHealthTracker()
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	tracker := NewHealthTracker(NewNoopMetrics())
 	svc := NewService(eval, reg, tracker, cache, nil)
 
 	resp, err := svc.BulkEvaluate(context.Background(), connect.NewRequest(&pbflagsv1.BulkEvaluateRequest{
@@ -59,8 +59,8 @@ func TestService_BulkEvaluate_AllFlags(t *testing.T) {
 		globalFlag("f/3", int64Val(5)),
 	)
 	fetcher := &stubFetcher{}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default())
-	tracker := NewHealthTracker()
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	tracker := NewHealthTracker(NewNoopMetrics())
 	svc := NewService(eval, reg, tracker, cache, nil)
 
 	resp, err := svc.BulkEvaluate(context.Background(), connect.NewRequest(&pbflagsv1.BulkEvaluateRequest{}))
@@ -79,8 +79,8 @@ func TestService_BulkEvaluate_WithEntityId(t *testing.T) {
 			{FlagID: "f/1", EntityID: "user-42", State: pbflagsv1.State_STATE_ENABLED, Value: strVal("override-1")},
 		},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default())
-	tracker := NewHealthTracker()
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
+	tracker := NewHealthTracker(NewNoopMetrics())
 	svc := NewService(eval, reg, tracker, cache, nil)
 
 	resp, err := svc.BulkEvaluate(context.Background(), connect.NewRequest(&pbflagsv1.BulkEvaluateRequest{
@@ -108,10 +108,10 @@ func TestService_BulkEvaluate_WithEntityId(t *testing.T) {
 
 func TestService_Health(t *testing.T) {
 	cache := newTestCache(t)
-	tracker := NewHealthTracker()
+	tracker := NewHealthTracker(NewNoopMetrics())
 	reg := newTestRegistry()
 	fetcher := &stubFetcher{}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default())
+	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics())
 	svc := NewService(eval, reg, tracker, cache, nil)
 
 	resp, err := svc.Health(context.Background(), connect.NewRequest(&pbflagsv1.HealthRequest{}))

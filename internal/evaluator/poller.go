@@ -21,6 +21,7 @@ type KillPoller struct {
 	baseTTL time.Duration
 	timeout time.Duration
 	logger  *slog.Logger
+	metrics *Metrics
 }
 
 // NewKillPoller creates a kill set poller.
@@ -30,6 +31,7 @@ func NewKillPoller(
 	tracker *HealthTracker,
 	baseTTL, timeout time.Duration,
 	logger *slog.Logger,
+	m *Metrics,
 ) *KillPoller {
 	return &KillPoller{
 		fetcher: fetcher,
@@ -38,6 +40,7 @@ func NewKillPoller(
 		baseTTL: baseTTL,
 		timeout: timeout,
 		logger:  logger,
+		metrics: m,
 	}
 }
 
@@ -72,6 +75,8 @@ func (p *KillPoller) poll(ctx context.Context) {
 	}
 
 	p.cache.SetKillSet(ks)
+	p.metrics.KillSetSize.Set(float64(len(ks.FlagIDs)))
+	p.metrics.PollerLastSuccess.SetToCurrentTime()
 	p.logger.Debug("kill set updated",
 		"killed_flags", len(ks.FlagIDs),
 		"killed_overrides", len(ks.KilledOverrides))

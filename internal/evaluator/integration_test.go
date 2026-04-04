@@ -64,13 +64,14 @@ func setupIntegration(t *testing.T, defs []FlagDef) *testEnv {
 	})
 	require.NoError(t, err)
 
-	tracker := NewHealthTracker()
+	noopM := NewNoopMetrics()
+	tracker := NewHealthTracker(noopM)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	fetcher := NewDBFetcher(pool, tracker, logger)
+	fetcher := NewDBFetcher(pool, tracker, logger, noopM)
 
 	defaults := NewDefaults(defs)
 	registry := NewRegistry(defaults)
-	eval := NewEvaluator(registry, cache, fetcher, logger)
+	eval := NewEvaluator(registry, cache, fetcher, logger, noopM)
 
 	t.Cleanup(func() {
 		cache.Close()
@@ -349,7 +350,7 @@ func TestDegradationLifecycle(t *testing.T) {
 	// Wrap the fetcher to simulate failures.
 	ff := &failableFetcher{real: env.fetcher}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	eval := NewEvaluator(env.registry, env.cache, ff, logger)
+	eval := NewEvaluator(env.registry, env.cache, ff, logger, NewNoopMetrics())
 
 	// Healthy fetch to populate stale map.
 	val, src := eval.Evaluate(ctx, "notifications.email_enabled", "user-1")
@@ -395,7 +396,7 @@ func TestStaleCacheDuringOutage(t *testing.T) {
 
 	ff := &failableFetcher{real: env.fetcher}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	eval := NewEvaluator(env.registry, env.cache, ff, logger)
+	eval := NewEvaluator(env.registry, env.cache, ff, logger, NewNoopMetrics())
 
 	// Populate stale map with a successful fetch.
 	val, src := eval.Evaluate(ctx, "notifications.digest_frequency", "")
@@ -595,7 +596,7 @@ func TestOverrideStaleCacheDuringOutage(t *testing.T) {
 
 	ff := &failableFetcher{real: env.fetcher}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	eval := NewEvaluator(env.registry, env.cache, ff, logger)
+	eval := NewEvaluator(env.registry, env.cache, ff, logger, NewNoopMetrics())
 
 	// Set override and prime the cache.
 	setOverride(t, env.pool, "notifications.email_enabled", "user-stale", "ENABLED", boolVal(false))

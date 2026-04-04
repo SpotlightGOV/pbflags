@@ -36,6 +36,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
@@ -103,7 +105,8 @@ func run(configPath string, logger *slog.Logger) error {
 	reg := evaluator.NewRegistry(defaults)
 	logger.Info("defaults registry loaded", "flags", defaults.Len())
 
-	tracker := evaluator.NewHealthTracker()
+	metrics := evaluator.NewMetrics(prometheus.DefaultRegisterer)
+	tracker := evaluator.NewHealthTracker(metrics)
 
 	cache, err := evaluator.NewCacheStore(evaluator.CacheStoreConfig{
 		FlagTTL:         cfg.Cache.FlagTTL,
@@ -134,7 +137,7 @@ func run(configPath string, logger *slog.Logger) error {
 		}
 		logger.Info("database connected (root mode)")
 
-		dbFetcher := evaluator.NewDBFetcher(pool, tracker, logger.With("component", "db-fetcher"))
+		dbFetcher := evaluator.NewDBFetcher(pool, tracker, logger.With("component", "db-fetcher"), metrics)
 		fetcher = dbFetcher
 		killFetcher = dbFetcher
 		state = dbFetcher
@@ -145,20 +148,20 @@ func run(configPath string, logger *slog.Logger) error {
 			}
 		}
 	} else {
-		client := evaluator.NewFlagServerClient(cfg.Server, tracker, cfg.Cache.FetchTimeout)
+		client := evaluator.NewFlagServerClient(cfg.Server, tracker, cfg.Cache.FetchTimeout, metrics)
 		fetcher = client
 		killFetcher = client
 		state = client.StateServer()
 	}
 
-	eval := evaluator.NewEvaluator(reg, cache, fetcher, logger)
+	eval := evaluator.NewEvaluator(reg, cache, fetcher, logger, metrics)
 
 	sighupCh := make(chan os.Signal, 1)
 	signal.Notify(sighupCh, syscall.SIGHUP)
 
 	poller := evaluator.NewKillPoller(killFetcher, cache, tracker,
 		cfg.Cache.KillTTL, cfg.Cache.FetchTimeout,
-		logger.With("component", "kill-poller"))
+		logger.With("component", "kill-poller"), metrics)
 	go poller.Run(ctx)
 
 	watcher := evaluator.NewDescriptorWatcher(cfg.Descriptors, reg,
@@ -168,9 +171,18 @@ func run(configPath string, logger *slog.Logger) error {
 
 	svc := evaluator.NewService(eval, reg, tracker, cache, state)
 
+	prometheus.MustRegister(prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "pbflags_override_cache_size",
+			Help: "Approximate entries in the override LRU cache.",
+		},
+		func() float64 { return float64(cache.OverrideCacheSize()) },
+	))
+
 	mux := http.NewServeMux()
 	evalPath, evalHandler := pbflagsv1connect.NewFlagEvaluatorServiceHandler(svc)
 	mux.Handle(evalPath, evalHandler)
+	mux.Handle("/metrics", promhttp.Handler())
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		status := tracker.Status()
