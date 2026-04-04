@@ -9,6 +9,9 @@ CLAUDE.md
 CLAUDE.local.md
 mail/
 
+# Generated release notes
+release-notes.md
+
 # Go build artifacts (root only, not cmd/ subdirectories)
 /pbflags-server
 /protoc-gen-pbflags
