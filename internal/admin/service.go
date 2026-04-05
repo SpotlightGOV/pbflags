@@ -97,7 +97,7 @@ func (a *AdminService) RemoveFlagOverride(ctx context.Context, req *connect.Requ
 }
 
 func (a *AdminService) GetAuditLog(ctx context.Context, req *connect.Request[pbflagsv1.GetAuditLogRequest]) (*connect.Response[pbflagsv1.GetAuditLogResponse], error) {
-	entries, err := a.store.GetAuditLog(ctx, req.Msg.FlagId, req.Msg.Limit)
+	entries, err := a.store.GetAuditLog(ctx, AuditLogFilter{FlagID: req.Msg.FlagId, Limit: req.Msg.Limit})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

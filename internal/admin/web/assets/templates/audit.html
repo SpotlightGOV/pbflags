@@ -2,18 +2,29 @@
 <div class="page-header">
   <h2>Audit Log</h2>
   <div class="subtitle">
-    {{if .FlagFilter}}Filtered by <strong>{{.FlagFilter}}</strong>{{else}}All flag changes{{end}}
+    {{if or .FlagFilter .ActionFilter .ActorFilter}}Filtered results{{else}}All flag changes{{end}}
   </div>
 </div>
 
 <div class="filter-bar">
-  <label>Filter by flag:</label>
-  <form style="display:flex; gap:8px; align-items:center"
+  <form class="audit-filter-form"
         hx-get="/audit" hx-target="#content" hx-push-url="true">
+    <label>Flag:</label>
     <input type="text" name="flag_id" value="{{.FlagFilter}}"
-           placeholder="e.g. notifications/1" style="width: 220px">
-    <button type="submit" class="btn btn-sm">Filter</button>
-    {{if .FlagFilter}}
+           placeholder="e.g. notifications/1" style="width: 180px">
+    <label>Action:</label>
+    <select name="action" style="width: 160px">
+      <option value="">All</option>
+      <option value="UPDATE_STATE" {{if eq .ActionFilter "UPDATE_STATE"}}selected{{end}}>UPDATE_STATE</option>
+      <option value="CREATE_OVERRIDE" {{if eq .ActionFilter "CREATE_OVERRIDE"}}selected{{end}}>CREATE_OVERRIDE</option>
+      <option value="UPDATE_OVERRIDE" {{if eq .ActionFilter "UPDATE_OVERRIDE"}}selected{{end}}>UPDATE_OVERRIDE</option>
+      <option value="REMOVE_OVERRIDE" {{if eq .ActionFilter "REMOVE_OVERRIDE"}}selected{{end}}>REMOVE_OVERRIDE</option>
+    </select>
+    <label>Actor:</label>
+    <input type="text" name="actor" value="{{.ActorFilter}}"
+           placeholder="e.g. admin-ui" style="width: 140px">
+    <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+    {{if or .FlagFilter .ActionFilter .ActorFilter}}
     <a class="btn btn-sm" href="/audit"
        hx-get="/audit" hx-target="#content" hx-push-url="true">Clear</a>
     {{end}}

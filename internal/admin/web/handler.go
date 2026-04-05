@@ -201,7 +201,7 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries, err := h.store.GetAuditLog(r.Context(), flagID, 20)
+	entries, err := h.store.GetAuditLog(r.Context(), admin.AuditLogFilter{FlagID: flagID, Limit: 20})
 	if err != nil {
 		h.serverError(w, "get audit log", err)
 		return
@@ -224,6 +224,8 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) auditLog(w http.ResponseWriter, r *http.Request) {
 	flagFilter := r.URL.Query().Get("flag_id")
+	actionFilter := r.URL.Query().Get("action")
+	actorFilter := r.URL.Query().Get("actor")
 	limitStr := r.URL.Query().Get("limit")
 	limit := int32(100)
 	if limitStr != "" {
@@ -232,16 +234,23 @@ func (h *Handler) auditLog(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	entries, err := h.store.GetAuditLog(r.Context(), flagFilter, limit)
+	entries, err := h.store.GetAuditLog(r.Context(), admin.AuditLogFilter{
+		FlagID: flagFilter,
+		Action: actionFilter,
+		Actor:  actorFilter,
+		Limit:  limit,
+	})
 	if err != nil {
 		h.serverError(w, "get audit log", err)
 		return
 	}
 
 	data := map[string]any{
-		"Entries":    entries,
-		"Page":       "audit",
-		"FlagFilter": flagFilter,
+		"Entries":      entries,
+		"Page":         "audit",
+		"FlagFilter":   flagFilter,
+		"ActionFilter": actionFilter,
+		"ActorFilter":  actorFilter,
 	}
 
 	if r.Header.Get("HX-Request") == "true" {
@@ -303,7 +312,7 @@ func (h *Handler) updateFlagState(w http.ResponseWriter, r *http.Request) {
 
 	// If targeting #content (flag detail page), render full detail view.
 	if r.Header.Get("HX-Target") == "content" {
-		entries, err := h.store.GetAuditLog(r.Context(), flagID, 20)
+		entries, err := h.store.GetAuditLog(r.Context(), admin.AuditLogFilter{FlagID: flagID, Limit: 20})
 		if err != nil {
 			h.logger.Error("get audit log after state update", "flag_id", flagID, "error", err)
 		}

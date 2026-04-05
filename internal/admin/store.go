@@ -437,8 +437,17 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 	return fd, rows.Err()
 }
 
-// GetAuditLog returns audit log entries, optionally filtered by flag ID.
-func (s *Store) GetAuditLog(ctx context.Context, flagID string, limit int32) ([]*pbflagsv1.AuditLogEntry, error) {
+// AuditLogFilter specifies optional filters for audit log queries.
+type AuditLogFilter struct {
+	FlagID string
+	Action string
+	Actor  string
+	Limit  int32
+}
+
+// GetAuditLog returns audit log entries, optionally filtered by flag ID, action, and actor.
+func (s *Store) GetAuditLog(ctx context.Context, filter AuditLogFilter) ([]*pbflagsv1.AuditLogEntry, error) {
+	limit := filter.Limit
 	if limit <= 0 {
 		limit = 50
 	}
@@ -446,22 +455,30 @@ func (s *Store) GetAuditLog(ctx context.Context, flagID string, limit int32) ([]
 		limit = maxAuditLogLimit
 	}
 
-	var rows pgx.Rows
-	var err error
-	if flagID == "" {
-		rows, err = s.pool.Query(ctx, `
-			SELECT id, flag_id, action, old_value, new_value, actor, created_at
-			FROM feature_flags.flag_audit_log
-			ORDER BY created_at DESC
-			LIMIT $1`, limit)
-	} else {
-		rows, err = s.pool.Query(ctx, `
-			SELECT id, flag_id, action, old_value, new_value, actor, created_at
-			FROM feature_flags.flag_audit_log
-			WHERE flag_id = $1
-			ORDER BY created_at DESC
-			LIMIT $2`, flagID, limit)
+	query := `SELECT id, flag_id, action, old_value, new_value, actor, created_at
+		FROM feature_flags.flag_audit_log WHERE 1=1`
+	args := []any{}
+	argN := 1
+
+	if filter.FlagID != "" {
+		query += fmt.Sprintf(" AND flag_id = $%d", argN)
+		args = append(args, filter.FlagID)
+		argN++
 	}
+	if filter.Action != "" {
+		query += fmt.Sprintf(" AND action = $%d", argN)
+		args = append(args, filter.Action)
+		argN++
+	}
+	if filter.Actor != "" {
+		query += fmt.Sprintf(" AND actor ILIKE $%d", argN)
+		args = append(args, "%"+filter.Actor+"%")
+		argN++
+	}
+	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d", argN)
+	args = append(args, limit)
+
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query audit log: %w", err)
 	}

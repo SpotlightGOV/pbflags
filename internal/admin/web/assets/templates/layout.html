@@ -72,6 +72,59 @@
         showToast('Updated successfully');
       }
     });
+
+    // Dashboard search/filter.
+    function applyDashboardFilters() {
+      var search = (document.getElementById('filter-search') || {}).value;
+      var state = (document.getElementById('filter-state') || {}).value;
+      var layer = (document.getElementById('filter-layer') || {}).value;
+      if (search === undefined) return; // not on dashboard
+
+      search = search.toLowerCase();
+      var cards = document.querySelectorAll('.feature-card');
+      var visibleFlags = 0;
+      var totalFlags = 0;
+
+      cards.forEach(function(card) {
+        var rows = card.querySelectorAll('tbody tr');
+        var anyVisible = false;
+        rows.forEach(function(row) {
+          totalFlags++;
+          var flagId = (row.getAttribute('data-flag') || '').toLowerCase();
+          var flagDesc = (row.getAttribute('data-flag-desc') || '').toLowerCase();
+          var rowState = row.getAttribute('data-state') || '';
+          var rowLayer = row.getAttribute('data-layer') || '';
+          var featureName = (card.getAttribute('data-feature') || '').toLowerCase();
+          var featureDesc = (card.getAttribute('data-feature-desc') || '').toLowerCase();
+
+          var matchSearch = !search ||
+            flagId.indexOf(search) !== -1 ||
+            flagDesc.indexOf(search) !== -1 ||
+            featureName.indexOf(search) !== -1 ||
+            featureDesc.indexOf(search) !== -1;
+          var matchState = !state || rowState === state;
+          var matchLayer = !layer || rowLayer === layer;
+
+          if (matchSearch && matchState && matchLayer) {
+            row.style.display = '';
+            anyVisible = true;
+            visibleFlags++;
+          } else {
+            row.style.display = 'none';
+          }
+        });
+        card.style.display = anyVisible ? '' : 'none';
+      });
+
+      var countEl = document.getElementById('filter-count');
+      if (countEl) {
+        if (search || state || layer) {
+          countEl.textContent = visibleFlags + ' of ' + totalFlags + ' flags';
+        } else {
+          countEl.textContent = '';
+        }
+      }
+    }
   </script>
 </body>
 </html>

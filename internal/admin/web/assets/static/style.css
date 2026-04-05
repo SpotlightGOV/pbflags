@@ -727,6 +727,20 @@ select {
   letter-spacing: 0.04em;
 }
 
+.filter-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.audit-filter-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 /* Empty states */
 .empty-state {
   padding: 40px 20px;

@@ -346,7 +346,7 @@ func TestAuditLog(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get all audit log.
-	entries, err := store.GetAuditLog(ctx, "", 0)
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{})
 	require.NoError(t, err)
 	require.Len(t, entries, 3)
 
@@ -357,12 +357,12 @@ func TestAuditLog(t *testing.T) {
 	require.Equal(t, "deployer", entries[2].Actor)
 
 	// Filter by flag ID with limit.
-	entries, err = store.GetAuditLog(ctx, "notifications.email_enabled", 2)
+	entries, err = store.GetAuditLog(ctx, AuditLogFilter{FlagID: "notifications.email_enabled", Limit: 2})
 	require.NoError(t, err)
 	require.Len(t, entries, 2)
 
 	// Flag with no entries returns empty.
-	entries, err = store.GetAuditLog(ctx, "other.flag", 0)
+	entries, err = store.GetAuditLog(ctx, AuditLogFilter{FlagID: "other.flag"})
 	require.NoError(t, err)
 	require.Empty(t, entries)
 }
@@ -482,7 +482,7 @@ func TestAdversarial_Unicode(t *testing.T) {
 	require.Len(t, resp.Overrides, 1)
 
 	// Unicode in audit.
-	entries, err := store.GetAuditLog(ctx, "notifications.email_enabled", 10)
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: "notifications.email_enabled", Limit: 10})
 	require.NoError(t, err)
 	require.NotEmpty(t, entries)
 	require.Equal(t, "管理员", entries[0].Actor)
@@ -629,7 +629,7 @@ func TestAuditLog_OldValueRecorded(t *testing.T) {
 	err = store.UpdateFlagState(ctx, "notifications.email_enabled", pbflagsv1.State_STATE_ENABLED, stringValue("v2"), "admin")
 	require.NoError(t, err)
 
-	entries, err := store.GetAuditLog(ctx, "notifications.email_enabled", 1)
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: "notifications.email_enabled", Limit: 1})
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.NotNil(t, entries[0].OldValue)
@@ -650,7 +650,7 @@ func TestAuditLog_OverrideLifecycle(t *testing.T) {
 	err = store.RemoveFlagOverride(ctx, "notifications.email_enabled", "user-1", "admin")
 	require.NoError(t, err)
 
-	entries, err := store.GetAuditLog(ctx, "notifications.email_enabled", 10)
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: "notifications.email_enabled", Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, entries, 3)
 	assert.Equal(t, "REMOVE_OVERRIDE", entries[0].Action)
@@ -668,7 +668,7 @@ func TestAuditLog_LimitCap(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	entries, err := store.GetAuditLog(ctx, "notifications.email_enabled", 2)
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: "notifications.email_enabled", Limit: 2})
 	require.NoError(t, err)
 	assert.Len(t, entries, 2)
 }
@@ -684,7 +684,7 @@ func TestAuditLog_LimitClampedAt1000(t *testing.T) {
 	}
 
 	// Limit > 1000 should be clamped, not rejected.
-	entries, err := store.GetAuditLog(ctx, "notifications.email_enabled", 2000)
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: "notifications.email_enabled", Limit: 2000})
 	require.NoError(t, err)
 	assert.Len(t, entries, 3)
 }

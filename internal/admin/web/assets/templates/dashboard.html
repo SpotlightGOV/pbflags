@@ -4,6 +4,26 @@
   <div class="subtitle">{{len .Features}} features, {{.FlagCount}} flags</div>
 </div>
 
+<div class="filter-bar" id="dashboard-filters">
+  <label>Search:</label>
+  <input type="text" id="filter-search" placeholder="feature or flag name..."
+         style="width: 220px" oninput="applyDashboardFilters()">
+  <label>State:</label>
+  <select id="filter-state" onchange="applyDashboardFilters()">
+    <option value="">All</option>
+    <option value="ENABLED">ENABLED</option>
+    <option value="DEFAULT">DEFAULT</option>
+    <option value="KILLED">KILLED</option>
+  </select>
+  <label>Layer:</label>
+  <select id="filter-layer" onchange="applyDashboardFilters()">
+    <option value="">All</option>
+    <option value="GLOBAL">GLOBAL</option>
+    <option value="USER">USER</option>
+  </select>
+  <span id="filter-count" class="filter-count"></span>
+</div>
+
 {{if not .Features}}
 <div class="empty-state">
   <div class="empty-icon">&#9873;</div>
@@ -12,7 +32,7 @@
 {{end}}
 
 {{range .Features}}
-<div class="feature-card">
+<div class="feature-card" data-feature="{{.FeatureId}}" data-feature-desc="{{.Description}}">
   <div class="feature-header">
     <span class="feature-name">{{.FeatureId}}</span>
     <span class="feature-desc">{{.Description}}</span>
@@ -43,7 +63,9 @@
 {{end}}
 
 {{define "flag_row"}}
-<tr id="flag-row-{{flagIDEscape .Flag.FlagId}}">
+<tr id="flag-row-{{flagIDEscape .Flag.FlagId}}"
+    data-flag="{{.Flag.FlagId}}" data-flag-desc="{{.Flag.Description}}"
+    data-state="{{stateLabel .Flag.State}}" data-layer="{{layerLabel .Flag.Layer}}">
   <td>
     <a class="flag-name" href="/flags/{{.Flag.FlagId}}"
        hx-get="/flags/{{.Flag.FlagId}}" hx-target="#content" hx-push-url="true">
