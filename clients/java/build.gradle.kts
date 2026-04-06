@@ -5,7 +5,7 @@ plugins {
     `java-library`
     `maven-publish`
     signing
-    id("com.google.protobuf") version "0.9.4"
+    id("com.google.protobuf") version "0.9.6"
     id("io.github.gradle-nexus.publish-plugin") version "2.0.0"
 }
 
