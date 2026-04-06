@@ -39,7 +39,7 @@ dependencies {
     implementation("org.slf4j:slf4j-api:2.0.17")
     compileOnly("javax.annotation:javax.annotation-api:1.3.2")
 
-    testImplementation("org.junit.jupiter:junit-jupiter:5.14.3")
+    testImplementation("org.junit.jupiter:junit-jupiter:6.0.3")
     testImplementation("io.grpc:grpc-inprocess:$grpcVersion")
     testImplementation("io.grpc:grpc-testing:$grpcVersion")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
