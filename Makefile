@@ -9,9 +9,9 @@ build:
 	go build ./cmd/pbflags-server
 	go build ./cmd/protoc-gen-pbflags
 
-# Run Go tests.
+# Run Go tests (integration tests use namespaced DB rows; parallel packages are OK).
 test:
-	go test ./...
+	go test -count=1 ./...
 
 # Remove build artifacts.
 clean:

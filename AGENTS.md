@@ -22,13 +22,13 @@ docker compose -f docker/docker-compose.yml up -d
 
 ## Running tests
 
-**Use parallel package isolation for the full suite:** several packages share the same database. Running them in parallel can deadlock or flake.
+Integration tests in `internal/admin`, `internal/evaluator`, and `internal/integration` share one PostgreSQL database but use **namespaced feature and flag IDs** (`test_admin_*`, `test_evaluator_*`, `test_integration_*`) and delete only their own rows on teardown, so the full suite is safe with default package parallelism:
 
 ```bash
-go test -count=1 -p 1 ./...
+go test -count=1 ./...
 ```
 
-The `Makefile` `test` target runs `go test ./...` without `-p 1`; prefer the command above for a reliable full run locally and in agents.
+When debugging a single package, you can still use `-p 1` to reduce noise from concurrent packages.
 
 ## Admin web UI routes and `http.ServeMux`
 
