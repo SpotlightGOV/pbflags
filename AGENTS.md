@@ -22,7 +22,7 @@ docker compose -f docker/docker-compose.yml up -d
 
 ## Running tests
 
-Integration tests in `internal/admin`, `internal/evaluator`, and `internal/integration` share one PostgreSQL database. Each test uses `internal/integrationtest.Prefix` plus a logical feature name to build a unique `feature_id` (`integrationtest.Feature`), and **`flag_id` as `feature_id/field_number`** — the same rule as `internal/evaluator/descriptor.go` and `protoc-gen-pbflags` (`integrationtest.Flag`). Teardown deletes only rows under that prefix (`integrationtest.CleanupFeatureTree` / `RegisterCleanup`). The full suite is safe with default package parallelism:
+Integration tests in `internal/admin`, `internal/evaluator`, and `internal/integration` share one PostgreSQL database. Each test generates a unique prefix (`integrationtest.Prefix`), builds `feature_id` as `prefix_name` (`integrationtest.Feature`), and `flag_id` as `feature_id/readable_name` (`integrationtest.Flag`). Teardown deletes only rows matching the prefix (`integrationtest.CleanupFeatureTree` / `RegisterCleanup`). The full suite is safe with default package parallelism:
 
 ```bash
 go test -count=1 ./...

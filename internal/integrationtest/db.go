@@ -30,10 +30,11 @@ func Feature(prefix, logicalName string) string {
 	return prefix + "_" + logicalName
 }
 
-// Flag returns flag_id in production format: feature_id/field_number (same as
-// internal/evaluator/descriptor.go and protoc-gen-pbflags generated *ID constants).
-func Flag(featureID string, fieldNumber int32) string {
-	return fmt.Sprintf("%s/%d", featureID, fieldNumber)
+// Flag returns flag_id as feature_id/name. Production uses feature_id/field_number
+// (from protobuf descriptors), but tests use readable names since the DB stores
+// flag_id as an opaque string.
+func Flag(featureID, name string) string {
+	return featureID + "/" + name
 }
 
 // CleanupFeatureTree deletes rows for every feature_id and flag_id starting with prefix.
