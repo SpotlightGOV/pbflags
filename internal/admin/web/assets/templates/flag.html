@@ -43,7 +43,7 @@
     </div>
 
     <form class="state-change-form" style="margin-top: 16px"
-          hx-post="/api/flags/{{.Flag.FlagId}}/state"
+          hx-post="/api/flags/state/{{.Flag.FlagId}}"
           hx-target="#content"
           hx-swap="innerHTML"
           hx-vals='{"flag_type":"{{.Flag.FlagType}}"}'>
@@ -135,7 +135,7 @@
         <td><span class="value-display">{{flagValue .Value}}</span></td>
         <td style="text-align:right">
           <button class="btn btn-sm btn-danger"
-                  hx-delete="/api/flags/{{$.Flag.FlagId}}/overrides/{{.EntityId}}"
+                  hx-delete="/api/flags/overrides/entity/{{.EntityId}}/{{$.Flag.FlagId}}"
                   hx-target="#overrides-section"
                   hx-swap="innerHTML"
                   hx-confirm="Remove override for {{.EntityId}}?">Remove</button>
@@ -149,7 +149,7 @@
   {{end}}
 
   <form class="override-form"
-        hx-post="/api/flags/{{.Flag.FlagId}}/overrides"
+        hx-post="/api/flags/overrides/{{.Flag.FlagId}}"
         hx-target="#overrides-section"
         hx-swap="innerHTML"
         hx-vals='{"flag_type":"{{.Flag.FlagType}}"}'>

@@ -80,10 +80,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	inner.HandleFunc("GET /flags/{flagID...}", h.flagDetail)
 	inner.HandleFunc("GET /audit", h.auditLog)
 
-	// htmx API endpoints.
-	inner.HandleFunc("POST /api/flags/{flagID...}/state", h.updateFlagState)
-	inner.HandleFunc("POST /api/flags/{flagID...}/overrides", h.setOverride)
-	inner.HandleFunc("DELETE /api/flags/{flagID...}/overrides/{entityID}", h.removeOverride)
+	// htmx API endpoints. Wildcards must be the final path segment (Go 1.22+ ServeMux);
+	// patterns like /api/flags/{flagID...}/state panic at registration.
+	inner.HandleFunc("POST /api/flags/state/{flagID...}", h.updateFlagState)
+	inner.HandleFunc("POST /api/flags/overrides/{flagID...}", h.setOverride)
+	inner.HandleFunc("DELETE /api/flags/overrides/entity/{entityID}/{flagID...}", h.removeOverride)
 
 	mux.Handle("/", h.csrfProtect(inner))
 }
@@ -392,6 +393,10 @@ func (h *Handler) removeOverride(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entityID := r.PathValue("entityID")
+	if !validEntityPathSegment(entityID) {
+		http.Error(w, "invalid entity_id", http.StatusBadRequest)
+		return
+	}
 
 	actor := "admin-ui"
 	if err := h.store.RemoveFlagOverride(r.Context(), flagID, entityID, actor); err != nil {
@@ -564,6 +569,21 @@ func countFlags(features []*pbflagsv1.FeatureDetail) int {
 
 // validFlagID matches feature_id/field_number, e.g. "notifications/1".
 var validFlagID = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*(/[0-9]+)+$`)
+
+// validEntityPathSegment rejects values that would break single URL path segments
+// (used in DELETE .../entity/{entityID}/{flagID...}).
+func validEntityPathSegment(id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, r := range id {
+		switch r {
+		case '/', '?', '#', '\\':
+			return false
+		}
+	}
+	return true
+}
 
 // ---------------------------------------------------------------------------
 // Value parsing for form submissions

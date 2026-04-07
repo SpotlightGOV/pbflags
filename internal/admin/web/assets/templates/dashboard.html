@@ -86,13 +86,13 @@
          hx-target="#flag-row-{{flagIDEscape .Flag.FlagId}}"
          hx-swap="outerHTML">
       <button {{if eq (stateLabel .Flag.State) "ENABLED"}}class="active-enabled"{{end}}
-              hx-post="/api/flags/{{.Flag.FlagId}}/state"
+              hx-post="/api/flags/state/{{.Flag.FlagId}}"
               hx-vals='{"state":"ENABLED"}'>ENB</button>
       <button {{if eq (stateLabel .Flag.State) "DEFAULT"}}class="active-default"{{end}}
-              hx-post="/api/flags/{{.Flag.FlagId}}/state"
+              hx-post="/api/flags/state/{{.Flag.FlagId}}"
               hx-vals='{"state":"DEFAULT"}'>DFL</button>
       <button {{if eq (stateLabel .Flag.State) "KILLED"}}class="active-killed"{{end}}
-              hx-post="/api/flags/{{.Flag.FlagId}}/state"
+              hx-post="/api/flags/state/{{.Flag.FlagId}}"
               hx-vals='{"state":"KILLED"}'
               hx-confirm="Kill this flag? It will return the compiled default for all evaluations.">KIL</button>
     </div>
