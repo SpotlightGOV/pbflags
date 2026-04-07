@@ -260,6 +260,21 @@ func TestDict(t *testing.T) {
 // Handler-level validation (bad flag ID → 400)
 // ---------------------------------------------------------------------------
 
+func TestHandlerRegisterDoesNotPanic(t *testing.T) {
+	// Regression: Go 1.22+ ServeMux panics if a "..." wildcard is not the last segment
+	// (e.g. /api/flags/{flagID...}/state). Routes must place the wildcard last.
+	h := &Handler{}
+	mux := http.NewServeMux()
+	require.NotPanics(t, func() { h.Register(mux) })
+}
+
+func TestValidEntityPathSegment(t *testing.T) {
+	assert.True(t, validEntityPathSegment("user-123"))
+	assert.False(t, validEntityPathSegment(""))
+	assert.False(t, validEntityPathSegment("a/b"))
+	assert.False(t, validEntityPathSegment("x?y"))
+}
+
 func TestHandlerFlagIDValidation(t *testing.T) {
 	// Test handler methods directly via httptest.ResponseRecorder.
 	// We pass invalid flag IDs that should be rejected before any store call.
@@ -283,6 +298,9 @@ func TestHandlerFlagIDValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(tt.method, "/test", nil)
 			req.SetPathValue("flagID", tt.flagID)
+			if strings.Contains(tt.name, "removeOverride") {
+				req.SetPathValue("entityID", "entity-1")
+			}
 			w := httptest.NewRecorder()
 
 			tt.fn(w, req)
@@ -290,4 +308,14 @@ func TestHandlerFlagIDValidation(t *testing.T) {
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 		})
 	}
+}
+
+func TestRemoveOverrideRejectsBadEntitySegment(t *testing.T) {
+	h := &Handler{}
+	req := httptest.NewRequest(http.MethodDelete, "/test", nil)
+	req.SetPathValue("flagID", "notifications/1")
+	req.SetPathValue("entityID", "bad/id")
+	w := httptest.NewRecorder()
+	h.removeOverride(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
