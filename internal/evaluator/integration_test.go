@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,6 +18,51 @@ import (
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
+
+// testDBFeaturePrefix namespaces evaluator integration rows so tests can share Postgres
+// with other packages without TRUNCATE. Cleanup deletes only rows under this prefix.
+const testDBFeaturePrefix = "test_evaluator_"
+
+func testFeatureID(base string) string { return testDBFeaturePrefix + base }
+
+func testFlagID(featureBase, name string) string { return testFeatureID(featureBase) + "." + name }
+
+func cleanupTestIntegrationData(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	ctx := context.Background()
+	pat := testDBFeaturePrefix + "%"
+	_, err := pool.Exec(ctx, `DELETE FROM feature_flags.flag_audit_log WHERE flag_id LIKE $1`, pat)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `DELETE FROM feature_flags.flag_overrides WHERE flag_id LIKE $1`, pat)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `DELETE FROM feature_flags.flags WHERE flag_id LIKE $1`, pat)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `DELETE FROM feature_flags.features WHERE feature_id LIKE $1`, pat)
+	require.NoError(t, err)
+}
+
+// filterKillSet keeps only entries for this package's test flags so parallel packages'
+// killed flags in the same DB do not affect evaluation.
+func filterKillSet(ks *KillSet, prefix string) *KillSet {
+	out := &KillSet{
+		FlagIDs:         make(map[string]struct{}),
+		KilledOverrides: make(map[KillKey]struct{}),
+	}
+	if ks == nil {
+		return out
+	}
+	for id := range ks.FlagIDs {
+		if strings.HasPrefix(id, prefix) {
+			out.FlagIDs[id] = struct{}{}
+		}
+	}
+	for k := range ks.KilledOverrides {
+		if strings.HasPrefix(k.FlagID, prefix) {
+			out.KilledOverrides[k] = struct{}{}
+		}
+	}
+	return out
+}
 
 func testDSN() string {
 	if dsn := os.Getenv("PBFLAGS_TEST_DSN"); dsn != "" {
@@ -48,12 +94,8 @@ func setupIntegration(t *testing.T, defs []FlagDef) *testEnv {
 		t.Skipf("PostgreSQL not reachable: %v", err)
 	}
 
-	// Ensure schema exists and truncate.
+	// Ensure schema exists (idempotent).
 	_, err = pool.Exec(ctx, schemaDDL)
-	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `
-		TRUNCATE feature_flags.flag_audit_log, feature_flags.flag_overrides,
-		         feature_flags.flags, feature_flags.features CASCADE`)
 	require.NoError(t, err)
 
 	cache, err := NewCacheStore(CacheStoreConfig{
@@ -75,6 +117,7 @@ func setupIntegration(t *testing.T, defs []FlagDef) *testEnv {
 	eval := NewEvaluator(registry, cache, fetcher, logger, noopM, noopT)
 
 	t.Cleanup(func() {
+		cleanupTestIntegrationData(t, pool)
 		cache.Close()
 		pool.Close()
 	})
@@ -174,12 +217,13 @@ func stringVal(v string) *pbflagsv1.FlagValue {
 	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: v}}
 }
 
-// notificationsDefs returns flag definitions matching the example notifications proto.
+// notificationsDefs returns flag definitions matching the example notifications proto
+// (namespaced for isolated integration tests).
 func notificationsDefs() []FlagDef {
 	return []FlagDef{
 		{
-			FlagID:    "notifications.email_enabled",
-			FeatureID: "notifications",
+			FlagID:    testFlagID("notifications", "email_enabled"),
+			FeatureID: testFeatureID("notifications"),
 			FieldNum:  1,
 			Name:      "email_enabled",
 			FlagType:  pbflagsv1.FlagType_FLAG_TYPE_BOOL,
@@ -187,8 +231,8 @@ func notificationsDefs() []FlagDef {
 			Default:   boolVal(true),
 		},
 		{
-			FlagID:    "notifications.digest_frequency",
-			FeatureID: "notifications",
+			FlagID:    testFlagID("notifications", "digest_frequency"),
+			FeatureID: testFeatureID("notifications"),
 			FieldNum:  2,
 			Name:      "digest_frequency",
 			FlagType:  pbflagsv1.FlagType_FLAG_TYPE_STRING,
@@ -196,8 +240,8 @@ func notificationsDefs() []FlagDef {
 			Default:   stringVal("daily"),
 		},
 		{
-			FlagID:    "notifications.max_retries",
-			FeatureID: "notifications",
+			FlagID:    testFlagID("notifications", "max_retries"),
+			FeatureID: testFeatureID("notifications"),
 			FieldNum:  3,
 			Name:      "max_retries",
 			FlagType:  pbflagsv1.FlagType_FLAG_TYPE_INT64,
@@ -205,8 +249,8 @@ func notificationsDefs() []FlagDef {
 			Default:   int64Val(3),
 		},
 		{
-			FlagID:    "notifications.score_threshold",
-			FeatureID: "notifications",
+			FlagID:    testFlagID("notifications", "score_threshold"),
+			FeatureID: testFeatureID("notifications"),
 			FieldNum:  4,
 			Name:      "score_threshold",
 			FlagType:  pbflagsv1.FlagType_FLAG_TYPE_DOUBLE,
@@ -224,52 +268,52 @@ func TestEvaluationLifecycle(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed the flags.
-	seedFlag(t, env.pool, "notifications", "notifications.email_enabled", "BOOL", "USER", 1, nil)
-	seedFlag(t, env.pool, "notifications", "notifications.digest_frequency", "STRING", "GLOBAL", 2, nil)
-	seedFlag(t, env.pool, "notifications", "notifications.max_retries", "INT64", "GLOBAL", 3, nil)
-	seedFlag(t, env.pool, "notifications", "notifications.score_threshold", "DOUBLE", "GLOBAL", 4, nil)
+	seedFlag(t, env.pool, testFeatureID("notifications"), testFlagID("notifications", "email_enabled"), "BOOL", "USER", 1, nil)
+	seedFlag(t, env.pool, testFeatureID("notifications"), testFlagID("notifications", "digest_frequency"), "STRING", "GLOBAL", 2, nil)
+	seedFlag(t, env.pool, testFeatureID("notifications"), testFlagID("notifications", "max_retries"), "INT64", "GLOBAL", 3, nil)
+	seedFlag(t, env.pool, testFeatureID("notifications"), testFlagID("notifications", "score_threshold"), "DOUBLE", "GLOBAL", 4, nil)
 
 	// Phase 1: DEFAULT state — compiled defaults should be returned.
-	val, src := env.evaluator.Evaluate(ctx, "notifications.email_enabled", "user-1")
+	val, src := env.evaluator.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-1")
 	require.True(t, val.GetBoolValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
 
-	val, src = env.evaluator.Evaluate(ctx, "notifications.digest_frequency", "")
+	val, src = env.evaluator.Evaluate(ctx, testFlagID("notifications", "digest_frequency"), "")
 	require.Equal(t, "daily", val.GetStringValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
 
 	// Phase 2: ENABLED with server-side value.
 	env.cache.FlushAll()
 	env.cache.WaitAll()
-	setFlagState(t, env.pool, "notifications.email_enabled", "ENABLED", boolVal(false))
+	setFlagState(t, env.pool, testFlagID("notifications", "email_enabled"), "ENABLED", boolVal(false))
 
-	val, src = env.evaluator.Evaluate(ctx, "notifications.email_enabled", "user-1")
+	val, src = env.evaluator.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-1")
 	require.False(t, val.GetBoolValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src)
 
 	// Phase 3: KILLED — should return compiled default.
 	env.cache.FlushAll()
 	env.cache.WaitAll()
-	setFlagState(t, env.pool, "notifications.email_enabled", "KILLED", nil)
+	setFlagState(t, env.pool, testFlagID("notifications", "email_enabled"), "KILLED", nil)
 
 	// Also update kill set.
 	ks, err := env.fetcher.GetKilledFlags(ctx)
 	require.NoError(t, err)
-	env.cache.SetKillSet(ks)
+	env.cache.SetKillSet(filterKillSet(ks, testDBFeaturePrefix))
 
-	val, src = env.evaluator.Evaluate(ctx, "notifications.email_enabled", "user-1")
+	val, src = env.evaluator.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-1")
 	require.True(t, val.GetBoolValue()) // compiled default
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED, src)
 
 	// Phase 4: Unkill — back to DEFAULT.
-	setFlagState(t, env.pool, "notifications.email_enabled", "DEFAULT", nil)
+	setFlagState(t, env.pool, testFlagID("notifications", "email_enabled"), "DEFAULT", nil)
 	ks, err = env.fetcher.GetKilledFlags(ctx)
 	require.NoError(t, err)
-	env.cache.SetKillSet(ks)
+	env.cache.SetKillSet(filterKillSet(ks, testDBFeaturePrefix))
 	env.cache.FlushAll()
 	env.cache.WaitAll()
 
-	val, src = env.evaluator.Evaluate(ctx, "notifications.email_enabled", "user-1")
+	val, src = env.evaluator.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-1")
 	require.True(t, val.GetBoolValue()) // compiled default
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
 }
@@ -280,10 +324,10 @@ func TestOverrideLifecycle(t *testing.T) {
 	env := setupIntegration(t, defs)
 	ctx := context.Background()
 
-	seedFlag(t, env.pool, "notifications", "notifications.email_enabled", "BOOL", "USER", 1, nil)
+	seedFlag(t, env.pool, testFeatureID("notifications"), testFlagID("notifications", "email_enabled"), "BOOL", "USER", 1, nil)
 
 	// No override — returns global/default.
-	val, src := env.evaluator.Evaluate(ctx, "notifications.email_enabled", "user-1")
+	val, src := env.evaluator.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-1")
 	require.True(t, val.GetBoolValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
 
@@ -293,28 +337,28 @@ func TestOverrideLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	_, err = env.pool.Exec(ctx, `
 		INSERT INTO feature_flags.flag_overrides (flag_id, entity_id, state, value)
-		VALUES ('notifications.email_enabled', 'user-1', 'ENABLED', $1)`, overrideBytes)
+		VALUES ($1, 'user-1', 'ENABLED', $2)`, testFlagID("notifications", "email_enabled"), overrideBytes)
 	require.NoError(t, err)
 
 	env.cache.FlushAll()
 	env.cache.WaitAll()
 
-	val, src = env.evaluator.Evaluate(ctx, "notifications.email_enabled", "user-1")
+	val, src = env.evaluator.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-1")
 	require.False(t, val.GetBoolValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, src)
 
 	// Different entity has no override.
-	val, src = env.evaluator.Evaluate(ctx, "notifications.email_enabled", "user-2")
+	val, src = env.evaluator.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-2")
 	require.True(t, val.GetBoolValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
 
 	// Remove override.
-	_, err = env.pool.Exec(ctx, `DELETE FROM feature_flags.flag_overrides WHERE flag_id = 'notifications.email_enabled' AND entity_id = 'user-1'`)
+	_, err = env.pool.Exec(ctx, `DELETE FROM feature_flags.flag_overrides WHERE flag_id = $1 AND entity_id = 'user-1'`, testFlagID("notifications", "email_enabled"))
 	require.NoError(t, err)
 	env.cache.FlushAll()
 	env.cache.WaitAll()
 
-	val, src = env.evaluator.Evaluate(ctx, "notifications.email_enabled", "user-1")
+	val, src = env.evaluator.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-1")
 	require.True(t, val.GetBoolValue()) // back to default
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
 }
@@ -345,8 +389,8 @@ func TestDegradationLifecycle(t *testing.T) {
 	env := setupIntegration(t, defs)
 	ctx := context.Background()
 
-	seedFlag(t, env.pool, "notifications", "notifications.email_enabled", "BOOL", "USER", 1, nil)
-	setFlagState(t, env.pool, "notifications.email_enabled", "ENABLED", boolVal(false))
+	seedFlag(t, env.pool, testFeatureID("notifications"), testFlagID("notifications", "email_enabled"), "BOOL", "USER", 1, nil)
+	setFlagState(t, env.pool, testFlagID("notifications", "email_enabled"), "ENABLED", boolVal(false))
 
 	// Wrap the fetcher to simulate failures.
 	ff := &failableFetcher{real: env.fetcher}
@@ -354,7 +398,7 @@ func TestDegradationLifecycle(t *testing.T) {
 	eval := NewEvaluator(env.registry, env.cache, ff, logger, NewNoopMetrics(), noopTracer())
 
 	// Healthy fetch to populate stale map.
-	val, src := eval.Evaluate(ctx, "notifications.email_enabled", "user-1")
+	val, src := eval.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-1")
 	require.False(t, val.GetBoolValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src)
 	require.Equal(t, pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_SERVING, env.tracker.Status())
@@ -371,7 +415,7 @@ func TestDegradationLifecycle(t *testing.T) {
 	require.Equal(t, pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_DEGRADED, env.tracker.Status())
 
 	// Evaluator should still return stale cached value.
-	val, src = eval.Evaluate(ctx, "notifications.email_enabled", "user-1")
+	val, src = eval.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-1")
 	require.False(t, val.GetBoolValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED, src)
 
@@ -380,7 +424,7 @@ func TestDegradationLifecycle(t *testing.T) {
 	env.cache.FlushAll()
 	env.cache.WaitAll()
 
-	val, src = eval.Evaluate(ctx, "notifications.email_enabled", "user-1")
+	val, src = eval.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-1")
 	require.False(t, val.GetBoolValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src)
 	require.Equal(t, pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_SERVING, env.tracker.Status())
@@ -392,15 +436,15 @@ func TestStaleCacheDuringOutage(t *testing.T) {
 	env := setupIntegration(t, defs)
 	ctx := context.Background()
 
-	seedFlag(t, env.pool, "notifications", "notifications.digest_frequency", "STRING", "GLOBAL", 2, nil)
-	setFlagState(t, env.pool, "notifications.digest_frequency", "ENABLED", stringVal("weekly"))
+	seedFlag(t, env.pool, testFeatureID("notifications"), testFlagID("notifications", "digest_frequency"), "STRING", "GLOBAL", 2, nil)
+	setFlagState(t, env.pool, testFlagID("notifications", "digest_frequency"), "ENABLED", stringVal("weekly"))
 
 	ff := &failableFetcher{real: env.fetcher}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	eval := NewEvaluator(env.registry, env.cache, ff, logger, NewNoopMetrics(), noopTracer())
 
 	// Populate stale map with a successful fetch.
-	val, src := eval.Evaluate(ctx, "notifications.digest_frequency", "")
+	val, src := eval.Evaluate(ctx, testFlagID("notifications", "digest_frequency"), "")
 	require.Equal(t, "weekly", val.GetStringValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src)
 
@@ -411,20 +455,20 @@ func TestStaleCacheDuringOutage(t *testing.T) {
 
 	// Multiple evaluations should consistently return stale cached value.
 	for i := 0; i < 5; i++ {
-		val, src = eval.Evaluate(ctx, "notifications.digest_frequency", "")
+		val, src = eval.Evaluate(ctx, testFlagID("notifications", "digest_frequency"), "")
 		require.Equal(t, "weekly", val.GetStringValue())
 		require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED, src)
 	}
 
 	// Meanwhile, the DB value changes (simulating a deploy while we're degraded).
 	ff.failing.Store(false) // temporarily restore to update
-	setFlagState(t, env.pool, "notifications.digest_frequency", "ENABLED", stringVal("monthly"))
+	setFlagState(t, env.pool, testFlagID("notifications", "digest_frequency"), "ENABLED", stringVal("monthly"))
 	ff.failing.Store(true) // go offline again
 
 	// Still returns stale "weekly" because we can't reach DB.
 	env.cache.FlushAll()
 	env.cache.WaitAll()
-	val, src = eval.Evaluate(ctx, "notifications.digest_frequency", "")
+	val, src = eval.Evaluate(ctx, testFlagID("notifications", "digest_frequency"), "")
 	require.Equal(t, "weekly", val.GetStringValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED, src)
 
@@ -432,7 +476,7 @@ func TestStaleCacheDuringOutage(t *testing.T) {
 	ff.failing.Store(false)
 	env.cache.FlushAll()
 	env.cache.WaitAll()
-	val, src = eval.Evaluate(ctx, "notifications.digest_frequency", "")
+	val, src = eval.Evaluate(ctx, testFlagID("notifications", "digest_frequency"), "")
 	require.Equal(t, "monthly", val.GetStringValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src)
 }
@@ -443,22 +487,22 @@ func TestArchivedFlagRetrieval(t *testing.T) {
 	env := setupIntegration(t, defs)
 	ctx := context.Background()
 
-	seedFlag(t, env.pool, "notifications", "notifications.max_retries", "INT64", "GLOBAL", 3, nil)
-	setFlagState(t, env.pool, "notifications.max_retries", "ENABLED", int64Val(5))
+	seedFlag(t, env.pool, testFeatureID("notifications"), testFlagID("notifications", "max_retries"), "INT64", "GLOBAL", 3, nil)
+	setFlagState(t, env.pool, testFlagID("notifications", "max_retries"), "ENABLED", int64Val(5))
 
 	// Verify non-archived returns GLOBAL.
-	val, src := env.evaluator.Evaluate(ctx, "notifications.max_retries", "")
+	val, src := env.evaluator.Evaluate(ctx, testFlagID("notifications", "max_retries"), "")
 	require.Equal(t, int64(5), val.GetInt64Value())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src)
 
 	// Archive the flag.
-	_, err := env.pool.Exec(ctx, `UPDATE feature_flags.flags SET archived_at = now() WHERE flag_id = 'notifications.max_retries'`)
+	_, err := env.pool.Exec(ctx, `UPDATE feature_flags.flags SET archived_at = now() WHERE flag_id = $1`, testFlagID("notifications", "max_retries"))
 	require.NoError(t, err)
 	env.cache.FlushAll()
 	env.cache.WaitAll()
 
 	// Archived flag returns its value with ARCHIVED source.
-	val, src = env.evaluator.Evaluate(ctx, "notifications.max_retries", "")
+	val, src = env.evaluator.Evaluate(ctx, testFlagID("notifications", "max_retries"), "")
 	require.Equal(t, int64(5), val.GetInt64Value())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_ARCHIVED, src)
 }
@@ -469,27 +513,27 @@ func TestAllFlagTypes(t *testing.T) {
 	env := setupIntegration(t, defs)
 	ctx := context.Background()
 
-	seedFlag(t, env.pool, "notifications", "notifications.email_enabled", "BOOL", "USER", 1, nil)
-	seedFlag(t, env.pool, "notifications", "notifications.digest_frequency", "STRING", "GLOBAL", 2, nil)
-	seedFlag(t, env.pool, "notifications", "notifications.max_retries", "INT64", "GLOBAL", 3, nil)
-	seedFlag(t, env.pool, "notifications", "notifications.score_threshold", "DOUBLE", "GLOBAL", 4, nil)
+	seedFlag(t, env.pool, testFeatureID("notifications"), testFlagID("notifications", "email_enabled"), "BOOL", "USER", 1, nil)
+	seedFlag(t, env.pool, testFeatureID("notifications"), testFlagID("notifications", "digest_frequency"), "STRING", "GLOBAL", 2, nil)
+	seedFlag(t, env.pool, testFeatureID("notifications"), testFlagID("notifications", "max_retries"), "INT64", "GLOBAL", 3, nil)
+	seedFlag(t, env.pool, testFeatureID("notifications"), testFlagID("notifications", "score_threshold"), "DOUBLE", "GLOBAL", 4, nil)
 
 	// Set server values.
-	setFlagState(t, env.pool, "notifications.email_enabled", "ENABLED", boolVal(false))
-	setFlagState(t, env.pool, "notifications.digest_frequency", "ENABLED", stringVal("weekly"))
-	setFlagState(t, env.pool, "notifications.max_retries", "ENABLED", int64Val(10))
-	setFlagState(t, env.pool, "notifications.score_threshold", "ENABLED", doubleVal(0.95))
+	setFlagState(t, env.pool, testFlagID("notifications", "email_enabled"), "ENABLED", boolVal(false))
+	setFlagState(t, env.pool, testFlagID("notifications", "digest_frequency"), "ENABLED", stringVal("weekly"))
+	setFlagState(t, env.pool, testFlagID("notifications", "max_retries"), "ENABLED", int64Val(10))
+	setFlagState(t, env.pool, testFlagID("notifications", "score_threshold"), "ENABLED", doubleVal(0.95))
 
-	val, _ := env.evaluator.Evaluate(ctx, "notifications.email_enabled", "user-1")
+	val, _ := env.evaluator.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-1")
 	require.False(t, val.GetBoolValue())
 
-	val, _ = env.evaluator.Evaluate(ctx, "notifications.digest_frequency", "")
+	val, _ = env.evaluator.Evaluate(ctx, testFlagID("notifications", "digest_frequency"), "")
 	require.Equal(t, "weekly", val.GetStringValue())
 
-	val, _ = env.evaluator.Evaluate(ctx, "notifications.max_retries", "")
+	val, _ = env.evaluator.Evaluate(ctx, testFlagID("notifications", "max_retries"), "")
 	require.Equal(t, int64(10), val.GetInt64Value())
 
-	val, _ = env.evaluator.Evaluate(ctx, "notifications.score_threshold", "")
+	val, _ = env.evaluator.Evaluate(ctx, testFlagID("notifications", "score_threshold"), "")
 	require.InDelta(t, 0.95, val.GetDoubleValue(), 0.001)
 }
 
@@ -497,10 +541,10 @@ func TestAllFlagTypes(t *testing.T) {
 
 func seedAllFlags(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
-	seedFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER", 1, nil)
-	seedFlag(t, pool, "notifications", "notifications.digest_frequency", "STRING", "GLOBAL", 2, nil)
-	seedFlag(t, pool, "notifications", "notifications.max_retries", "INT64", "GLOBAL", 3, nil)
-	seedFlag(t, pool, "notifications", "notifications.score_threshold", "DOUBLE", "GLOBAL", 4, nil)
+	seedFlag(t, pool, testFeatureID("notifications"), testFlagID("notifications", "email_enabled"), "BOOL", "USER", 1, nil)
+	seedFlag(t, pool, testFeatureID("notifications"), testFlagID("notifications", "digest_frequency"), "STRING", "GLOBAL", 2, nil)
+	seedFlag(t, pool, testFeatureID("notifications"), testFlagID("notifications", "max_retries"), "INT64", "GLOBAL", 3, nil)
+	seedFlag(t, pool, testFeatureID("notifications"), testFlagID("notifications", "score_threshold"), "DOUBLE", "GLOBAL", 4, nil)
 }
 
 func setOverride(t *testing.T, pool *pgxpool.Pool, flagID, entityID, state string, value *pbflagsv1.FlagValue) {
@@ -528,24 +572,24 @@ func TestGlobalKillOverridesEntityOverride(t *testing.T) {
 	seedAllFlags(t, env.pool)
 
 	// Set an entity override.
-	setOverride(t, env.pool, "notifications.email_enabled", "user-99", "ENABLED", boolVal(false))
+	setOverride(t, env.pool, testFlagID("notifications", "email_enabled"), "user-99", "ENABLED", boolVal(false))
 	env.cache.FlushAll()
 	env.cache.WaitAll()
 
-	val, src := env.evaluator.Evaluate(ctx, "notifications.email_enabled", "user-99")
+	val, src := env.evaluator.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-99")
 	require.False(t, val.GetBoolValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, src)
 
 	// Now globally kill the flag.
-	setFlagState(t, env.pool, "notifications.email_enabled", "KILLED", nil)
+	setFlagState(t, env.pool, testFlagID("notifications", "email_enabled"), "KILLED", nil)
 	ks, err := env.fetcher.GetKilledFlags(ctx)
 	require.NoError(t, err)
-	env.cache.SetKillSet(ks)
+	env.cache.SetKillSet(filterKillSet(ks, testDBFeaturePrefix))
 	env.cache.FlushAll()
 	env.cache.WaitAll()
 
 	// Global kill should override the entity override.
-	val, src = env.evaluator.Evaluate(ctx, "notifications.email_enabled", "user-99")
+	val, src = env.evaluator.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-99")
 	require.True(t, val.GetBoolValue()) // compiled default
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED, src)
 }
@@ -568,13 +612,13 @@ func TestConcurrentEval(t *testing.T) {
 	ctx := context.Background()
 
 	seedAllFlags(t, env.pool)
-	setFlagState(t, env.pool, "notifications.email_enabled", "ENABLED", boolVal(false))
+	setFlagState(t, env.pool, testFlagID("notifications", "email_enabled"), "ENABLED", boolVal(false))
 
 	const goroutines = 20
 	errc := make(chan error, goroutines)
 	for i := range goroutines {
 		go func() {
-			val, _ := env.evaluator.Evaluate(ctx, "notifications.email_enabled", fmt.Sprintf("user-%d", i))
+			val, _ := env.evaluator.Evaluate(ctx, testFlagID("notifications", "email_enabled"), fmt.Sprintf("user-%d", i))
 			if val.GetBoolValue() != false {
 				errc <- fmt.Errorf("concurrent eval: got %v, want false", val)
 				return
@@ -600,11 +644,11 @@ func TestOverrideStaleCacheDuringOutage(t *testing.T) {
 	eval := NewEvaluator(env.registry, env.cache, ff, logger, NewNoopMetrics(), noopTracer())
 
 	// Set override and prime the cache.
-	setOverride(t, env.pool, "notifications.email_enabled", "user-stale", "ENABLED", boolVal(false))
+	setOverride(t, env.pool, testFlagID("notifications", "email_enabled"), "user-stale", "ENABLED", boolVal(false))
 	env.cache.FlushAll()
 	env.cache.WaitAll()
 
-	val, src := eval.Evaluate(ctx, "notifications.email_enabled", "user-stale")
+	val, src := eval.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-stale")
 	require.False(t, val.GetBoolValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, src)
 
@@ -613,7 +657,7 @@ func TestOverrideStaleCacheDuringOutage(t *testing.T) {
 	env.cache.FlushAll()
 	env.cache.WaitAll()
 
-	val, src = eval.Evaluate(ctx, "notifications.email_enabled", "user-stale")
+	val, src = eval.Evaluate(ctx, testFlagID("notifications", "email_enabled"), "user-stale")
 	require.False(t, val.GetBoolValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED, src)
 }
@@ -625,17 +669,18 @@ func TestNilDefaultValue(t *testing.T) {
 	ctx := context.Background()
 
 	// Insert a flag with no corresponding registry entry.
+	nilFeat := testFeatureID("niltest")
+	nilFlag := nilFeat + "/1"
 	_, err := env.pool.Exec(ctx, `
-		INSERT INTO feature_flags.features (feature_id) VALUES ('niltest') ON CONFLICT DO NOTHING`)
+		INSERT INTO feature_flags.features (feature_id) VALUES ($1) ON CONFLICT DO NOTHING`, nilFeat)
 	require.NoError(t, err)
 	_, err = env.pool.Exec(ctx, `
 		INSERT INTO feature_flags.flags (flag_id, feature_id, field_number, flag_type, layer, state)
-		VALUES ('niltest/1', 'niltest', 1, 'BOOL', 'GLOBAL', 'DEFAULT')
-		ON CONFLICT DO NOTHING`)
+		VALUES ($1, $2, 1, 'BOOL', 'GLOBAL', 'DEFAULT')
+		ON CONFLICT DO NOTHING`, nilFlag, nilFeat)
 	require.NoError(t, err)
 
-	val, src := env.evaluator.Evaluate(ctx, "niltest/1", "")
+	val, src := env.evaluator.Evaluate(ctx, nilFlag, "")
 	require.Nil(t, val)
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
 }
-
