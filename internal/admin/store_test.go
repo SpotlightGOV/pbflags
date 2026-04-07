@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"sync"
-	"sync/atomic"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -19,9 +18,9 @@ import (
 	"github.com/SpotlightGOV/pbflags/internal/integrationtest"
 )
 
-func feat(prefix, name string) string { return integrationtest.Feature(prefix, name) }
+func feat(prefix, logicalName string) string { return integrationtest.Feature(prefix, logicalName) }
 
-func flg(featureID, field string) string { return integrationtest.Flag(featureID, field) }
+func flg(featureID string, fieldNum int32) string { return integrationtest.Flag(featureID, fieldNum) }
 
 // testDSN returns the PostgreSQL DSN for integration tests.
 // Set PBFLAGS_TEST_DSN to override.
@@ -111,22 +110,21 @@ CREATE TABLE IF NOT EXISTS feature_flags.flag_audit_log (
 );
 `
 
-var fieldCounter atomic.Int32
-
-// seedFeatureAndFlag inserts a test feature and flag.
-func seedFeatureAndFlag(t *testing.T, pool *pgxpool.Pool, featureID, flagID, flagType, layer string) {
+// seedFeatureAndFlag inserts a test feature and flag. flag_id is feature_id/field_number
+// (same format as internal/evaluator/descriptor.go and protoc-gen-pbflags).
+func seedFeatureAndFlag(t *testing.T, pool *pgxpool.Pool, featureID string, fieldNum int32, flagType, layer string) {
 	t.Helper()
 	ctx := context.Background()
+	flagID := integrationtest.Flag(featureID, fieldNum)
 	_, err := pool.Exec(ctx, `
 		INSERT INTO feature_flags.features (feature_id, display_name, description, owner)
 		VALUES ($1, $1, 'test feature', 'test')
 		ON CONFLICT DO NOTHING`, featureID)
 	require.NoError(t, err)
-	fieldNum := fieldCounter.Add(1)
 	_, err = pool.Exec(ctx, `
 		INSERT INTO feature_flags.flags (flag_id, feature_id, field_number, display_name, flag_type, layer, state)
-		VALUES ($1, $2, $3, $1, $4, $5, 'DEFAULT')
-		ON CONFLICT DO NOTHING`, flagID, featureID, fieldNum, flagType, layer)
+		VALUES ($1, $2, $3, $4, $5, $6, 'DEFAULT')
+		ON CONFLICT DO NOTHING`, flagID, featureID, fieldNum, flagID, flagType, layer)
 	require.NoError(t, err)
 }
 
@@ -166,9 +164,9 @@ func TestGetFlagState(t *testing.T) {
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "USER")
 
-	resp, err := store.GetFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"))
+	resp, err := store.GetFlagState(ctx, flg(feat(p, "notifications"), 1))
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, pbflagsv1.State_STATE_DEFAULT, resp.Flag.State)
@@ -185,22 +183,22 @@ func TestUpdateFlagState(t *testing.T) {
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "USER")
 
 	// Update to ENABLED with a value.
-	err := store.UpdateFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"), pbflagsv1.State_STATE_ENABLED, boolValue(true), "test-actor")
+	err := store.UpdateFlagState(ctx, flg(feat(p, "notifications"), 1), pbflagsv1.State_STATE_ENABLED, boolValue(true), "test-actor")
 	require.NoError(t, err)
 
-	resp, err := store.GetFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"))
+	resp, err := store.GetFlagState(ctx, flg(feat(p, "notifications"), 1))
 	require.NoError(t, err)
 	require.Equal(t, pbflagsv1.State_STATE_ENABLED, resp.Flag.State)
 	require.True(t, resp.Flag.Value.GetBoolValue())
 
 	// Update to KILLED.
-	err = store.UpdateFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"), pbflagsv1.State_STATE_KILLED, nil, "test-actor")
+	err = store.UpdateFlagState(ctx, flg(feat(p, "notifications"), 1), pbflagsv1.State_STATE_KILLED, nil, "test-actor")
 	require.NoError(t, err)
 
-	resp, err = store.GetFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"))
+	resp, err = store.GetFlagState(ctx, flg(feat(p, "notifications"), 1))
 	require.NoError(t, err)
 	require.Equal(t, pbflagsv1.State_STATE_KILLED, resp.Flag.State)
 
@@ -214,26 +212,26 @@ func TestGetKilledFlags(t *testing.T) {
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "USER")
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "digest_frequency"), "STRING", "GLOBAL")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 2, "STRING", "GLOBAL")
 
 	// Kill one flag globally.
-	err := store.UpdateFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"), pbflagsv1.State_STATE_KILLED, nil, "test-actor")
+	err := store.UpdateFlagState(ctx, flg(feat(p, "notifications"), 1), pbflagsv1.State_STATE_KILLED, nil, "test-actor")
 	require.NoError(t, err)
 
 	// Add a killed override.
 	_, err = pool.Exec(ctx, `
 		INSERT INTO feature_flags.flag_overrides (flag_id, entity_id, state)
-		VALUES ($1, 'user-1', 'KILLED')`, flg(feat(p, "notifications"), "digest_frequency"))
+		VALUES ($1, 'user-1', 'KILLED')`, flg(feat(p, "notifications"), 2))
 	require.NoError(t, err)
 
 	resp, err := store.GetKilledFlags(ctx)
 	require.NoError(t, err)
 	flagIDs := integrationtest.FilterKilledFlagIDs(resp.FlagIds, p)
 	killedOvers := integrationtest.FilterKilledOverrides(resp.KilledOverrides, p)
-	require.Contains(t, flagIDs, flg(feat(p, "notifications"), "email_enabled"))
+	require.Contains(t, flagIDs, flg(feat(p, "notifications"), 1))
 	require.Len(t, killedOvers, 1)
-	require.Equal(t, flg(feat(p, "notifications"), "digest_frequency"), killedOvers[0].FlagId)
+	require.Equal(t, flg(feat(p, "notifications"), 2), killedOvers[0].FlagId)
 	require.Equal(t, "user-1", killedOvers[0].EntityId)
 }
 
@@ -242,25 +240,25 @@ func TestGetOverrides(t *testing.T) {
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "USER")
 
 	val := boolValue(true)
 	valBytes, err := marshalFlagValue(val)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `
 		INSERT INTO feature_flags.flag_overrides (flag_id, entity_id, state, value)
-		VALUES ($1, 'user-42', 'ENABLED', $2)`, flg(feat(p, "notifications"), "email_enabled"), valBytes)
+		VALUES ($1, 'user-42', 'ENABLED', $2)`, flg(feat(p, "notifications"), 1), valBytes)
 	require.NoError(t, err)
 
 	// Get all overrides for entity.
 	resp, err := store.GetOverrides(ctx, "user-42", nil)
 	require.NoError(t, err)
 	require.Len(t, resp.Overrides, 1)
-	require.Equal(t, flg(feat(p, "notifications"), "email_enabled"), resp.Overrides[0].FlagId)
+	require.Equal(t, flg(feat(p, "notifications"), 1), resp.Overrides[0].FlagId)
 	require.True(t, resp.Overrides[0].Value.GetBoolValue())
 
 	// Get overrides filtered by flag IDs.
-	resp, err = store.GetOverrides(ctx, "user-42", []string{flg(feat(p, "notifications"), "email_enabled")})
+	resp, err = store.GetOverrides(ctx, "user-42", []string{flg(feat(p, "notifications"), 1)})
 	require.NoError(t, err)
 	require.Len(t, resp.Overrides, 1)
 
@@ -280,10 +278,10 @@ func TestSetFlagOverride(t *testing.T) {
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "USER")
 
 	// Set override.
-	err := store.SetFlagOverride(ctx, flg(feat(p, "notifications"), "email_enabled"), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
+	err := store.SetFlagOverride(ctx, flg(feat(p, "notifications"), 1), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
 	require.NoError(t, err)
 
 	// Verify via GetOverrides.
@@ -293,7 +291,7 @@ func TestSetFlagOverride(t *testing.T) {
 	require.True(t, resp.Overrides[0].Value.GetBoolValue())
 
 	// Update (upsert) override.
-	err = store.SetFlagOverride(ctx, flg(feat(p, "notifications"), "email_enabled"), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
+	err = store.SetFlagOverride(ctx, flg(feat(p, "notifications"), 1), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
 	require.NoError(t, err)
 	resp, err = store.GetOverrides(ctx, "user-1", nil)
 	require.NoError(t, err)
@@ -305,9 +303,9 @@ func TestSetFlagOverride_GlobalLayerRejected(t *testing.T) {
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "digest_frequency"), "STRING", "GLOBAL")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 2, "STRING", "GLOBAL")
 
-	err := store.SetFlagOverride(ctx, flg(feat(p, "notifications"), "digest_frequency"), "user-1", pbflagsv1.State_STATE_ENABLED, stringValue("weekly"), "admin")
+	err := store.SetFlagOverride(ctx, flg(feat(p, "notifications"), 2), "user-1", pbflagsv1.State_STATE_ENABLED, stringValue("weekly"), "admin")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "GLOBAL layer")
 }
@@ -327,11 +325,11 @@ func TestRemoveFlagOverride(t *testing.T) {
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "USER")
 
-	err := store.SetFlagOverride(ctx, flg(feat(p, "notifications"), "email_enabled"), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
+	err := store.SetFlagOverride(ctx, flg(feat(p, "notifications"), 1), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
 	require.NoError(t, err)
-	err = store.RemoveFlagOverride(ctx, flg(feat(p, "notifications"), "email_enabled"), "user-1", "admin")
+	err = store.RemoveFlagOverride(ctx, flg(feat(p, "notifications"), 1), "user-1", "admin")
 	require.NoError(t, err)
 
 	resp, err := store.GetOverrides(ctx, "user-1", nil)
@@ -344,15 +342,15 @@ func TestAuditLog(t *testing.T) {
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "USER")
 
-	err := store.UpdateFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"), pbflagsv1.State_STATE_ENABLED, boolValue(true), "deployer")
+	err := store.UpdateFlagState(ctx, flg(feat(p, "notifications"), 1), pbflagsv1.State_STATE_ENABLED, boolValue(true), "deployer")
 	require.NoError(t, err)
 
-	err = store.SetFlagOverride(ctx, flg(feat(p, "notifications"), "email_enabled"), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
+	err = store.SetFlagOverride(ctx, flg(feat(p, "notifications"), 1), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
 	require.NoError(t, err)
 
-	err = store.RemoveFlagOverride(ctx, flg(feat(p, "notifications"), "email_enabled"), "user-1", "admin")
+	err = store.RemoveFlagOverride(ctx, flg(feat(p, "notifications"), 1), "user-1", "admin")
 	require.NoError(t, err)
 
 	// Get all audit log.
@@ -368,7 +366,7 @@ func TestAuditLog(t *testing.T) {
 	require.Equal(t, "deployer", entries[2].Actor)
 
 	// Filter by flag ID with limit.
-	entries, err = store.GetAuditLog(ctx, AuditLogFilter{FlagID: flg(feat(p, "notifications"), "email_enabled"), Limit: 2})
+	entries, err = store.GetAuditLog(ctx, AuditLogFilter{FlagID: flg(feat(p, "notifications"), 1), Limit: 2})
 	require.NoError(t, err)
 	require.Len(t, entries, 2)
 
@@ -383,9 +381,9 @@ func TestListFeatures(t *testing.T) {
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, feat(p, "billing"), flg(feat(p, "billing"), "trial_days"), "INT64", "GLOBAL")
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "USER")
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "digest_frequency"), "STRING", "GLOBAL")
+	seedFeatureAndFlag(t, pool, feat(p, "billing"), 1, "INT64", "GLOBAL")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 2, "STRING", "GLOBAL")
 
 	features, err := store.ListFeatures(ctx)
 	require.NoError(t, err)
@@ -403,9 +401,9 @@ func TestListFeatures_ArchivedExcluded(t *testing.T) {
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "USER")
 
-	_, err := pool.Exec(ctx, `UPDATE feature_flags.flags SET archived_at = now() WHERE flag_id = $1`, flg(feat(p, "notifications"), "email_enabled"))
+	_, err := pool.Exec(ctx, `UPDATE feature_flags.flags SET archived_at = now() WHERE flag_id = $1`, flg(feat(p, "notifications"), 1))
 	require.NoError(t, err)
 
 	features, err := store.ListFeatures(ctx)
@@ -419,15 +417,15 @@ func TestGetFlag(t *testing.T) {
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "USER")
 
-	err := store.UpdateFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"), pbflagsv1.State_STATE_ENABLED, boolValue(true), "actor")
+	err := store.UpdateFlagState(ctx, flg(feat(p, "notifications"), 1), pbflagsv1.State_STATE_ENABLED, boolValue(true), "actor")
 	require.NoError(t, err)
 
-	err = store.SetFlagOverride(ctx, flg(feat(p, "notifications"), "email_enabled"), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
+	err = store.SetFlagOverride(ctx, flg(feat(p, "notifications"), 1), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
 	require.NoError(t, err)
 
-	flag, err := store.GetFlag(ctx, flg(feat(p, "notifications"), "email_enabled"))
+	flag, err := store.GetFlag(ctx, flg(feat(p, "notifications"), 1))
 	require.NoError(t, err)
 	require.NotNil(t, flag)
 	require.Equal(t, pbflagsv1.State_STATE_ENABLED, flag.State)
@@ -446,11 +444,11 @@ func TestGetFlag_Archived(t *testing.T) {
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "USER")
-	_, err := pool.Exec(ctx, `UPDATE feature_flags.flags SET archived_at = now() WHERE flag_id = $1`, flg(feat(p, "notifications"), "email_enabled"))
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "USER")
+	_, err := pool.Exec(ctx, `UPDATE feature_flags.flags SET archived_at = now() WHERE flag_id = $1`, flg(feat(p, "notifications"), 1))
 	require.NoError(t, err)
 
-	flag, err := store.GetFlag(ctx, flg(feat(p, "notifications"), "email_enabled"))
+	flag, err := store.GetFlag(ctx, flg(feat(p, "notifications"), 1))
 	require.NoError(t, err)
 	require.NotNil(t, flag)
 	require.True(t, flag.Archived)
@@ -463,7 +461,7 @@ func TestAdversarial_SQLInjection(t *testing.T) {
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "USER")
 
 	// SQL injection in flag ID — just returns not found.
 	resp, err := store.GetFlagState(ctx, "'; DROP TABLE feature_flags.flags; --")
@@ -476,11 +474,11 @@ func TestAdversarial_SQLInjection(t *testing.T) {
 	require.Empty(t, overrides.Overrides)
 
 	// SQL injection in actor.
-	err = store.UpdateFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"), pbflagsv1.State_STATE_ENABLED, nil, "'; DROP TABLE feature_flags.flags; --")
+	err = store.UpdateFlagState(ctx, flg(feat(p, "notifications"), 1), pbflagsv1.State_STATE_ENABLED, nil, "'; DROP TABLE feature_flags.flags; --")
 	require.NoError(t, err)
 
 	// Verify tables still intact.
-	resp, err = store.GetFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"))
+	resp, err = store.GetFlagState(ctx, flg(feat(p, "notifications"), 1))
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 }
@@ -490,10 +488,10 @@ func TestAdversarial_Unicode(t *testing.T) {
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "USER")
 
 	// Unicode entity ID.
-	err := store.SetFlagOverride(ctx, flg(feat(p, "notifications"), "email_enabled"), "用户-αβγ-🎉", pbflagsv1.State_STATE_ENABLED, boolValue(true), "管理员")
+	err := store.SetFlagOverride(ctx, flg(feat(p, "notifications"), 1), "用户-αβγ-🎉", pbflagsv1.State_STATE_ENABLED, boolValue(true), "管理员")
 	require.NoError(t, err)
 
 	resp, err := store.GetOverrides(ctx, "用户-αβγ-🎉", nil)
@@ -501,7 +499,7 @@ func TestAdversarial_Unicode(t *testing.T) {
 	require.Len(t, resp.Overrides, 1)
 
 	// Unicode in audit.
-	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: flg(feat(p, "notifications"), "email_enabled"), Limit: 10})
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: flg(feat(p, "notifications"), 1), Limit: 10})
 	require.NoError(t, err)
 	require.NotEmpty(t, entries)
 	require.Equal(t, "管理员", entries[0].Actor)
@@ -520,7 +518,7 @@ func TestGetFlagState_EmptyFlagID(t *testing.T) {
 func TestGetKilledFlags_Empty(t *testing.T) {
 	p := integrationtest.Prefix(t)
 	store, pool := setupTestStore(t, p)
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "GLOBAL")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "GLOBAL")
 	resp, err := store.GetKilledFlags(context.Background())
 	require.NoError(t, err)
 	flagIDs := integrationtest.FilterKilledFlagIDs(resp.FlagIds, p)
@@ -561,30 +559,30 @@ func TestUpdateFlagState_Lifecycle(t *testing.T) {
 	p := integrationtest.Prefix(t)
 	env := setupTestEnv(t, p)
 	ctx := context.Background()
-	seedFeatureAndFlag(t, env.pool, feat(p, "lifecycle"), flg(feat(p, "lifecycle"), "flag1"), "BOOL", "GLOBAL")
+	seedFeatureAndFlag(t, env.pool, feat(p, "lifecycle"), 1, "BOOL", "GLOBAL")
 
 	// DEFAULT → ENABLED.
 	_, err := env.admin.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: flg(feat(p, "lifecycle"), "flag1"), State: pbflagsv1.State_STATE_ENABLED, Value: boolValue(true), Actor: "admin",
+		FlagId: flg(feat(p, "lifecycle"), 1), State: pbflagsv1.State_STATE_ENABLED, Value: boolValue(true), Actor: "admin",
 	}))
 	require.NoError(t, err)
-	resp, _ := env.store.GetFlagState(ctx, flg(feat(p, "lifecycle"), "flag1"))
+	resp, _ := env.store.GetFlagState(ctx, flg(feat(p, "lifecycle"), 1))
 	assert.Equal(t, pbflagsv1.State_STATE_ENABLED, resp.Flag.State)
 
 	// ENABLED → KILLED.
 	_, err = env.admin.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: flg(feat(p, "lifecycle"), "flag1"), State: pbflagsv1.State_STATE_KILLED, Actor: "admin",
+		FlagId: flg(feat(p, "lifecycle"), 1), State: pbflagsv1.State_STATE_KILLED, Actor: "admin",
 	}))
 	require.NoError(t, err)
-	resp, _ = env.store.GetFlagState(ctx, flg(feat(p, "lifecycle"), "flag1"))
+	resp, _ = env.store.GetFlagState(ctx, flg(feat(p, "lifecycle"), 1))
 	assert.Equal(t, pbflagsv1.State_STATE_KILLED, resp.Flag.State)
 
 	// KILLED → DEFAULT.
 	_, err = env.admin.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: flg(feat(p, "lifecycle"), "flag1"), State: pbflagsv1.State_STATE_DEFAULT, Actor: "admin",
+		FlagId: flg(feat(p, "lifecycle"), 1), State: pbflagsv1.State_STATE_DEFAULT, Actor: "admin",
 	}))
 	require.NoError(t, err)
-	resp, _ = env.store.GetFlagState(ctx, flg(feat(p, "lifecycle"), "flag1"))
+	resp, _ = env.store.GetFlagState(ctx, flg(feat(p, "lifecycle"), 1))
 	assert.Equal(t, pbflagsv1.State_STATE_DEFAULT, resp.Flag.State)
 }
 
@@ -621,8 +619,8 @@ func TestSetFlagOverride_UnspecifiedState(t *testing.T) {
 func TestRemoveFlagOverride_NonexistentIsNoOp(t *testing.T) {
 	p := integrationtest.Prefix(t)
 	store, pool := setupTestStore(t, p)
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "USER")
-	err := store.RemoveFlagOverride(context.Background(), flg(feat(p, "notifications"), "email_enabled"), "nonexistent-user", "admin")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "USER")
+	err := store.RemoveFlagOverride(context.Background(), flg(feat(p, "notifications"), 1), "nonexistent-user", "admin")
 	require.NoError(t, err)
 }
 
@@ -658,14 +656,14 @@ func TestAuditLog_OldValueRecorded(t *testing.T) {
 	p := integrationtest.Prefix(t)
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "STRING", "GLOBAL")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "STRING", "GLOBAL")
 
-	err := store.UpdateFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"), pbflagsv1.State_STATE_ENABLED, stringValue("v1"), "admin")
+	err := store.UpdateFlagState(ctx, flg(feat(p, "notifications"), 1), pbflagsv1.State_STATE_ENABLED, stringValue("v1"), "admin")
 	require.NoError(t, err)
-	err = store.UpdateFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"), pbflagsv1.State_STATE_ENABLED, stringValue("v2"), "admin")
+	err = store.UpdateFlagState(ctx, flg(feat(p, "notifications"), 1), pbflagsv1.State_STATE_ENABLED, stringValue("v2"), "admin")
 	require.NoError(t, err)
 
-	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: flg(feat(p, "notifications"), "email_enabled"), Limit: 1})
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: flg(feat(p, "notifications"), 1), Limit: 1})
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.NotNil(t, entries[0].OldValue)
@@ -678,16 +676,16 @@ func TestAuditLog_OverrideLifecycle(t *testing.T) {
 	p := integrationtest.Prefix(t)
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "STRING", "USER")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "STRING", "USER")
 
-	err := store.SetFlagOverride(ctx, flg(feat(p, "notifications"), "email_enabled"), "user-1", pbflagsv1.State_STATE_ENABLED, stringValue("v1"), "admin")
+	err := store.SetFlagOverride(ctx, flg(feat(p, "notifications"), 1), "user-1", pbflagsv1.State_STATE_ENABLED, stringValue("v1"), "admin")
 	require.NoError(t, err)
-	err = store.SetFlagOverride(ctx, flg(feat(p, "notifications"), "email_enabled"), "user-1", pbflagsv1.State_STATE_ENABLED, stringValue("v2"), "admin")
+	err = store.SetFlagOverride(ctx, flg(feat(p, "notifications"), 1), "user-1", pbflagsv1.State_STATE_ENABLED, stringValue("v2"), "admin")
 	require.NoError(t, err)
-	err = store.RemoveFlagOverride(ctx, flg(feat(p, "notifications"), "email_enabled"), "user-1", "admin")
+	err = store.RemoveFlagOverride(ctx, flg(feat(p, "notifications"), 1), "user-1", "admin")
 	require.NoError(t, err)
 
-	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: flg(feat(p, "notifications"), "email_enabled"), Limit: 10})
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: flg(feat(p, "notifications"), 1), Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, entries, 3)
 	assert.Equal(t, "REMOVE_OVERRIDE", entries[0].Action)
@@ -699,14 +697,14 @@ func TestAuditLog_LimitCap(t *testing.T) {
 	p := integrationtest.Prefix(t)
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "GLOBAL")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "GLOBAL")
 
 	for i := 0; i < 5; i++ {
-		err := store.UpdateFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"), pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
+		err := store.UpdateFlagState(ctx, flg(feat(p, "notifications"), 1), pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
 		require.NoError(t, err)
 	}
 
-	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: flg(feat(p, "notifications"), "email_enabled"), Limit: 2})
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: flg(feat(p, "notifications"), 1), Limit: 2})
 	require.NoError(t, err)
 	assert.Len(t, entries, 2)
 }
@@ -715,15 +713,15 @@ func TestAuditLog_LimitClampedAt1000(t *testing.T) {
 	p := integrationtest.Prefix(t)
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "BOOL", "GLOBAL")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "BOOL", "GLOBAL")
 
 	for i := 0; i < 3; i++ {
-		err := store.UpdateFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"), pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
+		err := store.UpdateFlagState(ctx, flg(feat(p, "notifications"), 1), pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
 		require.NoError(t, err)
 	}
 
 	// Limit > 1000 should be clamped, not rejected.
-	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: flg(feat(p, "notifications"), "email_enabled"), Limit: 2000})
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: flg(feat(p, "notifications"), 1), Limit: 2000})
 	require.NoError(t, err)
 	assert.Len(t, entries, 3)
 }
@@ -733,20 +731,20 @@ func TestAllFlagTypes(t *testing.T) {
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, feat(p, "alltypes"), flg(feat(p, "alltypes"), "bool"), "BOOL", "GLOBAL")
-	seedFeatureAndFlag(t, pool, feat(p, "alltypes"), flg(feat(p, "alltypes"), "string"), "STRING", "GLOBAL")
-	seedFeatureAndFlag(t, pool, feat(p, "alltypes"), flg(feat(p, "alltypes"), "int64"), "INT64", "GLOBAL")
-	seedFeatureAndFlag(t, pool, feat(p, "alltypes"), flg(feat(p, "alltypes"), "double"), "DOUBLE", "GLOBAL")
+	seedFeatureAndFlag(t, pool, feat(p, "alltypes"), 1, "BOOL", "GLOBAL")
+	seedFeatureAndFlag(t, pool, feat(p, "alltypes"), 2, "STRING", "GLOBAL")
+	seedFeatureAndFlag(t, pool, feat(p, "alltypes"), 3, "INT64", "GLOBAL")
+	seedFeatureAndFlag(t, pool, feat(p, "alltypes"), 4, "DOUBLE", "GLOBAL")
 
 	tests := []struct {
 		flagID string
 		value  *pbflagsv1.FlagValue
 		check  func(*pbflagsv1.FlagValue) bool
 	}{
-		{flg(feat(p, "alltypes"), "bool"), boolValue(true), func(v *pbflagsv1.FlagValue) bool { return v.GetBoolValue() }},
-		{flg(feat(p, "alltypes"), "string"), stringValue("hello"), func(v *pbflagsv1.FlagValue) bool { return v.GetStringValue() == "hello" }},
-		{flg(feat(p, "alltypes"), "int64"), int64Value(42), func(v *pbflagsv1.FlagValue) bool { return v.GetInt64Value() == 42 }},
-		{flg(feat(p, "alltypes"), "double"), doubleValue(3.14159), func(v *pbflagsv1.FlagValue) bool { return v.GetDoubleValue() == 3.14159 }},
+		{flg(feat(p, "alltypes"), 1), boolValue(true), func(v *pbflagsv1.FlagValue) bool { return v.GetBoolValue() }},
+		{flg(feat(p, "alltypes"), 2), stringValue("hello"), func(v *pbflagsv1.FlagValue) bool { return v.GetStringValue() == "hello" }},
+		{flg(feat(p, "alltypes"), 3), int64Value(42), func(v *pbflagsv1.FlagValue) bool { return v.GetInt64Value() == 42 }},
+		{flg(feat(p, "alltypes"), 4), doubleValue(3.14159), func(v *pbflagsv1.FlagValue) bool { return v.GetDoubleValue() == 3.14159 }},
 	}
 
 	for _, tt := range tests {
@@ -764,13 +762,13 @@ func TestFlagValueRoundtrip(t *testing.T) {
 	p := integrationtest.Prefix(t)
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
-	seedFeatureAndFlag(t, pool, feat(p, "roundtrip"), flg(feat(p, "roundtrip"), "flag"), "STRING", "USER")
+	seedFeatureAndFlag(t, pool, feat(p, "roundtrip"), 1, "STRING", "USER")
 
 	original := stringValue("test-roundtrip-üñïçöðé-value")
-	err := store.UpdateFlagState(ctx, flg(feat(p, "roundtrip"), "flag"), pbflagsv1.State_STATE_ENABLED, original, "admin")
+	err := store.UpdateFlagState(ctx, flg(feat(p, "roundtrip"), 1), pbflagsv1.State_STATE_ENABLED, original, "admin")
 	require.NoError(t, err)
 
-	resp, err := store.GetFlagState(ctx, flg(feat(p, "roundtrip"), "flag"))
+	resp, err := store.GetFlagState(ctx, flg(feat(p, "roundtrip"), 1))
 	require.NoError(t, err)
 	assert.True(t, proto.Equal(original, resp.Flag.Value), "roundtrip mismatch: expected %v, got %v", original, resp.Flag.Value)
 }
@@ -779,7 +777,7 @@ func TestAdversarial_ConcurrentMutations(t *testing.T) {
 	p := integrationtest.Prefix(t)
 	env := setupTestEnv(t, p)
 	ctx := context.Background()
-	seedFeatureAndFlag(t, env.pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "STRING", "USER")
+	seedFeatureAndFlag(t, env.pool, feat(p, "notifications"), 1, "STRING", "USER")
 
 	const goroutines = 10
 	var wg sync.WaitGroup
@@ -791,7 +789,7 @@ func TestAdversarial_ConcurrentMutations(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			states := []pbflagsv1.State{pbflagsv1.State_STATE_ENABLED, pbflagsv1.State_STATE_DEFAULT, pbflagsv1.State_STATE_KILLED}
-			err := env.store.UpdateFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"), states[i%3], stringValue("val"), "worker")
+			err := env.store.UpdateFlagState(ctx, flg(feat(p, "notifications"), 1), states[i%3], stringValue("val"), "worker")
 			if err != nil {
 				errs <- err
 			}
@@ -803,7 +801,7 @@ func TestAdversarial_ConcurrentMutations(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := env.store.SetFlagOverride(ctx, flg(feat(p, "notifications"), "email_enabled"), fmt.Sprintf("entity-%d", i),
+			err := env.store.SetFlagOverride(ctx, flg(feat(p, "notifications"), 1), fmt.Sprintf("entity-%d", i),
 				pbflagsv1.State_STATE_ENABLED, stringValue("override"), "worker")
 			if err != nil {
 				errs <- err
@@ -816,7 +814,7 @@ func TestAdversarial_ConcurrentMutations(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := env.store.GetFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"))
+			_, err := env.store.GetFlagState(ctx, flg(feat(p, "notifications"), 1))
 			if err != nil {
 				errs <- err
 			}
@@ -831,7 +829,7 @@ func TestAdversarial_ConcurrentMutations(t *testing.T) {
 	}
 
 	// Verify flag still readable.
-	resp, err := env.store.GetFlagState(ctx, flg(feat(p, "notifications"), "email_enabled"))
+	resp, err := env.store.GetFlagState(ctx, flg(feat(p, "notifications"), 1))
 	require.NoError(t, err)
 	validStates := map[pbflagsv1.State]bool{
 		pbflagsv1.State_STATE_ENABLED: true,
@@ -845,7 +843,7 @@ func TestAdversarial_ConcurrentOverrideUpsert(t *testing.T) {
 	p := integrationtest.Prefix(t)
 	store, pool := setupTestStore(t, p)
 	ctx := context.Background()
-	seedFeatureAndFlag(t, pool, feat(p, "notifications"), flg(feat(p, "notifications"), "email_enabled"), "STRING", "USER")
+	seedFeatureAndFlag(t, pool, feat(p, "notifications"), 1, "STRING", "USER")
 
 	const goroutines = 10
 	var wg sync.WaitGroup
@@ -853,7 +851,7 @@ func TestAdversarial_ConcurrentOverrideUpsert(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := store.SetFlagOverride(ctx, flg(feat(p, "notifications"), "email_enabled"), "user-1",
+			err := store.SetFlagOverride(ctx, flg(feat(p, "notifications"), 1), "user-1",
 				pbflagsv1.State_STATE_ENABLED, stringValue(fmt.Sprintf("v%d", i)), "worker")
 			assert.NoError(t, err)
 		}()

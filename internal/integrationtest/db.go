@@ -17,21 +17,23 @@ import (
 
 var prefixSeq atomic.Uint64
 
-// Prefix returns a unique string for this test run. Use it as the root for Feature()
-// so parallel packages and tests do not collide, then pass the same value to RegisterCleanup.
+// Prefix returns a unique string for this test run. Combine with Feature() so parallel
+// tests do not collide, then pass the same prefix to RegisterCleanup.
 func Prefix(t *testing.T) string {
 	t.Helper()
 	return fmt.Sprintf("t%d_%d", time.Now().UnixNano(), prefixSeq.Add(1))
 }
 
-// Feature builds a feature_id under a test prefix (flag ids are feature_id + "." + field).
-func Feature(prefix, name string) string {
-	return prefix + "_" + name
+// Feature builds a namespaced feature_id: prefix + "_" + logicalName (logicalName
+// matches prod style, e.g. "notifications").
+func Feature(prefix, logicalName string) string {
+	return prefix + "_" + logicalName
 }
 
-// Flag builds flag_id for a feature and short field name.
-func Flag(featureID, field string) string {
-	return featureID + "." + field
+// Flag returns flag_id in production format: feature_id/field_number (same as
+// internal/evaluator/descriptor.go and protoc-gen-pbflags generated *ID constants).
+func Flag(featureID string, fieldNumber int32) string {
+	return fmt.Sprintf("%s/%d", featureID, fieldNumber)
 }
 
 // CleanupFeatureTree deletes rows for every feature_id and flag_id starting with prefix.
