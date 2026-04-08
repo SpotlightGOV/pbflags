@@ -4,6 +4,7 @@ builds:
   - id: pbflags-server
     main: ./cmd/pbflags-server
     binary: pbflags-server
+    env: [CGO_ENABLED=0]
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     ldflags:
@@ -12,6 +13,7 @@ builds:
   - id: protoc-gen-pbflags
     main: ./cmd/protoc-gen-pbflags
     binary: protoc-gen-pbflags
+    env: [CGO_ENABLED=0]
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     ldflags:
@@ -20,6 +22,7 @@ builds:
   - id: pbflags-sync
     main: ./cmd/pbflags-sync
     binary: pbflags-sync
+    env: [CGO_ENABLED=0]
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     ldflags:
