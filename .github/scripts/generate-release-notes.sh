@@ -71,7 +71,7 @@ if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
       "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${pr}" 2>/dev/null || true)"
     if [ -n "$PR_JSON" ]; then
       PR_TITLE="$(echo "$PR_JSON" | jq -r '.title // empty')"
-      PR_BODY="$(echo "$PR_JSON" | jq -r '.body // empty' | head -50)"
+      PR_BODY="$(echo "$PR_JSON" | jq -r '(.body // "") | split("\n") | .[0:50] | join("\n")')"
       PR_LABELS="$(echo "$PR_JSON" | jq -r '[.labels[].name] | join(", ")' 2>/dev/null || true)"
       if [ -n "$PR_TITLE" ]; then
         PR_CONTEXT="${PR_CONTEXT}
