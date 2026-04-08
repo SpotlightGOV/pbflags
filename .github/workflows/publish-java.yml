@@ -1,18 +1,21 @@
 name: Publish Java Client
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
 
 jobs:
   publish:
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: clients/java
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -20,7 +23,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
       - run: gradle publishToSonatype closeAndReleaseSonatypeStagingRepository
         env:
-          RELEASE_VERSION: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ github.event.workflow_run.head_branch }}
           OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
           OSSRH_TOKEN: ${{ secrets.OSSRH_TOKEN }}
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}

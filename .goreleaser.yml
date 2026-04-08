@@ -53,6 +53,9 @@ archives:
       - goos: darwin
         formats: [zip]
 
+release:
+  mode: replace
+
 checksum:
   name_template: "checksums.txt"
 
