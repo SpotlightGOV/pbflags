@@ -38,7 +38,8 @@ ifndef VERSION
 	$(error VERSION is required, e.g. make release-notes VERSION=v0.6.0)
 endif
 	@mkdir -p docs/releasenotes
-	RELEASE_TAG=$(VERSION) .github/scripts/generate-release-notes.sh
+	RELEASE_TAG=$(VERSION) OUTPUT_FILE=docs/releasenotes/$(VERSION).md \
+		.github/scripts/generate-release-notes.sh
 
 # Run the server locally with live asset reloading.
 # CSS/template changes take effect on browser refresh; Go changes need a restart.

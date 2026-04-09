@@ -90,7 +90,7 @@ fi
 PR_CONTEXT=""
 if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
   # Extract PR numbers from merge commit messages or (#NNN) references
-  PR_NUMBERS="$(git log "${RANGE}" --pretty=format:'%s' | grep -oP '#\K[0-9]+' | sort -un || true)"
+  PR_NUMBERS="$(git log "${RANGE}" --pretty=format:'%s' | grep -oE '#[0-9]+' | tr -d '#' | sort -un || true)"
 
   for pr in $PR_NUMBERS; do
     PR_JSON="$(curl -sf \
@@ -210,7 +210,9 @@ fi
 echo "$NOTES" > "$OUTPUT_FILE"
 echo "Release notes written to ${OUTPUT_FILE}"
 
-# Also save to docs/releasenotes/ for future reference
-mkdir -p "$RELEASE_NOTES_DIR"
-cp "$OUTPUT_FILE" "$RELEASE_NOTES_FILE"
-echo "Release notes also saved to docs/releasenotes/${RELEASE_TAG}.md"
+# Also save to docs/releasenotes/ for future reference (skip if already there)
+if [ "$(cd "$(dirname "$OUTPUT_FILE")" && pwd)/$(basename "$OUTPUT_FILE")" != "$RELEASE_NOTES_FILE" ]; then
+  mkdir -p "$RELEASE_NOTES_DIR"
+  cp "$OUTPUT_FILE" "$RELEASE_NOTES_FILE"
+  echo "Release notes also saved to docs/releasenotes/${RELEASE_TAG}.md"
+fi
