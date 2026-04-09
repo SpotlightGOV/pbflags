@@ -8,6 +8,7 @@ import (
 	"connectrpc.com/connect"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/flags/v1"
 	"github.com/SpotlightGOV/pbflags/gen/flags/v1/pbflagsv1connect"
+	"github.com/SpotlightGOV/pbflags/gen/flags/layers"
 )
 
 const FeatureID = "notifications"
@@ -30,7 +31,7 @@ const (
 
 // NotificationsFlags provides type-safe access to notifications feature flags.
 type NotificationsFlags interface {
-	EmailEnabled(ctx context.Context, entityID string) bool
+	EmailEnabled(ctx context.Context, user layers.UserID) bool
 	DigestFrequency(ctx context.Context) string
 	MaxRetries(ctx context.Context) int64
 	ScoreThreshold(ctx context.Context) float64
@@ -48,10 +49,10 @@ type notificationsFlagsClient struct {
 	evaluator pbflagsv1connect.FlagEvaluatorServiceClient
 }
 
-func (c *notificationsFlagsClient) EmailEnabled(ctx context.Context, entityID string) bool {
+func (c *notificationsFlagsClient) EmailEnabled(ctx context.Context, user layers.UserID) bool {
 	resp, err := c.evaluator.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{
 		FlagId:   EmailEnabledID,
-		EntityId: entityID,
+		EntityId: user.String(),
 	}))
 	if err != nil {
 		return EmailEnabledDefault

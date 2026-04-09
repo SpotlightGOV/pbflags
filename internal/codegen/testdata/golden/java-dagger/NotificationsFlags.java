@@ -3,6 +3,8 @@ package org.spotlightgov.pbflags.generated;
 
 import org.spotlightgov.pbflags.Flag;
 import org.spotlightgov.pbflags.FlagEvaluator;
+import org.spotlightgov.pbflags.LayerFlag;
+import org.spotlightgov.pbflags.generated.layers.UserID;
 
 /**
  * Generated type-safe flag accessors for the {@code notifications} feature.
@@ -24,7 +26,7 @@ public interface NotificationsFlags {
   double SCORE_THRESHOLD_DEFAULT = 0.75;
 
   /** Enable email notifications */
-  Flag<Boolean> emailEnabled();
+  LayerFlag<Boolean, UserID> emailEnabled();
 
   /** How often to send digest emails */
   Flag<String> digestFrequency();
@@ -42,8 +44,8 @@ public interface NotificationsFlags {
     return new NotificationsFlags() {
 
       @Override
-      public Flag<Boolean> emailEnabled() {
-        return evaluator.flag(EMAIL_ENABLED_ID, Boolean.class, EMAIL_ENABLED_DEFAULT);
+      public LayerFlag<Boolean, UserID> emailEnabled() {
+        return evaluator.layerFlag(EMAIL_ENABLED_ID, Boolean.class, EMAIL_ENABLED_DEFAULT, UserID::value);
       }
 
       @Override

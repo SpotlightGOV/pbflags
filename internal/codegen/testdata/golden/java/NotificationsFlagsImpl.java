@@ -3,18 +3,20 @@ package org.spotlightgov.pbflags.generated;
 
 import org.spotlightgov.pbflags.Flag;
 import org.spotlightgov.pbflags.FlagEvaluator;
+import org.spotlightgov.pbflags.LayerFlag;
+import org.spotlightgov.pbflags.generated.layers.UserID;
 
 /** Generated implementation of {@link NotificationsFlags}. */
 public final class NotificationsFlagsImpl implements NotificationsFlags {
 
-  private final Flag<Boolean> emailEnabled;
+  private final LayerFlag<Boolean, UserID> emailEnabled;
   private final Flag<String> digestFrequency;
   private final Flag<Long> maxRetries;
   private final Flag<Double> scoreThreshold;
 
   public NotificationsFlagsImpl(FlagEvaluator evaluator) {
     this.emailEnabled =
-        evaluator.flag(EMAIL_ENABLED_ID, Boolean.class, EMAIL_ENABLED_DEFAULT);
+        evaluator.layerFlag(EMAIL_ENABLED_ID, Boolean.class, EMAIL_ENABLED_DEFAULT, UserID::value);
     this.digestFrequency =
         evaluator.flag(DIGEST_FREQUENCY_ID, String.class, DIGEST_FREQUENCY_DEFAULT);
     this.maxRetries =
@@ -24,7 +26,7 @@ public final class NotificationsFlagsImpl implements NotificationsFlags {
   }
 
   @Override
-  public Flag<Boolean> emailEnabled() {
+  public LayerFlag<Boolean, UserID> emailEnabled() {
     return emailEnabled;
   }
 

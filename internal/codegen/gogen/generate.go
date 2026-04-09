@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/SpotlightGOV/pbflags/internal/codegen/layerutil"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -13,7 +14,7 @@ import (
 
 // Generate produces Go flag client code for all feature messages in the plugin request.
 func Generate(plugin *protogen.Plugin, packagePrefix string) error {
-	layers, err := discoverLayers(plugin)
+	layers, err := layerutil.DiscoverLayers(plugin)
 	if err != nil {
 		return err
 	}
@@ -58,7 +59,7 @@ type flagInfo struct {
 
 const connectImport = "connectrpc.com/connect"
 
-func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featureInfo, packagePrefix string, layers *layerDef) error {
+func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featureInfo, packagePrefix string, layers *layerutil.LayerDef) error {
 	flags, err := extractFlags(msg, layers)
 	if err != nil {
 		return err
@@ -301,7 +302,7 @@ func parseFeatureMessage(b []byte) *featureInfo {
 	return info
 }
 
-func extractFlags(msg *protogen.Message, layers *layerDef) ([]flagInfo, error) {
+func extractFlags(msg *protogen.Message, layers *layerutil.LayerDef) ([]flagInfo, error) {
 	var flags []flagInfo
 	for _, field := range msg.Fields {
 		fl, err := extractFlagFromField(field, layers)
@@ -315,7 +316,7 @@ func extractFlags(msg *protogen.Message, layers *layerDef) ([]flagInfo, error) {
 	return flags, nil
 }
 
-func extractFlagFromField(field *protogen.Field, layers *layerDef) (*flagInfo, error) {
+func extractFlagFromField(field *protogen.Field, layers *layerutil.LayerDef) (*flagInfo, error) {
 	opts := field.Desc.Options()
 	if opts == nil {
 		return nil, nil
@@ -361,13 +362,13 @@ func extractFlagFromField(field *protogen.Field, layers *layerDef) (*flagInfo, e
 	// Validate the layer against the discovered enum.
 	var resolvedLayerName string
 	if layerStr != "" {
-		lv, ok := layers.resolveLayer(layerStr)
+		lv, ok := layers.ResolveLayer(layerStr)
 		if !ok {
 			return nil, fmt.Errorf("flag %s.%s: layer %q does not match any value in the %s enum",
-				field.Parent.Desc.Name(), field.Desc.Name(), layerStr, layers.enumName)
+				field.Parent.Desc.Name(), field.Desc.Name(), layerStr, layers.EnumName)
 		}
-		if !lv.isGlobal {
-			resolvedLayerName = lv.layerName
+		if !lv.IsGlobal {
+			resolvedLayerName = lv.LayerName
 		}
 	}
 

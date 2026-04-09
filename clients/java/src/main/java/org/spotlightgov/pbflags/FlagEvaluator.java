@@ -62,4 +62,36 @@ public interface FlagEvaluator {
       }
     };
   }
+
+  /**
+   * Creates a {@link LayerFlag} instance for a layer-scoped flag.
+   *
+   * <p>The returned object is lightweight and stateless — it delegates to this evaluator on each
+   * {@code get()} call. The {@code idToString} function converts the typed layer ID to the raw
+   * string entity identifier sent to the evaluator. Safe to cache as a singleton.
+   *
+   * @param <T> the flag value type
+   * @param <ID> the typed layer ID type (e.g., UserID, EntityID)
+   * @param flagId the flag identifier
+   * @param type the expected value type
+   * @param compiledDefault the compiled default from the proto definition
+   * @param idToString converts the typed ID to a raw string entity identifier
+   */
+  default <T, ID> LayerFlag<T, ID> layerFlag(
+      String flagId,
+      Class<T> type,
+      T compiledDefault,
+      java.util.function.Function<ID, String> idToString) {
+    return new LayerFlag<>() {
+      @Override
+      public T get() {
+        return evaluate(flagId, type, compiledDefault, null);
+      }
+
+      @Override
+      public T get(ID id) {
+        return evaluate(flagId, type, compiledDefault, idToString.apply(id));
+      }
+    };
+  }
 }

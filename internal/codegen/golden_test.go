@@ -76,6 +76,17 @@ func generateWithBuf(t *testing.T, root, pluginBin, outDir, lang string, extraOp
 	require.NoError(t, err, "buf generate (%s): %s", lang, out)
 }
 
+// goldenFile pairs a golden file's relative subpath (under the goldenDir) with
+// the filename to search for in the generated output.
+type goldenFile struct {
+	subpath  string // relative path under goldenDir (e.g., "layers/UserID.java")
+	filename string // basename to find in generated output
+}
+
+func gf(subpath string) goldenFile {
+	return goldenFile{subpath: subpath, filename: filepath.Base(subpath)}
+}
+
 func TestGoldenGo(t *testing.T) {
 	root := projectRoot(t)
 	pluginBin := buildPlugin(t, root)
@@ -103,14 +114,20 @@ func TestGoldenJava(t *testing.T) {
 	pluginBin := buildPlugin(t, root)
 	goldenDir := filepath.Join(root, "internal", "codegen", "testdata", "golden", "java")
 
-	javaFiles := []string{"NotificationsFlags.java", "NotificationsFlagsImpl.java", "PbflagsFlagDescriptorProvider.java"}
+	javaFiles := []goldenFile{
+		gf("NotificationsFlags.java"),
+		gf("NotificationsFlagsImpl.java"),
+		gf("PbflagsFlagDescriptorProvider.java"),
+		gf("layers/UserID.java"),
+		gf("layers/EntityID.java"),
+	}
 
 	if *update {
 		tmpDir := t.TempDir()
 		generateWithBuf(t, root, pluginBin, tmpDir, "java")
 		for _, f := range javaFiles {
-			generated := findFile(t, tmpDir, f)
-			copyFile(t, generated, filepath.Join(goldenDir, f))
+			generated := findFile(t, tmpDir, f.filename)
+			copyFile(t, generated, filepath.Join(goldenDir, f.subpath))
 		}
 		t.Log("updated golden Java files")
 		return
@@ -119,8 +136,8 @@ func TestGoldenJava(t *testing.T) {
 	tmpDir := t.TempDir()
 	generateWithBuf(t, root, pluginBin, tmpDir, "java")
 	for _, f := range javaFiles {
-		generated := findFile(t, tmpDir, f)
-		compareFiles(t, filepath.Join(goldenDir, f), generated)
+		generated := findFile(t, tmpDir, f.filename)
+		compareFiles(t, filepath.Join(goldenDir, f.subpath), generated)
 	}
 }
 
@@ -129,14 +146,21 @@ func TestGoldenJavaDagger(t *testing.T) {
 	pluginBin := buildPlugin(t, root)
 	goldenDir := filepath.Join(root, "internal", "codegen", "testdata", "golden", "java-dagger")
 
-	daggerFiles := []string{"NotificationsFlags.java", "NotificationsFlagsImpl.java", "FlagRegistryModule.java", "PbflagsFlagDescriptorProvider.java"}
+	daggerFiles := []goldenFile{
+		gf("NotificationsFlags.java"),
+		gf("NotificationsFlagsImpl.java"),
+		gf("FlagRegistryModule.java"),
+		gf("PbflagsFlagDescriptorProvider.java"),
+		gf("layers/UserID.java"),
+		gf("layers/EntityID.java"),
+	}
 
 	if *update {
 		tmpDir := t.TempDir()
 		generateWithBuf(t, root, pluginBin, tmpDir, "java", "java_dagger=true")
 		for _, f := range daggerFiles {
-			generated := findFile(t, tmpDir, f)
-			copyFile(t, generated, filepath.Join(goldenDir, f))
+			generated := findFile(t, tmpDir, f.filename)
+			copyFile(t, generated, filepath.Join(goldenDir, f.subpath))
 		}
 		t.Log("updated golden Java Dagger files")
 		return
@@ -145,8 +169,8 @@ func TestGoldenJavaDagger(t *testing.T) {
 	tmpDir := t.TempDir()
 	generateWithBuf(t, root, pluginBin, tmpDir, "java", "java_dagger=true")
 	for _, f := range daggerFiles {
-		generated := findFile(t, tmpDir, f)
-		compareFiles(t, filepath.Join(goldenDir, f), generated)
+		generated := findFile(t, tmpDir, f.filename)
+		compareFiles(t, filepath.Join(goldenDir, f.subpath), generated)
 	}
 }
 

@@ -89,10 +89,13 @@ func TestSuccessfulEvaluation(t *testing.T) {
 	pkgDir := filepath.Join(modDir, "notificationsflags")
 	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
 
-	// Copy generated files.
+	// Copy generated files (skip subdirectories).
 	entries, err := os.ReadDir(generatedDir)
 	require.NoError(t, err)
 	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
 		data, err := os.ReadFile(filepath.Join(generatedDir, e.Name()))
 		require.NoError(t, err)
 		require.NoError(t, os.WriteFile(filepath.Join(pkgDir, e.Name()), data, 0o644))
@@ -122,6 +125,7 @@ import (
 	"connectrpc.com/connect"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
+	"github.com/SpotlightGOV/pbflags/gen/pbflags/layers"
 	nf "testeval/notificationsflags"
 )
 
@@ -150,7 +154,7 @@ func TestBoolFlag(t *testing.T) {
 		nf.EmailEnabledID: {Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: false}}},
 	}}
 	client := nf.NewNotificationsFlagsClient(mock)
-	if got := client.EmailEnabled(context.Background(), "user-1"); got != false {
+	if got := client.EmailEnabled(context.Background(), layers.User("user-1")); got != false {
 		t.Errorf("EmailEnabled = %v, want false", got)
 	}
 }
@@ -161,7 +165,7 @@ func TestStringFlag(t *testing.T) {
 	}}
 	client := nf.NewNotificationsFlagsClient(mock)
 	if got := client.DigestFrequency(context.Background()); got != "weekly" {
-		t.Errorf("DigestFrequency = %q, want %q", got, "weekly")
+		t.Errorf("DigestFrequency = %%q, want %%q", got, "weekly")
 	}
 }
 
@@ -171,7 +175,7 @@ func TestInt64Flag(t *testing.T) {
 	}}
 	client := nf.NewNotificationsFlagsClient(mock)
 	if got := client.MaxRetries(context.Background()); got != 10 {
-		t.Errorf("MaxRetries = %d, want 10", got)
+		t.Errorf("MaxRetries = %%d, want 10", got)
 	}
 }
 
@@ -181,7 +185,7 @@ func TestDoubleFlag(t *testing.T) {
 	}}
 	client := nf.NewNotificationsFlagsClient(mock)
 	if got := client.ScoreThreshold(context.Background()); got != 0.95 {
-		t.Errorf("ScoreThreshold = %f, want 0.95", got)
+		t.Errorf("ScoreThreshold = %%f, want 0.95", got)
 	}
 }
 
@@ -191,17 +195,17 @@ func TestErrorReturnsDefaults(t *testing.T) {
 	client := nf.NewNotificationsFlagsClient(mock)
 	ctx := context.Background()
 
-	if got := client.EmailEnabled(ctx, "user-1"); got != nf.EmailEnabledDefault {
-		t.Errorf("EmailEnabled on error = %v, want %v", got, nf.EmailEnabledDefault)
+	if got := client.EmailEnabled(ctx, layers.User("user-1")); got != nf.EmailEnabledDefault {
+		t.Errorf("EmailEnabled on error = %%v, want %%v", got, nf.EmailEnabledDefault)
 	}
 	if got := client.DigestFrequency(ctx); got != nf.DigestFrequencyDefault {
-		t.Errorf("DigestFrequency on error = %q, want %q", got, nf.DigestFrequencyDefault)
+		t.Errorf("DigestFrequency on error = %%q, want %%q", got, nf.DigestFrequencyDefault)
 	}
 	if got := client.MaxRetries(ctx); got != nf.MaxRetriesDefault {
-		t.Errorf("MaxRetries on error = %d, want %d", got, nf.MaxRetriesDefault)
+		t.Errorf("MaxRetries on error = %%d, want %%d", got, nf.MaxRetriesDefault)
 	}
 	if got := client.ScoreThreshold(ctx); got != nf.ScoreThresholdDefault {
-		t.Errorf("ScoreThreshold on error = %f, want %f", got, nf.ScoreThresholdDefault)
+		t.Errorf("ScoreThreshold on error = %%f, want %%f", got, nf.ScoreThresholdDefault)
 	}
 }
 
@@ -209,7 +213,7 @@ func TestStatus(t *testing.T) {
 	mock := &mockEvaluator{responses: map[string]*pbflagsv1.EvaluateResponse{}}
 	client := nf.NewNotificationsFlagsClient(mock)
 	if got := client.Status(context.Background()); got != pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_SERVING {
-		t.Errorf("Status = %v, want SERVING", got)
+		t.Errorf("Status = %%v, want SERVING", got)
 	}
 }
 `
