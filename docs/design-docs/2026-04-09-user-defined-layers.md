@@ -256,3 +256,144 @@ We currently have one consumer (Spotlight), and this change is coordinated.
 | Go codegen | Layer enum discovery, layers package generation, typed ID signatures |
 | Java codegen | Same as Go, plus `LayerFlag<T, ID>` interface |
 | Database schema | No changes — `flags.layer` is already `VARCHAR(50)` |
+
+## Layer Change Semantics
+
+A flag's layer determines its generated client signature and the semantics of
+its override data. Changing a flag's layer is a breaking change with varying
+degrees of risk depending on the direction. The lint tool (`pbflags-lint`)
+enforces these rules.
+
+### Architecture context
+
+The wire protocol (`EvaluateRequest.entity_id`) and evaluator are
+layer-agnostic — they only distinguish "has an entity_id" vs. "doesn't."
+The `entity_id` is an opaque string everywhere below the generated client.
+This means the evaluator always produces correct results for the *current*
+set of overrides, but the *meaning* of those overrides depends on the layer.
+
+The override table (`flag_overrides`) is keyed by `(flag_id, entity_id)`.
+It does not record which layer the override was written under. Override rows
+persist across layer changes unless explicitly deleted.
+
+### Allowed: Global to Layer
+
+A flag that was global (no per-entity overrides) gains a layer dimension.
+
+| Aspect | Impact |
+|---|---|
+| Generated signature | Parameter added — compile error until callers updated |
+| Existing overrides | None exist (global flags cannot have overrides) |
+| Evaluation during rollout | Old binaries send empty `entity_id` — evaluator skips override lookup, returns global state. New binaries send a real `entity_id` — evaluator finds no overrides, falls through to global state. **Same result either way.** |
+| Data safety | Safe — no existing data to misinterpret |
+
+**Lint rule:** Allowed. This is the expected upgrade path (e.g., making a
+global flag per-user or per-tenant).
+
+### Forbidden: Layer to Global
+
+A flag that had per-entity overrides becomes global.
+
+| Aspect | Impact |
+|---|---|
+| Generated signature | Parameter removed — compile error until callers updated |
+| Existing overrides | Orphaned — rows remain in `flag_overrides` but are never evaluated |
+| Evaluation | Correct — evaluator checks `IsGlobalLayer()`, skips override lookup |
+| Data safety | The orphaned overrides are invisible but not deleted. If the flag is later changed back to a layer, the stale overrides reappear with potentially incorrect values. |
+
+**Why this is forbidden, not just warned:** The orphaned override data creates
+a hidden landmine. It cannot be safely deleted until after the rollout is
+fully complete (deleting during rollout would cause inconsistent evaluation
+across old and new binaries). But if it is not deleted and the flag is later
+re-layered, stale overrides silently take effect.
+
+**Lint rule:** Error. Suggest defining a new global flag and migrating code.
+See [Migrating a flag to a different layer](#migrating-a-flag-to-a-different-layer).
+
+### Forbidden: Layer A to Layer B
+
+A flag changes its override dimension (e.g., from per-user to per-entity).
+
+| Aspect | Impact |
+|---|---|
+| Generated signature | Parameter type changes — compile error until callers updated |
+| Existing overrides | **Semantically invalid** — override rows keyed by user IDs are now interpreted as entity IDs |
+| Evaluation | **Incorrect if ID spaces overlap** — an entity ID that happens to match a stale user ID would get the wrong override value |
+| Data safety | Unsafe — override data was written under different semantics |
+
+**Lint rule:** Error. Suggest defining a new flag with the desired layer and
+migrating overrides. See [Migrating a flag to a different layer](#migrating-a-flag-to-a-different-layer).
+
+### Summary
+
+| Transition | Lint | Reason |
+|---|---|---|
+| Global → Layer | Allowed | No existing overrides, safe rollout |
+| Layer → Global | Error | Orphaned overrides create hidden landmine |
+| Layer A → Layer B | Error | Override data has wrong-dimension IDs |
+
+### Migrating a flag to a different layer
+
+When you need to change a flag's layer (either to global, or to a different
+non-global layer), the safe approach is to define a new flag:
+
+1. **Define a new flag** in the same feature message with the desired layer
+   and an appropriate default value. Give it a new field number (proto
+   identity is `feature_id/field_number`, which must be unique and stable).
+
+2. **Regenerate code.** The new flag appears alongside the old one in the
+   generated client. Both are available simultaneously.
+
+3. **Set up overrides** on the new flag via the admin UI or API. If migrating
+   from one layer to another (e.g., user → entity), create new overrides
+   under the correct entity IDs.
+
+4. **Update application code** to read from the new flag instead of the old
+   one. Deploy.
+
+5. **Verify** that the new flag evaluates correctly for all entities.
+
+6. **Archive the old flag.** Remove the old field from the proto (or mark it
+   `reserved`). Run `pbflags-sync` — the old flag will be marked as archived.
+   Its override data remains in the database but is no longer evaluated.
+
+This approach avoids any window of incorrect evaluation because both flags
+coexist during the transition. The old flag continues to evaluate correctly
+with its original overrides until all code is switched over.
+
+**Example:** Changing `email_enabled` from per-user to per-entity.
+
+```protobuf
+message Notifications {
+  option (pbflags.feature) = { id: "notifications" ... };
+
+  // Old flag — will be archived after migration.
+  bool email_enabled = 1 [(pbflags.flag) = {
+    description: "Enable email notifications (per-user, deprecated)"
+    default: { bool_value: { value: true } }
+    layer: "user"
+  }];
+
+  // New flag with the desired layer.
+  bool email_enabled_v2 = 5 [(pbflags.flag) = {
+    description: "Enable email notifications (per-entity)"
+    default: { bool_value: { value: true } }
+    layer: "entity"
+  }];
+}
+```
+
+After migration is complete and all code reads `email_enabled_v2`, remove
+field 1 and reserve the number:
+
+```protobuf
+message Notifications {
+  reserved 1; // was: email_enabled (migrated to email_enabled_v2)
+
+  bool email_enabled_v2 = 5 [(pbflags.flag) = {
+    description: "Enable email notifications (per-entity)"
+    default: { bool_value: { value: true } }
+    layer: "entity"
+  }];
+}
+```

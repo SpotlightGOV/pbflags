@@ -301,6 +301,95 @@ Environment variables override CLI flags:
 - **Immutable identity**: Flag identity is `feature_id/field_number`, safe to rename fields
 - **Audit trail**: All state changes logged with actor and timestamp
 
+## Layers
+
+Layers define the override dimensions for your flag system. Each non-global
+layer represents a dimension along which flags can vary (e.g., per-user,
+per-entity, per-tenant). You define your layers as a proto enum annotated
+with `option (pbflags.layers) = true`:
+
+```protobuf
+enum Layer {
+  option (pbflags.layers) = true;
+  LAYER_UNSPECIFIED = 0;
+  LAYER_GLOBAL = 1;
+  LAYER_USER = 2;
+  LAYER_ENTITY = 3;
+}
+```
+
+The codegen generates a **typed ID wrapper** for each non-global layer.
+These types enforce at compile time that callers pass the correct kind of
+identifier for each flag:
+
+```go
+// Can't pass an EntityID where a UserID is expected — compiler error.
+emailEnabled := client.EmailEnabled(ctx, layers.User("user-123"))
+lookbackDays := client.LookbackDays(ctx, layers.Entity("govt-body-456"))
+
+// Zero value evaluates global state (no per-entity override applied).
+globalDefault := client.EmailEnabled(ctx, layers.UserID{})
+```
+
+### How layers flow through the system
+
+| Component | What it sees | Layer-aware? |
+|---|---|---|
+| Proto definition | `layer: "user"` | Source of truth |
+| Generated client | Typed parameter (`layers.UserID`) | Yes — enforces correct ID type |
+| Wire protocol | `entity_id` (opaque string) | No — layer-agnostic |
+| Evaluator | `IsGlobalLayer()` | Minimal — only global vs. non-global |
+| Database | `flags.layer` VARCHAR, `flag_overrides(flag_id, entity_id)` | Stores layer name; overrides keyed by opaque entity ID |
+| Admin UI | Displays layer name, shows override section for non-global | Displays only |
+
+The wire protocol and evaluator are intentionally layer-agnostic. Type
+safety is enforced in the generated client code, not on the wire.
+
+### Changing a flag's layer
+
+A flag's layer is part of its contract with consumers — changing it changes
+the generated client signature and can invalidate existing override data.
+
+| Transition | Allowed? | Why |
+|---|---|---|
+| Global → Layer | **Yes** | No existing overrides. Safe rollout — empty `entity_id` falls back to global state. |
+| Layer → Global | **No** | Orphaned overrides remain in the database. Cannot be deleted until rollout is complete, but if not deleted, silently reappear if the flag is later re-layered. |
+| Layer A → Layer B | **No** | Existing override rows were written with Layer A's ID semantics (e.g., user IDs). After the change, they're interpreted as Layer B IDs (e.g., entity IDs). If ID spaces overlap, overrides evaluate incorrectly. |
+
+The lint tool (`pbflags-lint`) enforces these rules at pre-commit time.
+
+### Migrating a flag to a different layer
+
+When you need to change a flag's layer, define a new flag instead of
+modifying the existing one:
+
+1. **Add a new flag** in the same feature message with the desired layer and
+   a new field number.
+2. **Regenerate code.** Both flags are available simultaneously.
+3. **Set up overrides** on the new flag for the appropriate entities.
+4. **Update application code** to read the new flag. Deploy.
+5. **Archive the old flag.** Remove the field from the proto (or mark it
+   `reserved`). Run `pbflags-sync` to archive it.
+
+This avoids any window of incorrect evaluation — both flags coexist during
+the transition, each with correct override data for its layer.
+
+```protobuf
+message Notifications {
+  // Old: per-user (will be archived after migration)
+  bool email_enabled = 1 [(pbflags.flag) = {
+    layer: "user"
+    default: { bool_value: { value: true } }
+  }];
+
+  // New: per-entity
+  bool email_enabled_v2 = 5 [(pbflags.flag) = {
+    layer: "entity"
+    default: { bool_value: { value: true } }
+  }];
+}
+```
+
 ## Repository Structure
 
 ```
