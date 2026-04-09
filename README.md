@@ -33,6 +33,14 @@ pbflags lets you define feature flags as protobuf messages and generates type-sa
 syntax = "proto3";
 import "pbflags/options.proto";
 
+// Define your override layers. Exactly one enum must carry this annotation.
+enum Layer {
+  option (pbflags.layers) = true;
+  LAYER_UNSPECIFIED = 0;
+  LAYER_GLOBAL = 1;
+  LAYER_USER = 2;
+}
+
 message Notifications {
   option (pbflags.feature) = {
     id: "notifications"
@@ -43,13 +51,12 @@ message Notifications {
   bool email_enabled = 1 [(pbflags.flag) = {
     description: "Enable email notifications"
     default: { bool_value: { value: true } }
-    layer: LAYER_USER
+    layer: "user"
   }];
 
   string digest_frequency = 2 [(pbflags.flag) = {
     description: "Digest email frequency"
     default: { string_value: { value: "daily" } }
-    layer: LAYER_GLOBAL
   }];
 }
 ```
@@ -95,12 +102,17 @@ inputs:
 ### 3. Use in your application (Go)
 
 ```go
+import "github.com/yourorg/yourrepo/gen/flags/layers"
+
 // Create a client connected to the evaluator
 client := notificationsflags.NewNotificationsFlagsClient(evaluatorClient)
 
-// Type-safe flag access with compiled defaults
-emailEnabled := client.EmailEnabled(ctx, userID)  // bool
-frequency := client.DigestFrequency(ctx)           // string
+// Type-safe flag access with compiled defaults and typed layer IDs
+emailEnabled := client.EmailEnabled(ctx, layers.User("user-123"))  // bool
+frequency := client.DigestFrequency(ctx)                            // string
+
+// Pass zero value for global evaluation (no entity context)
+globalDefault := client.EmailEnabled(ctx, layers.UserID{})          // bool
 ```
 
 ### 4. Use in your application (Java)
@@ -109,8 +121,8 @@ frequency := client.DigestFrequency(ctx)           // string
 // Create via factory method (framework-agnostic)
 NotificationsFlags flags = NotificationsFlags.forEvaluator(evaluator);
 
-// Type-safe flag access
-boolean emailEnabled = flags.emailEnabled().get(userId);
+// Type-safe flag access with typed layer IDs
+boolean emailEnabled = flags.emailEnabled().get(UserID.of("user-123"));
 String frequency = flags.digestFrequency().get();
 ```
 
@@ -226,9 +238,9 @@ When running in combined mode (`--admin`), pbflags serves an embedded web dashbo
 ### Features
 
 - **Dashboard**: Overview of all features and flags with inline state toggles (ENABLED/DEFAULT/KILLED)
-- **Flag Detail**: Per-flag view with state/value editing, override management (USER layer flags), and recent audit history
+- **Flag Detail**: Per-flag view with state/value editing, override management (layer-scoped flags), and recent audit history
 - **Audit Log**: Filterable log of all state changes with actor attribution
-- **Override Management**: Add and remove per-entity overrides for USER layer flags
+- **Override Management**: Add and remove per-entity overrides for layer-scoped flags
 
 ### Enabling
 
