@@ -249,6 +249,30 @@
         }
       }
     }
+
+    // Populate the layer filter dropdown from actual flag data-layer attributes.
+    function populateLayerFilter() {
+      var sel = document.getElementById('filter-layer');
+      if (!sel) return;
+      var current = sel.value;
+      var layers = {};
+      document.querySelectorAll('[data-layer]').forEach(function(el) {
+        var l = el.getAttribute('data-layer');
+        if (l) layers[l] = true;
+      });
+      var sorted = Object.keys(layers).sort();
+      // Reset options, keeping "All".
+      sel.innerHTML = '<option value="">All</option>';
+      sorted.forEach(function(l) {
+        var opt = document.createElement('option');
+        opt.value = l;
+        opt.textContent = l;
+        if (l === current) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+    populateLayerFilter();
+    document.body.addEventListener('htmx:afterSettle', populateLayerFilter);
   </script>
 </body>
 </html>

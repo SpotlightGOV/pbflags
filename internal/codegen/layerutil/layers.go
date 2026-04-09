@@ -33,7 +33,7 @@ type LayerDef struct {
 // discovered layer values. Returns the matching LayerValue and true, or
 // false if the name doesn't match any value.
 func (ld *LayerDef) ResolveLayer(name string) (LayerValue, bool) {
-	if name == "" {
+	if name == "" || strings.EqualFold(name, "global") {
 		return LayerValue{IsGlobal: true}, true
 	}
 	lv, ok := ld.ByName[strings.ToLower(name)]

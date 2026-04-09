@@ -164,13 +164,13 @@
 <div class="detail-section">
   <div class="detail-section-header">
     <h3>Overrides</h3>
-    <span class="badge badge-layer badge-layer-user" style="font-size:10px">USER layer</span>
+    <span class="badge badge-layer badge-layer-user" style="font-size:10px">{{layerLabel .Flag.Layer}} layer</span>
   </div>
   {{if .Flag.Overrides}}
   <table class="override-table">
     <thead>
       <tr>
-        <th>Entity ID</th>
+        <th>{{layerLabel .Flag.Layer}} ID</th>
         <th>Value</th>
         <th></th>
       </tr>
@@ -192,7 +192,7 @@
     </tbody>
   </table>
   {{else}}
-  <div class="empty-state" style="padding: 20px">No entity overrides configured.</div>
+  <div class="empty-state" style="padding: 20px">No overrides configured for this flag.</div>
   {{end}}
 
   <form class="override-form"
@@ -201,8 +201,8 @@
         hx-swap="innerHTML"
         hx-vals='{"state":"ENABLED","flag_type":"{{.Flag.FlagType}}"}'>
     <div class="field">
-      <label>Entity ID</label>
-      <input type="text" name="entity_id" placeholder="user-123" required style="width: 140px">
+      <label>{{layerLabel .Flag.Layer}} ID</label>
+      <input type="text" name="entity_id" placeholder="identifier" required style="width: 140px">
     </div>
     <div class="field">
       <label>Value</label>
