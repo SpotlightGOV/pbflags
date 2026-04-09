@@ -13,9 +13,16 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate CI/CD token
+        id: cicd-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.CICD_APP_ID }}
+          private-key: ${{ secrets.CICD_APP_PRIVATE_KEY }}
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          token: ${{ steps.cicd-token.outputs.token }}
       - name: Verify tag and branch conventions
         id: release-meta
         run: |
@@ -95,8 +102,8 @@ jobs:
           if [ ! -f "$NOTES_FILE" ]; then
             mkdir -p docs/releasenotes
             cp release-notes.md "$NOTES_FILE"
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git config user.name "spotlight-cicd[bot]"
+            git config user.email "${{ steps.cicd-token.outputs.app-slug }}[bot]@users.noreply.github.com"
             git add "$NOTES_FILE"
             git commit -m "Add ${VERSION} release notes"
             # Pull-rebase in case the branch advanced since checkout (e.g.,
