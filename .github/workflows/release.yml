@@ -99,7 +99,10 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add "$NOTES_FILE"
             git commit -m "Add ${VERSION} release notes"
-            git push origin "HEAD:${TARGET_BRANCH}"
+            # Pull-rebase in case the branch advanced since checkout (e.g.,
+            # someone pushed release notes manually before CI got here).
+            git pull --rebase origin "${TARGET_BRANCH}" || true
+            git push origin "HEAD:${TARGET_BRANCH}" || echo "WARNING: Could not push release notes commit. Notes may already exist on ${TARGET_BRANCH}."
           fi
       - name: Create release branch
         if: steps.release-meta.outputs.create_release_branch != ''
