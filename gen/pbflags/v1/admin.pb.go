@@ -177,7 +177,7 @@ type FlagDetail struct {
 	DisplayName  string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	Description  string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	FlagType     FlagType               `protobuf:"varint,4,opt,name=flag_type,json=flagType,proto3,enum=pbflags.v1.FlagType" json:"flag_type,omitempty"`
-	Layer        pbflags.Layer          `protobuf:"varint,5,opt,name=layer,proto3,enum=pbflags.Layer" json:"layer,omitempty"`
+	Layer        string                 `protobuf:"bytes,5,opt,name=layer,proto3" json:"layer,omitempty"`
 	State        State                  `protobuf:"varint,6,opt,name=state,proto3,enum=pbflags.v1.State" json:"state,omitempty"`
 	DefaultValue *FlagValue             `protobuf:"bytes,7,opt,name=default_value,json=defaultValue,proto3" json:"default_value,omitempty"`
 	CurrentValue *FlagValue             `protobuf:"bytes,8,opt,name=current_value,json=currentValue,proto3" json:"current_value,omitempty"`
@@ -247,11 +247,11 @@ func (x *FlagDetail) GetFlagType() FlagType {
 	return FlagType_FLAG_TYPE_UNSPECIFIED
 }
 
-func (x *FlagDetail) GetLayer() pbflags.Layer {
+func (x *FlagDetail) GetLayer() string {
 	if x != nil {
 		return x.Layer
 	}
-	return pbflags.Layer(0)
+	return ""
 }
 
 func (x *FlagDetail) GetState() State {
@@ -959,14 +959,14 @@ const file_pbflags_v1_admin_proto_rawDesc = "" +
 	"feature_id\x18\x01 \x01(\tR\tfeatureId\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x14\n" +
 	"\x05owner\x18\x03 \x01(\tR\x05owner\x12,\n" +
-	"\x05flags\x18\x04 \x03(\v2\x16.pbflags.v1.FlagDetailR\x05flags\"\x83\x04\n" +
+	"\x05flags\x18\x04 \x03(\v2\x16.pbflags.v1.FlagDetailR\x05flags\"\xf3\x03\n" +
 	"\n" +
 	"FlagDetail\x12\x17\n" +
 	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x121\n" +
-	"\tflag_type\x18\x04 \x01(\x0e2\x14.pbflags.v1.FlagTypeR\bflagType\x12$\n" +
-	"\x05layer\x18\x05 \x01(\x0e2\x0e.pbflags.LayerR\x05layer\x12'\n" +
+	"\tflag_type\x18\x04 \x01(\x0e2\x14.pbflags.v1.FlagTypeR\bflagType\x12\x14\n" +
+	"\x05layer\x18\x05 \x01(\tR\x05layer\x12'\n" +
 	"\x05state\x18\x06 \x01(\x0e2\x11.pbflags.v1.StateR\x05state\x12:\n" +
 	"\rdefault_value\x18\a \x01(\v2\x15.pbflags.v1.FlagValueR\fdefaultValue\x12:\n" +
 	"\rcurrent_value\x18\b \x01(\v2\x15.pbflags.v1.FlagValueR\fcurrentValue\x12<\n" +
@@ -1054,50 +1054,48 @@ var file_pbflags_v1_admin_proto_goTypes = []any{
 	(*GetAuditLogResponse)(nil),        // 14: pbflags.v1.GetAuditLogResponse
 	(*AuditLogEntry)(nil),              // 15: pbflags.v1.AuditLogEntry
 	(FlagType)(0),                      // 16: pbflags.v1.FlagType
-	(pbflags.Layer)(0),                 // 17: pbflags.Layer
-	(State)(0),                         // 18: pbflags.v1.State
-	(*FlagValue)(nil),                  // 19: pbflags.v1.FlagValue
-	(*pbflags.SupportedValues)(nil),    // 20: pbflags.SupportedValues
-	(*timestamppb.Timestamp)(nil),      // 21: google.protobuf.Timestamp
+	(State)(0),                         // 17: pbflags.v1.State
+	(*FlagValue)(nil),                  // 18: pbflags.v1.FlagValue
+	(*pbflags.SupportedValues)(nil),    // 19: pbflags.SupportedValues
+	(*timestamppb.Timestamp)(nil),      // 20: google.protobuf.Timestamp
 }
 var file_pbflags_v1_admin_proto_depIdxs = []int32{
 	2,  // 0: pbflags.v1.ListFeaturesResponse.features:type_name -> pbflags.v1.FeatureDetail
 	3,  // 1: pbflags.v1.FeatureDetail.flags:type_name -> pbflags.v1.FlagDetail
 	16, // 2: pbflags.v1.FlagDetail.flag_type:type_name -> pbflags.v1.FlagType
-	17, // 3: pbflags.v1.FlagDetail.layer:type_name -> pbflags.Layer
-	18, // 4: pbflags.v1.FlagDetail.state:type_name -> pbflags.v1.State
-	19, // 5: pbflags.v1.FlagDetail.default_value:type_name -> pbflags.v1.FlagValue
-	19, // 6: pbflags.v1.FlagDetail.current_value:type_name -> pbflags.v1.FlagValue
-	4,  // 7: pbflags.v1.FlagDetail.overrides:type_name -> pbflags.v1.FlagOverrideDetail
-	20, // 8: pbflags.v1.FlagDetail.supported_values:type_name -> pbflags.SupportedValues
-	18, // 9: pbflags.v1.FlagOverrideDetail.state:type_name -> pbflags.v1.State
-	19, // 10: pbflags.v1.FlagOverrideDetail.value:type_name -> pbflags.v1.FlagValue
-	3,  // 11: pbflags.v1.GetFlagResponse.flag:type_name -> pbflags.v1.FlagDetail
-	18, // 12: pbflags.v1.UpdateFlagStateRequest.state:type_name -> pbflags.v1.State
-	19, // 13: pbflags.v1.UpdateFlagStateRequest.value:type_name -> pbflags.v1.FlagValue
-	18, // 14: pbflags.v1.SetFlagOverrideRequest.state:type_name -> pbflags.v1.State
-	19, // 15: pbflags.v1.SetFlagOverrideRequest.value:type_name -> pbflags.v1.FlagValue
-	15, // 16: pbflags.v1.GetAuditLogResponse.entries:type_name -> pbflags.v1.AuditLogEntry
-	19, // 17: pbflags.v1.AuditLogEntry.old_value:type_name -> pbflags.v1.FlagValue
-	19, // 18: pbflags.v1.AuditLogEntry.new_value:type_name -> pbflags.v1.FlagValue
-	21, // 19: pbflags.v1.AuditLogEntry.created_at:type_name -> google.protobuf.Timestamp
-	0,  // 20: pbflags.v1.FlagAdminService.ListFeatures:input_type -> pbflags.v1.ListFeaturesRequest
-	5,  // 21: pbflags.v1.FlagAdminService.GetFlag:input_type -> pbflags.v1.GetFlagRequest
-	7,  // 22: pbflags.v1.FlagAdminService.UpdateFlagState:input_type -> pbflags.v1.UpdateFlagStateRequest
-	9,  // 23: pbflags.v1.FlagAdminService.SetFlagOverride:input_type -> pbflags.v1.SetFlagOverrideRequest
-	11, // 24: pbflags.v1.FlagAdminService.RemoveFlagOverride:input_type -> pbflags.v1.RemoveFlagOverrideRequest
-	13, // 25: pbflags.v1.FlagAdminService.GetAuditLog:input_type -> pbflags.v1.GetAuditLogRequest
-	1,  // 26: pbflags.v1.FlagAdminService.ListFeatures:output_type -> pbflags.v1.ListFeaturesResponse
-	6,  // 27: pbflags.v1.FlagAdminService.GetFlag:output_type -> pbflags.v1.GetFlagResponse
-	8,  // 28: pbflags.v1.FlagAdminService.UpdateFlagState:output_type -> pbflags.v1.UpdateFlagStateResponse
-	10, // 29: pbflags.v1.FlagAdminService.SetFlagOverride:output_type -> pbflags.v1.SetFlagOverrideResponse
-	12, // 30: pbflags.v1.FlagAdminService.RemoveFlagOverride:output_type -> pbflags.v1.RemoveFlagOverrideResponse
-	14, // 31: pbflags.v1.FlagAdminService.GetAuditLog:output_type -> pbflags.v1.GetAuditLogResponse
-	26, // [26:32] is the sub-list for method output_type
-	20, // [20:26] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	17, // 3: pbflags.v1.FlagDetail.state:type_name -> pbflags.v1.State
+	18, // 4: pbflags.v1.FlagDetail.default_value:type_name -> pbflags.v1.FlagValue
+	18, // 5: pbflags.v1.FlagDetail.current_value:type_name -> pbflags.v1.FlagValue
+	4,  // 6: pbflags.v1.FlagDetail.overrides:type_name -> pbflags.v1.FlagOverrideDetail
+	19, // 7: pbflags.v1.FlagDetail.supported_values:type_name -> pbflags.SupportedValues
+	17, // 8: pbflags.v1.FlagOverrideDetail.state:type_name -> pbflags.v1.State
+	18, // 9: pbflags.v1.FlagOverrideDetail.value:type_name -> pbflags.v1.FlagValue
+	3,  // 10: pbflags.v1.GetFlagResponse.flag:type_name -> pbflags.v1.FlagDetail
+	17, // 11: pbflags.v1.UpdateFlagStateRequest.state:type_name -> pbflags.v1.State
+	18, // 12: pbflags.v1.UpdateFlagStateRequest.value:type_name -> pbflags.v1.FlagValue
+	17, // 13: pbflags.v1.SetFlagOverrideRequest.state:type_name -> pbflags.v1.State
+	18, // 14: pbflags.v1.SetFlagOverrideRequest.value:type_name -> pbflags.v1.FlagValue
+	15, // 15: pbflags.v1.GetAuditLogResponse.entries:type_name -> pbflags.v1.AuditLogEntry
+	18, // 16: pbflags.v1.AuditLogEntry.old_value:type_name -> pbflags.v1.FlagValue
+	18, // 17: pbflags.v1.AuditLogEntry.new_value:type_name -> pbflags.v1.FlagValue
+	20, // 18: pbflags.v1.AuditLogEntry.created_at:type_name -> google.protobuf.Timestamp
+	0,  // 19: pbflags.v1.FlagAdminService.ListFeatures:input_type -> pbflags.v1.ListFeaturesRequest
+	5,  // 20: pbflags.v1.FlagAdminService.GetFlag:input_type -> pbflags.v1.GetFlagRequest
+	7,  // 21: pbflags.v1.FlagAdminService.UpdateFlagState:input_type -> pbflags.v1.UpdateFlagStateRequest
+	9,  // 22: pbflags.v1.FlagAdminService.SetFlagOverride:input_type -> pbflags.v1.SetFlagOverrideRequest
+	11, // 23: pbflags.v1.FlagAdminService.RemoveFlagOverride:input_type -> pbflags.v1.RemoveFlagOverrideRequest
+	13, // 24: pbflags.v1.FlagAdminService.GetAuditLog:input_type -> pbflags.v1.GetAuditLogRequest
+	1,  // 25: pbflags.v1.FlagAdminService.ListFeatures:output_type -> pbflags.v1.ListFeaturesResponse
+	6,  // 26: pbflags.v1.FlagAdminService.GetFlag:output_type -> pbflags.v1.GetFlagResponse
+	8,  // 27: pbflags.v1.FlagAdminService.UpdateFlagState:output_type -> pbflags.v1.UpdateFlagStateResponse
+	10, // 28: pbflags.v1.FlagAdminService.SetFlagOverride:output_type -> pbflags.v1.SetFlagOverrideResponse
+	12, // 29: pbflags.v1.FlagAdminService.RemoveFlagOverride:output_type -> pbflags.v1.RemoveFlagOverrideResponse
+	14, // 30: pbflags.v1.FlagAdminService.GetAuditLog:output_type -> pbflags.v1.GetAuditLogResponse
+	25, // [25:31] is the sub-list for method output_type
+	19, // [19:25] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_pbflags_v1_admin_proto_init() }

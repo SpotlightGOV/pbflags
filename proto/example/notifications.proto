@@ -7,6 +7,16 @@ option go_package = "github.com/SpotlightGOV/pbflags/gen/example;examplepb";
 option java_multiple_files = true;
 option java_package = "org.spotlightgov.pbflags.example.proto";
 
+// Layer defines the override dimensions for this flag system.
+// Each non-global value represents a dimension along which flags can vary.
+enum Layer {
+  option (pbflags.layers) = true;
+  LAYER_UNSPECIFIED = 0;
+  LAYER_GLOBAL = 1;
+  LAYER_USER = 2;
+  LAYER_ENTITY = 3;
+}
+
 // Notifications demonstrates how to define a feature with multiple flags.
 // Each field annotated with (pbflags.flag) becomes a runtime-configurable flag.
 message Notifications {
@@ -20,7 +30,7 @@ message Notifications {
   bool email_enabled = 1 [(pbflags.flag) = {
     description: "Enable email notifications"
     default: { bool_value: { value: true } }
-    layer: LAYER_USER
+    layer: "user"
   }];
 
   // How often to send digest emails.
@@ -28,20 +38,17 @@ message Notifications {
     description: "How often to send digest emails"
     default: { string_value: { value: "daily" } }
     supported_values: { string_values: ["hourly", "daily", "weekly"] }
-    layer: LAYER_GLOBAL
   }];
 
   // Maximum retry attempts for notification delivery.
   int64 max_retries = 3 [(pbflags.flag) = {
     description: "Maximum retry attempts"
     default: { int64_value: { value: 3 } }
-    layer: LAYER_GLOBAL
   }];
 
   // Minimum score threshold for triggering notifications.
   double score_threshold = 4 [(pbflags.flag) = {
     description: "Score threshold for notification triggers"
     default: { double_value: { value: 0.75 } }
-    layer: LAYER_GLOBAL
   }];
 }

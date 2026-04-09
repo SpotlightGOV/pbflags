@@ -23,55 +23,6 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type Layer int32
-
-const (
-	Layer_LAYER_UNSPECIFIED Layer = 0 // Treated as GLOBAL by schema sync and evaluation.
-	Layer_LAYER_GLOBAL      Layer = 1
-	Layer_LAYER_USER        Layer = 2
-)
-
-// Enum value maps for Layer.
-var (
-	Layer_name = map[int32]string{
-		0: "LAYER_UNSPECIFIED",
-		1: "LAYER_GLOBAL",
-		2: "LAYER_USER",
-	}
-	Layer_value = map[string]int32{
-		"LAYER_UNSPECIFIED": 0,
-		"LAYER_GLOBAL":      1,
-		"LAYER_USER":        2,
-	}
-)
-
-func (x Layer) Enum() *Layer {
-	p := new(Layer)
-	*p = x
-	return p
-}
-
-func (x Layer) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (Layer) Descriptor() protoreflect.EnumDescriptor {
-	return file_pbflags_options_proto_enumTypes[0].Descriptor()
-}
-
-func (Layer) Type() protoreflect.EnumType {
-	return &file_pbflags_options_proto_enumTypes[0]
-}
-
-func (x Layer) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use Layer.Descriptor instead.
-func (Layer) EnumDescriptor() ([]byte, []int) {
-	return file_pbflags_options_proto_rawDescGZIP(), []int{0}
-}
-
 // Applied to a message to mark it as a feature.
 type FeatureOptions struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -143,15 +94,16 @@ type FlagOptions struct {
 	Description string                 `protobuf:"bytes,1,opt,name=description,proto3" json:"description,omitempty"`
 	// Default value (type must match the field type).
 	Default *FlagDefault `protobuf:"bytes,2,opt,name=default,proto3" json:"default,omitempty"`
-	// Which layer this flag varies by. Treated as GLOBAL if unset.
-	// Note: proto3 will yield LAYER_UNSPECIFIED (0) when not set.
-	// Schema sync and evaluation MUST treat UNSPECIFIED as GLOBAL.
-	Layer Layer `protobuf:"varint,3,opt,name=layer,proto3,enum=pbflags.Layer" json:"layer,omitempty"`
 	// Suggested values for the UI dropdown. Not enforced at evaluation time.
 	// Can be overridden in the UI when setting values.
 	SupportedValues *SupportedValues `protobuf:"bytes,4,opt,name=supported_values,json=supportedValues,proto3" json:"supported_values,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Override layer name. Must match a value from the enum annotated with
+	// option (pbflags.layers) = true, using the prefix-stripped, lowercase
+	// enum value name (e.g., LAYER_ENTITY → "entity").
+	// Empty or "global" means no per-entity overrides.
+	Layer         string `protobuf:"bytes,5,opt,name=layer,proto3" json:"layer,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FlagOptions) Reset() {
@@ -198,18 +150,18 @@ func (x *FlagOptions) GetDefault() *FlagDefault {
 	return nil
 }
 
-func (x *FlagOptions) GetLayer() Layer {
-	if x != nil {
-		return x.Layer
-	}
-	return Layer_LAYER_UNSPECIFIED
-}
-
 func (x *FlagOptions) GetSupportedValues() *SupportedValues {
 	if x != nil {
 		return x.SupportedValues
 	}
 	return nil
+}
+
+func (x *FlagOptions) GetLayer() string {
+	if x != nil {
+		return x.Layer
+	}
+	return ""
 }
 
 // Uses wrapper types to distinguish "default is false/0" from "no default set."
@@ -408,6 +360,14 @@ var file_pbflags_options_proto_extTypes = []protoimpl.ExtensionInfo{
 		Tag:           "bytes,51001,opt,name=flag",
 		Filename:      "pbflags/options.proto",
 	},
+	{
+		ExtendedType:  (*descriptorpb.EnumOptions)(nil),
+		ExtensionType: (*bool)(nil),
+		Field:         51002,
+		Name:          "pbflags.layers",
+		Tag:           "varint,51002,opt,name=layers",
+		Filename:      "pbflags/options.proto",
+	},
 }
 
 // Extension fields to descriptorpb.MessageOptions.
@@ -422,6 +382,12 @@ var (
 	E_Flag = &file_pbflags_options_proto_extTypes[1]
 )
 
+// Extension fields to descriptorpb.EnumOptions.
+var (
+	// optional bool layers = 51002;
+	E_Layers = &file_pbflags_options_proto_extTypes[2]
+)
+
 var File_pbflags_options_proto protoreflect.FileDescriptor
 
 const file_pbflags_options_proto_rawDesc = "" +
@@ -430,12 +396,12 @@ const file_pbflags_options_proto_rawDesc = "" +
 	"\x0eFeatureOptions\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x14\n" +
-	"\x05owner\x18\x03 \x01(\tR\x05owner\"\xca\x01\n" +
+	"\x05owner\x18\x03 \x01(\tR\x05owner\"\xc0\x01\n" +
 	"\vFlagOptions\x12 \n" +
 	"\vdescription\x18\x01 \x01(\tR\vdescription\x12.\n" +
-	"\adefault\x18\x02 \x01(\v2\x14.pbflags.FlagDefaultR\adefault\x12$\n" +
-	"\x05layer\x18\x03 \x01(\x0e2\x0e.pbflags.LayerR\x05layer\x12C\n" +
-	"\x10supported_values\x18\x04 \x01(\v2\x18.pbflags.SupportedValuesR\x0fsupportedValues\"\x99\x02\n" +
+	"\adefault\x18\x02 \x01(\v2\x14.pbflags.FlagDefaultR\adefault\x12C\n" +
+	"\x10supported_values\x18\x04 \x01(\v2\x18.pbflags.SupportedValuesR\x0fsupportedValues\x12\x14\n" +
+	"\x05layer\x18\x05 \x01(\tR\x05layerJ\x04\b\x03\x10\x04\"\x99\x02\n" +
 	"\vFlagDefault\x12;\n" +
 	"\n" +
 	"bool_value\x18\x01 \x01(\v2\x1a.google.protobuf.BoolValueH\x00R\tboolValue\x12A\n" +
@@ -447,14 +413,10 @@ const file_pbflags_options_proto_rawDesc = "" +
 	"\x0fSupportedValues\x12#\n" +
 	"\rstring_values\x18\x01 \x03(\tR\fstringValues\x12!\n" +
 	"\fint64_values\x18\x02 \x03(\x03R\vint64Values\x12#\n" +
-	"\rdouble_values\x18\x03 \x03(\x01R\fdoubleValues*@\n" +
-	"\x05Layer\x12\x15\n" +
-	"\x11LAYER_UNSPECIFIED\x10\x00\x12\x10\n" +
-	"\fLAYER_GLOBAL\x10\x01\x12\x0e\n" +
-	"\n" +
-	"LAYER_USER\x10\x02:W\n" +
+	"\rdouble_values\x18\x03 \x03(\x01R\fdoubleValues:W\n" +
 	"\afeature\x12\x1f.google.protobuf.MessageOptions\x18\xb8\x8e\x03 \x01(\v2\x17.pbflags.FeatureOptionsR\afeature\x88\x01\x01:L\n" +
-	"\x04flag\x12\x1d.google.protobuf.FieldOptions\x18\xb9\x8e\x03 \x01(\v2\x14.pbflags.FlagOptionsR\x04flag\x88\x01\x01BY\n" +
+	"\x04flag\x12\x1d.google.protobuf.FieldOptions\x18\xb9\x8e\x03 \x01(\v2\x14.pbflags.FlagOptionsR\x04flag\x88\x01\x01:9\n" +
+	"\x06layers\x12\x1c.google.protobuf.EnumOptions\x18\xba\x8e\x03 \x01(\bR\x06layers\x88\x01\x01BY\n" +
 	"\x1eorg.spotlightgov.pbflags.protoP\x01Z5github.com/SpotlightGOV/pbflags/gen/pbflags;pbflagspbb\x06proto3"
 
 var (
@@ -469,38 +431,37 @@ func file_pbflags_options_proto_rawDescGZIP() []byte {
 	return file_pbflags_options_proto_rawDescData
 }
 
-var file_pbflags_options_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_pbflags_options_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_pbflags_options_proto_goTypes = []any{
-	(Layer)(0),                          // 0: pbflags.Layer
-	(*FeatureOptions)(nil),              // 1: pbflags.FeatureOptions
-	(*FlagOptions)(nil),                 // 2: pbflags.FlagOptions
-	(*FlagDefault)(nil),                 // 3: pbflags.FlagDefault
-	(*SupportedValues)(nil),             // 4: pbflags.SupportedValues
-	(*wrapperspb.BoolValue)(nil),        // 5: google.protobuf.BoolValue
-	(*wrapperspb.StringValue)(nil),      // 6: google.protobuf.StringValue
-	(*wrapperspb.Int64Value)(nil),       // 7: google.protobuf.Int64Value
-	(*wrapperspb.DoubleValue)(nil),      // 8: google.protobuf.DoubleValue
-	(*descriptorpb.MessageOptions)(nil), // 9: google.protobuf.MessageOptions
-	(*descriptorpb.FieldOptions)(nil),   // 10: google.protobuf.FieldOptions
+	(*FeatureOptions)(nil),              // 0: pbflags.FeatureOptions
+	(*FlagOptions)(nil),                 // 1: pbflags.FlagOptions
+	(*FlagDefault)(nil),                 // 2: pbflags.FlagDefault
+	(*SupportedValues)(nil),             // 3: pbflags.SupportedValues
+	(*wrapperspb.BoolValue)(nil),        // 4: google.protobuf.BoolValue
+	(*wrapperspb.StringValue)(nil),      // 5: google.protobuf.StringValue
+	(*wrapperspb.Int64Value)(nil),       // 6: google.protobuf.Int64Value
+	(*wrapperspb.DoubleValue)(nil),      // 7: google.protobuf.DoubleValue
+	(*descriptorpb.MessageOptions)(nil), // 8: google.protobuf.MessageOptions
+	(*descriptorpb.FieldOptions)(nil),   // 9: google.protobuf.FieldOptions
+	(*descriptorpb.EnumOptions)(nil),    // 10: google.protobuf.EnumOptions
 }
 var file_pbflags_options_proto_depIdxs = []int32{
-	3,  // 0: pbflags.FlagOptions.default:type_name -> pbflags.FlagDefault
-	0,  // 1: pbflags.FlagOptions.layer:type_name -> pbflags.Layer
-	4,  // 2: pbflags.FlagOptions.supported_values:type_name -> pbflags.SupportedValues
-	5,  // 3: pbflags.FlagDefault.bool_value:type_name -> google.protobuf.BoolValue
-	6,  // 4: pbflags.FlagDefault.string_value:type_name -> google.protobuf.StringValue
-	7,  // 5: pbflags.FlagDefault.int64_value:type_name -> google.protobuf.Int64Value
-	8,  // 6: pbflags.FlagDefault.double_value:type_name -> google.protobuf.DoubleValue
-	9,  // 7: pbflags.feature:extendee -> google.protobuf.MessageOptions
-	10, // 8: pbflags.flag:extendee -> google.protobuf.FieldOptions
-	1,  // 9: pbflags.feature:type_name -> pbflags.FeatureOptions
-	2,  // 10: pbflags.flag:type_name -> pbflags.FlagOptions
+	2,  // 0: pbflags.FlagOptions.default:type_name -> pbflags.FlagDefault
+	3,  // 1: pbflags.FlagOptions.supported_values:type_name -> pbflags.SupportedValues
+	4,  // 2: pbflags.FlagDefault.bool_value:type_name -> google.protobuf.BoolValue
+	5,  // 3: pbflags.FlagDefault.string_value:type_name -> google.protobuf.StringValue
+	6,  // 4: pbflags.FlagDefault.int64_value:type_name -> google.protobuf.Int64Value
+	7,  // 5: pbflags.FlagDefault.double_value:type_name -> google.protobuf.DoubleValue
+	8,  // 6: pbflags.feature:extendee -> google.protobuf.MessageOptions
+	9,  // 7: pbflags.flag:extendee -> google.protobuf.FieldOptions
+	10, // 8: pbflags.layers:extendee -> google.protobuf.EnumOptions
+	0,  // 9: pbflags.feature:type_name -> pbflags.FeatureOptions
+	1,  // 10: pbflags.flag:type_name -> pbflags.FlagOptions
 	11, // [11:11] is the sub-list for method output_type
 	11, // [11:11] is the sub-list for method input_type
 	9,  // [9:11] is the sub-list for extension type_name
-	7,  // [7:9] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	6,  // [6:9] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_pbflags_options_proto_init() }
@@ -519,14 +480,13 @@ func file_pbflags_options_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pbflags_options_proto_rawDesc), len(file_pbflags_options_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      0,
 			NumMessages:   4,
-			NumExtensions: 2,
+			NumExtensions: 3,
 			NumServices:   0,
 		},
 		GoTypes:           file_pbflags_options_proto_goTypes,
 		DependencyIndexes: file_pbflags_options_proto_depIdxs,
-		EnumInfos:         file_pbflags_options_proto_enumTypes,
 		MessageInfos:      file_pbflags_options_proto_msgTypes,
 		ExtensionInfos:    file_pbflags_options_proto_extTypes,
 	}.Build()

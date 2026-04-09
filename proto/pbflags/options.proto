@@ -27,14 +27,17 @@ message FlagOptions {
   // Default value (type must match the field type).
   FlagDefault default = 2;
 
-  // Which layer this flag varies by. Treated as GLOBAL if unset.
-  // Note: proto3 will yield LAYER_UNSPECIFIED (0) when not set.
-  // Schema sync and evaluation MUST treat UNSPECIFIED as GLOBAL.
-  Layer layer = 3;
+  reserved 3; // was: Layer layer (enum, removed in favor of string layer)
 
   // Suggested values for the UI dropdown. Not enforced at evaluation time.
   // Can be overridden in the UI when setting values.
   SupportedValues supported_values = 4;
+
+  // Override layer name. Must match a value from the enum annotated with
+  // option (pbflags.layers) = true, using the prefix-stripped, lowercase
+  // enum value name (e.g., LAYER_ENTITY → "entity").
+  // Empty or "global" means no per-entity overrides.
+  string layer = 5;
 }
 
 // Uses wrapper types to distinguish "default is false/0" from "no default set."
@@ -58,19 +61,23 @@ message SupportedValues {
   // (bool flags don't need supported_values — it's always true/false)
 }
 
-enum Layer {
-  LAYER_UNSPECIFIED = 0;  // Treated as GLOBAL by schema sync and evaluation.
-  LAYER_GLOBAL = 1;
-  LAYER_USER = 2;
-  // Additional layers (e.g., LAYER_BUSINESS = 3) are added here.
-  // Each new layer requires entity resolution in the client.
-}
-
-// Extension field numbers 51000-51001 are reserved for pbflags.
+// Extension field numbers 51000-51002 are reserved for pbflags.
 extend google.protobuf.MessageOptions {
   optional FeatureOptions feature = 51000;
 }
 
 extend google.protobuf.FieldOptions {
   optional FlagOptions flag = 51001;
+}
+
+// Applied to an enum to mark it as the layer definition for this flag system.
+// Exactly one enum in the input files must carry this annotation.
+// Enum values define the set of valid layer names. Convention:
+//   - Ordinal 0 is always unspecified (treated as global).
+//   - Values whose prefix-stripped name is "global" are global layers.
+//   - All other values define per-entity override dimensions.
+//   - Value names should follow UPPER_SNAKE_CASE with a shared prefix
+//     (e.g., LAYER_USER, LAYER_ENTITY).
+extend google.protobuf.EnumOptions {
+  optional bool layers = 51002;
 }

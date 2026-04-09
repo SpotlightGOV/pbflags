@@ -22,6 +22,60 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Layer defines the override dimensions for this flag system.
+// Each non-global value represents a dimension along which flags can vary.
+type Layer int32
+
+const (
+	Layer_LAYER_UNSPECIFIED Layer = 0
+	Layer_LAYER_GLOBAL      Layer = 1
+	Layer_LAYER_USER        Layer = 2
+	Layer_LAYER_ENTITY      Layer = 3
+)
+
+// Enum value maps for Layer.
+var (
+	Layer_name = map[int32]string{
+		0: "LAYER_UNSPECIFIED",
+		1: "LAYER_GLOBAL",
+		2: "LAYER_USER",
+		3: "LAYER_ENTITY",
+	}
+	Layer_value = map[string]int32{
+		"LAYER_UNSPECIFIED": 0,
+		"LAYER_GLOBAL":      1,
+		"LAYER_USER":        2,
+		"LAYER_ENTITY":      3,
+	}
+)
+
+func (x Layer) Enum() *Layer {
+	p := new(Layer)
+	*p = x
+	return p
+}
+
+func (x Layer) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Layer) Descriptor() protoreflect.EnumDescriptor {
+	return file_example_notifications_proto_enumTypes[0].Descriptor()
+}
+
+func (Layer) Type() protoreflect.EnumType {
+	return &file_example_notifications_proto_enumTypes[0]
+}
+
+func (x Layer) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Layer.Descriptor instead.
+func (Layer) EnumDescriptor() ([]byte, []int) {
+	return file_example_notifications_proto_rawDescGZIP(), []int{0}
+}
+
 // Notifications demonstrates how to define a feature with multiple flags.
 // Each field annotated with (pbflags.flag) becomes a runtime-configurable flag.
 type Notifications struct {
@@ -100,23 +154,29 @@ var File_example_notifications_proto protoreflect.FileDescriptor
 
 const file_example_notifications_proto_rawDesc = "" +
 	"\n" +
-	"\x1bexample/notifications.proto\x12\aexample\x1a\x15pbflags/options.proto\"\xd3\x03\n" +
-	"\rNotifications\x12M\n" +
-	"\remail_enabled\x18\x01 \x01(\bB(\xca\xf3\x18$\n" +
+	"\x1bexample/notifications.proto\x12\aexample\x1a\x15pbflags/options.proto\"\xd1\x03\n" +
+	"\rNotifications\x12Q\n" +
+	"\remail_enabled\x18\x01 \x01(\bB,\xca\xf3\x18(\n" +
 	"\x1aEnable email notifications\x12\x04\n" +
-	"\x02\b\x01\x18\x02R\femailEnabled\x12v\n" +
-	"\x10digest_frequency\x18\x02 \x01(\tBK\xca\xf3\x18G\n" +
+	"\x02\b\x01*\x04userR\femailEnabled\x12t\n" +
+	"\x10digest_frequency\x18\x02 \x01(\tBI\xca\xf3\x18E\n" +
 	"\x1fHow often to send digest emails\x12\t\x12\a\n" +
-	"\x05daily\x18\x01\"\x17\n" +
+	"\x05daily\"\x17\n" +
 	"\x06hourly\n" +
 	"\x05daily\n" +
-	"\x06weeklyR\x0fdigestFrequency\x12E\n" +
-	"\vmax_retries\x18\x03 \x01(\x03B$\xca\xf3\x18 \n" +
-	"\x16Maximum retry attempts\x12\x04\x1a\x02\b\x03\x18\x01R\n" +
-	"maxRetries\x12g\n" +
-	"\x0fscore_threshold\x18\x04 \x01(\x01B>\xca\xf3\x18:\n" +
-	")Score threshold for notification triggers\x12\v\"\t\t\x00\x00\x00\x00\x00\x00\xe8?\x18\x01R\x0escoreThreshold:K\xc2\xf3\x18G\n" +
-	"\rnotifications\x12'Controls notification delivery behavior\x1a\rplatform-teamBa\n" +
+	"\x06weeklyR\x0fdigestFrequency\x12C\n" +
+	"\vmax_retries\x18\x03 \x01(\x03B\"\xca\xf3\x18\x1e\n" +
+	"\x16Maximum retry attempts\x12\x04\x1a\x02\b\x03R\n" +
+	"maxRetries\x12e\n" +
+	"\x0fscore_threshold\x18\x04 \x01(\x01B<\xca\xf3\x188\n" +
+	")Score threshold for notification triggers\x12\v\"\t\t\x00\x00\x00\x00\x00\x00\xe8?R\x0escoreThreshold:K\xc2\xf3\x18G\n" +
+	"\rnotifications\x12'Controls notification delivery behavior\x1a\rplatform-team*X\n" +
+	"\x05Layer\x12\x15\n" +
+	"\x11LAYER_UNSPECIFIED\x10\x00\x12\x10\n" +
+	"\fLAYER_GLOBAL\x10\x01\x12\x0e\n" +
+	"\n" +
+	"LAYER_USER\x10\x02\x12\x10\n" +
+	"\fLAYER_ENTITY\x10\x03\x1a\x04\xd0\xf3\x18\x01Ba\n" +
 	"&org.spotlightgov.pbflags.example.protoP\x01Z5github.com/SpotlightGOV/pbflags/gen/example;examplepbb\x06proto3"
 
 var (
@@ -131,9 +191,11 @@ func file_example_notifications_proto_rawDescGZIP() []byte {
 	return file_example_notifications_proto_rawDescData
 }
 
+var file_example_notifications_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_example_notifications_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_example_notifications_proto_goTypes = []any{
-	(*Notifications)(nil), // 0: example.Notifications
+	(Layer)(0),            // 0: example.Layer
+	(*Notifications)(nil), // 1: example.Notifications
 }
 var file_example_notifications_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -153,13 +215,14 @@ func file_example_notifications_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_example_notifications_proto_rawDesc), len(file_example_notifications_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_example_notifications_proto_goTypes,
 		DependencyIndexes: file_example_notifications_proto_depIdxs,
+		EnumInfos:         file_example_notifications_proto_enumTypes,
 		MessageInfos:      file_example_notifications_proto_msgTypes,
 	}.Build()
 	File_example_notifications_proto = out.File

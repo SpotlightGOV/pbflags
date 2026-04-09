@@ -39,7 +39,7 @@ message FlagDetail {
   string display_name = 2;
   string description = 3;
   FlagType flag_type = 4;
-  pbflags.Layer layer = 5;
+  string layer = 5;
   State state = 6;
   FlagValue default_value = 7;
   FlagValue current_value = 8;
