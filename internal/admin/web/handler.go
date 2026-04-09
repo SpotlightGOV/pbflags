@@ -26,16 +26,23 @@ import (
 //go:embed assets
 var assets embed.FS
 
+// EnvConfig holds environment display settings for the admin UI.
+type EnvConfig struct {
+	Name  string // e.g. "production", "staging", "dev"
+	Color string // CSS color, e.g. "#f87171"
+}
+
 // Handler serves the admin web UI.
 type Handler struct {
 	store    *admin.Store
 	logger   *slog.Logger
 	tmpl     *template.Template
 	staticFS fs.FS
+	env      EnvConfig
 }
 
 // NewHandler creates a web UI handler backed by the given store.
-func NewHandler(store *admin.Store, logger *slog.Logger) (*Handler, error) {
+func NewHandler(store *admin.Store, logger *slog.Logger, env ...EnvConfig) (*Handler, error) {
 	funcMap := template.FuncMap{
 		"flagValue":     formatFlagValue,
 		"resolvedValue": resolvedValue,
@@ -70,7 +77,33 @@ func NewHandler(store *admin.Store, logger *slog.Logger) (*Handler, error) {
 		return nil, fmt.Errorf("static fs: %w", err)
 	}
 
-	return &Handler{store: store, logger: logger, tmpl: tmpl, staticFS: staticFS}, nil
+	var ec EnvConfig
+	if len(env) > 0 {
+		ec = env[0]
+	}
+	if ec.Color == "" && ec.Name != "" {
+		ec.Color = defaultEnvColor(ec.Name)
+	}
+
+	return &Handler{store: store, logger: logger, tmpl: tmpl, staticFS: staticFS, env: ec}, nil
+}
+
+// defaultEnvColor returns a sensible default color for common environment names.
+func defaultEnvColor(name string) string {
+	switch strings.ToLower(name) {
+	case "prod", "production":
+		return "#f87171" // red
+	case "staging", "preprod", "pre-prod", "uat":
+		return "#fbbf24" // amber
+	case "dev", "development", "local":
+		return "#34d399" // green
+	case "test", "testing", "qa":
+		return "#5b7fff" // blue
+	case "sandbox", "demo", "preview":
+		return "#a78bfa" // purple
+	default:
+		return "#6a7196" // muted grey
+	}
 }
 
 // Register adds web UI routes to the given mux, wrapped with CSRF protection.
@@ -166,6 +199,21 @@ func generateCSRFToken() string {
 // Page handlers
 // ---------------------------------------------------------------------------
 
+// pageData creates template data with env config injected.
+func (h *Handler) pageData(page string, extra ...any) map[string]any {
+	m := map[string]any{
+		"Page":     page,
+		"EnvName":  h.env.Name,
+		"EnvColor": h.env.Color,
+	}
+	for i := 0; i < len(extra)-1; i += 2 {
+		if key, ok := extra[i].(string); ok {
+			m[key] = extra[i+1]
+		}
+	}
+	return m
+}
+
 func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	features, err := h.store.ListFeatures(r.Context())
 	if err != nil {
@@ -173,11 +221,10 @@ func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := map[string]any{
-		"Features":  features,
-		"Page":      "dashboard",
-		"FlagCount": countFlags(features),
-	}
+	data := h.pageData("dashboard",
+		"Features", features,
+		"FlagCount", countFlags(features),
+	)
 
 	// htmx partial swap: return just the content block.
 	if r.Header.Get("HX-Request") == "true" {
@@ -214,13 +261,12 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := map[string]any{
-		"Flag":    flag,
-		"Audit":   entries,
-		"Page":    "flag",
-		"FlagID":  flagID,
-		"Feature": strings.Split(flagID, "/")[0],
-	}
+	data := h.pageData("flag",
+		"Flag", flag,
+		"Audit", entries,
+		"FlagID", flagID,
+		"Feature", strings.Split(flagID, "/")[0],
+	)
 
 	if r.Header.Get("HX-Request") == "true" {
 		h.render(w, "flag_content", data)
@@ -252,13 +298,12 @@ func (h *Handler) auditLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := map[string]any{
-		"Entries":      entries,
-		"Page":         "audit",
-		"FlagFilter":   flagFilter,
-		"ActionFilter": actionFilter,
-		"ActorFilter":  actorFilter,
-	}
+	data := h.pageData("audit",
+		"Entries", entries,
+		"FlagFilter", flagFilter,
+		"ActionFilter", actionFilter,
+		"ActorFilter", actorFilter,
+	)
 
 	if r.Header.Get("HX-Request") == "true" {
 		h.render(w, "audit_content", data)

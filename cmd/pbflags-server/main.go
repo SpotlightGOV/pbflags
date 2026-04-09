@@ -62,7 +62,12 @@ func main() {
 	serverURL := flag.String("server", "", "Upstream evaluator URL (proxy mode)")
 	upgrade := flag.Bool("upgrade", false, "Run database migrations before starting the server")
 	exitAfterUpgrade := flag.Bool("exit-after-upgrade", false, "Exit after running migrations (requires --upgrade)")
+	envName := flag.String("env-name", "", "Environment label shown in admin UI (e.g. production, staging, dev)")
+	envColor := flag.String("env-color", "", "Accent color for admin UI environment banner (hex, e.g. #f87171)")
 	flag.Parse()
+
+	setEnvIfFlag("PBFLAGS_ENV_NAME", *envName)
+	setEnvIfFlag("PBFLAGS_ENV_COLOR", *envColor)
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
@@ -276,7 +281,10 @@ func startAdmin(ctx context.Context, cfg evaluator.Config, pool *pgxpool.Pool, d
 	adminPath, adminHandler := pbflagsv1connect.NewFlagAdminServiceHandler(adminService)
 	mux.Handle(adminPath, adminHandler)
 
-	webHandler, err := adminweb.NewHandler(store, adminLogger)
+	webHandler, err := adminweb.NewHandler(store, adminLogger, adminweb.EnvConfig{
+		Name:  cfg.EnvName,
+		Color: cfg.EnvColor,
+	})
 	if err != nil {
 		return fmt.Errorf("create web handler: %w", err)
 	}

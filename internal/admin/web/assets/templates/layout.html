@@ -17,11 +17,16 @@
   </script>
 </head>
 <body>
+  {{if .EnvName}}<div class="env-banner" style="background: {{.EnvColor}}">{{.EnvName}}</div>{{end}}
   <div class="shell">
     <nav class="sidebar">
       <div class="sidebar-brand">
         <h1>pb<span>flags</span></h1>
+        {{if .EnvName}}
+        <div class="version" style="color: {{.EnvColor}}">{{.EnvName}}</div>
+        {{else}}
         <div class="version">admin console</div>
+        {{end}}
       </div>
       <div class="sidebar-nav">
         <a href="/"

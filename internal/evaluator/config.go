@@ -27,6 +27,8 @@ type Config struct {
 	Admin       string      `yaml:"admin"`
 	Database    string      `yaml:"database"`
 	Cache       CacheConfig `yaml:"cache"`
+	EnvName     string      `yaml:"env_name"`
+	EnvColor    string      `yaml:"env_color"`
 }
 
 // CacheConfig controls cache TTLs and sizes.
@@ -89,6 +91,12 @@ func LoadConfig(path string) (Config, error) {
 	}
 	if v := os.Getenv("PBFLAGS_DATABASE"); v != "" {
 		cfg.Database = v
+	}
+	if v := os.Getenv("PBFLAGS_ENV_NAME"); v != "" {
+		cfg.EnvName = v
+	}
+	if v := os.Getenv("PBFLAGS_ENV_COLOR"); v != "" {
+		cfg.EnvColor = v
 	}
 
 	if cfg.Descriptors == "" {
