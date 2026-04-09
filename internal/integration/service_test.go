@@ -45,10 +45,10 @@ type serviceTestEnv struct {
 
 func notificationsDefs() []evaluator.FlagDef {
 	return []evaluator.FlagDef{
-		{FlagID: "notifications.email_enabled", FeatureID: "notifications", FieldNum: 1, FlagType: pbflagsv1.FlagType_FLAG_TYPE_BOOL, Layer: 2, Default: boolVal(true)},
-		{FlagID: "notifications.digest_frequency", FeatureID: "notifications", FieldNum: 2, FlagType: pbflagsv1.FlagType_FLAG_TYPE_STRING, Layer: 1, Default: stringVal("daily")},
-		{FlagID: "notifications.max_retries", FeatureID: "notifications", FieldNum: 3, FlagType: pbflagsv1.FlagType_FLAG_TYPE_INT64, Layer: 1, Default: int64Val(3)},
-		{FlagID: "notifications.score_threshold", FeatureID: "notifications", FieldNum: 4, FlagType: pbflagsv1.FlagType_FLAG_TYPE_DOUBLE, Layer: 1, Default: doubleVal(0.75)},
+		{FlagID: "svc_notif/1", FeatureID: "svc_notif", FieldNum: 1, Name: "email_enabled", FlagType: pbflagsv1.FlagType_FLAG_TYPE_BOOL, Layer: 2, Default: boolVal(true)},
+		{FlagID: "svc_notif/2", FeatureID: "svc_notif", FieldNum: 2, Name: "digest_frequency", FlagType: pbflagsv1.FlagType_FLAG_TYPE_STRING, Layer: 1, Default: stringVal("daily")},
+		{FlagID: "svc_notif/3", FeatureID: "svc_notif", FieldNum: 3, Name: "max_retries", FlagType: pbflagsv1.FlagType_FLAG_TYPE_INT64, Layer: 1, Default: int64Val(3)},
+		{FlagID: "svc_notif/4", FeatureID: "svc_notif", FieldNum: 4, Name: "score_threshold", FlagType: pbflagsv1.FlagType_FLAG_TYPE_DOUBLE, Layer: 1, Default: doubleVal(0.75)},
 	}
 }
 
@@ -76,14 +76,14 @@ CREATE TABLE IF NOT EXISTS feature_flags.flag_audit_log (id BIGSERIAL PRIMARY KE
 func seedAllFlags(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()
-	_, err := pool.Exec(ctx, `INSERT INTO feature_flags.features (feature_id) VALUES ('notifications') ON CONFLICT DO NOTHING`)
+	_, err := pool.Exec(ctx, `INSERT INTO feature_flags.features (feature_id) VALUES ('svc_notif') ON CONFLICT DO NOTHING`)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `
 		INSERT INTO feature_flags.flags (flag_id, feature_id, field_number, flag_type, layer, state) VALUES
-			('notifications.email_enabled', 'notifications', 1, 'BOOL', 'USER', 'DEFAULT'),
-			('notifications.digest_frequency', 'notifications', 2, 'STRING', 'GLOBAL', 'DEFAULT'),
-			('notifications.max_retries', 'notifications', 3, 'INT64', 'GLOBAL', 'DEFAULT'),
-			('notifications.score_threshold', 'notifications', 4, 'DOUBLE', 'GLOBAL', 'DEFAULT')
+			('svc_notif/1', 'svc_notif', 1, 'BOOL', 'USER', 'DEFAULT'),
+			('svc_notif/2', 'svc_notif', 2, 'STRING', 'GLOBAL', 'DEFAULT'),
+			('svc_notif/3', 'svc_notif', 3, 'INT64', 'GLOBAL', 'DEFAULT'),
+			('svc_notif/4', 'svc_notif', 4, 'DOUBLE', 'GLOBAL', 'DEFAULT')
 		ON CONFLICT DO NOTHING`)
 	require.NoError(t, err)
 }
@@ -197,18 +197,18 @@ func TestBulkEvaluate(t *testing.T) {
 	seedAllFlags(t, env.pool)
 
 	_, err := env.adminClient.UpdateFlagState(context.Background(), connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: "notifications.digest_frequency", State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
+		FlagId: "svc_notif/2", State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
 	}))
 	require.NoError(t, err)
 	_, err = env.adminClient.UpdateFlagState(context.Background(), connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: "notifications.max_retries", State: pbflagsv1.State_STATE_KILLED, Actor: "test",
+		FlagId: "svc_notif/3", State: pbflagsv1.State_STATE_KILLED, Actor: "test",
 	}))
 	require.NoError(t, err)
 	expireCache(env)
 	waitForKillPoll(env)
 
 	resp, err := env.evaluatorClient.BulkEvaluate(context.Background(), connect.NewRequest(&pbflagsv1.BulkEvaluateRequest{
-		FlagIds: []string{"notifications.email_enabled", "notifications.digest_frequency", "notifications.max_retries", "notifications.score_threshold"},
+		FlagIds: []string{"svc_notif/1", "svc_notif/2", "svc_notif/3", "svc_notif/4"},
 	}))
 	require.NoError(t, err)
 	require.Len(t, resp.Msg.Evaluations, 4)
@@ -218,25 +218,25 @@ func TestBulkEvaluate(t *testing.T) {
 		byID[e.FlagId] = e
 	}
 
-	assert.True(t, byID["notifications.email_enabled"].Value.GetBoolValue())
-	assert.Equal(t, "weekly", byID["notifications.digest_frequency"].Value.GetStringValue())
-	assert.Equal(t, int64(3), byID["notifications.max_retries"].Value.GetInt64Value()) // killed → default
-	assert.Equal(t, 0.75, byID["notifications.score_threshold"].Value.GetDoubleValue())
+	assert.True(t, byID["svc_notif/1"].Value.GetBoolValue())
+	assert.Equal(t, "weekly", byID["svc_notif/2"].Value.GetStringValue())
+	assert.Equal(t, int64(3), byID["svc_notif/3"].Value.GetInt64Value()) // killed → default
+	assert.Equal(t, 0.75, byID["svc_notif/4"].Value.GetDoubleValue())
 }
 
 func TestBulkEvaluateWithEntityId(t *testing.T) {
 	env := setupServiceEnv(t)
 	seedAllFlags(t, env.pool)
 
-	setOverride(t, env.pool, "notifications.email_enabled", "user-bulk", "ENABLED", boolVal(false))
+	setOverride(t, env.pool, "svc_notif/1", "user-bulk", "ENABLED", boolVal(false))
 	_, err := env.adminClient.UpdateFlagState(context.Background(), connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: "notifications.digest_frequency", State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
+		FlagId: "svc_notif/2", State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
 	}))
 	require.NoError(t, err)
 	expireCache(env)
 
 	resp, err := env.evaluatorClient.BulkEvaluate(context.Background(), connect.NewRequest(&pbflagsv1.BulkEvaluateRequest{
-		FlagIds: []string{"notifications.email_enabled", "notifications.digest_frequency"}, EntityId: "user-bulk",
+		FlagIds: []string{"svc_notif/1", "svc_notif/2"}, EntityId: "user-bulk",
 	}))
 	require.NoError(t, err)
 	require.Len(t, resp.Msg.Evaluations, 2)
@@ -246,9 +246,9 @@ func TestBulkEvaluateWithEntityId(t *testing.T) {
 		byID[e.FlagId] = e
 	}
 
-	assert.False(t, byID["notifications.email_enabled"].Value.GetBoolValue())
-	assert.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, byID["notifications.email_enabled"].Source)
-	assert.Equal(t, "weekly", byID["notifications.digest_frequency"].Value.GetStringValue())
+	assert.False(t, byID["svc_notif/1"].Value.GetBoolValue())
+	assert.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, byID["svc_notif/1"].Source)
+	assert.Equal(t, "weekly", byID["svc_notif/2"].Value.GetStringValue())
 }
 
 func TestRootModeStateRPCs(t *testing.T) {
@@ -257,28 +257,28 @@ func TestRootModeStateRPCs(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := env.adminClient.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: "notifications.digest_frequency", State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
+		FlagId: "svc_notif/2", State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
 	}))
 	require.NoError(t, err)
 	_, err = env.adminClient.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: "notifications.max_retries", State: pbflagsv1.State_STATE_KILLED, Actor: "test",
+		FlagId: "svc_notif/3", State: pbflagsv1.State_STATE_KILLED, Actor: "test",
 	}))
 	require.NoError(t, err)
-	setOverride(t, env.pool, "notifications.email_enabled", "user-100", "ENABLED", boolVal(false))
+	setOverride(t, env.pool, "svc_notif/1", "user-100", "ENABLED", boolVal(false))
 
-	flagResp, err := env.evaluatorClient.GetFlagState(ctx, connect.NewRequest(&pbflagsv1.GetFlagStateRequest{FlagId: "notifications.digest_frequency"}))
+	flagResp, err := env.evaluatorClient.GetFlagState(ctx, connect.NewRequest(&pbflagsv1.GetFlagStateRequest{FlagId: "svc_notif/2"}))
 	require.NoError(t, err)
 	assert.Equal(t, pbflagsv1.State_STATE_ENABLED, flagResp.Msg.Flag.State)
 	assert.Equal(t, "weekly", flagResp.Msg.Flag.Value.GetStringValue())
 
 	killResp, err := env.evaluatorClient.GetKilledFlags(ctx, connect.NewRequest(&pbflagsv1.GetKilledFlagsRequest{}))
 	require.NoError(t, err)
-	assert.Contains(t, killResp.Msg.FlagIds, "notifications.max_retries")
+	assert.Contains(t, killResp.Msg.FlagIds, "svc_notif/3")
 
 	overResp, err := env.evaluatorClient.GetOverrides(ctx, connect.NewRequest(&pbflagsv1.GetOverridesRequest{EntityId: "user-100"}))
 	require.NoError(t, err)
 	require.Len(t, overResp.Msg.Overrides, 1)
-	assert.Equal(t, "notifications.email_enabled", overResp.Msg.Overrides[0].FlagId)
+	assert.Equal(t, "svc_notif/1", overResp.Msg.Overrides[0].FlagId)
 	assert.False(t, overResp.Msg.Overrides[0].Value.GetBoolValue())
 }
 
@@ -287,7 +287,7 @@ func TestGlobalLayerRejectsOverride(t *testing.T) {
 	seedAllFlags(t, env.pool)
 
 	_, err := env.adminClient.SetFlagOverride(context.Background(), connect.NewRequest(&pbflagsv1.SetFlagOverrideRequest{
-		FlagId: "notifications.digest_frequency", EntityId: "user-1",
+		FlagId: "svc_notif/2", EntityId: "user-1",
 		State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("rejected"), Actor: "test",
 	}))
 	require.Error(t, err)
@@ -299,16 +299,16 @@ func TestServiceAuditLog(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := env.adminClient.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: "notifications.digest_frequency", State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
+		FlagId: "svc_notif/2", State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
 	}))
 	require.NoError(t, err)
 	_, err = env.adminClient.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: "notifications.digest_frequency", State: pbflagsv1.State_STATE_KILLED, Actor: "test",
+		FlagId: "svc_notif/2", State: pbflagsv1.State_STATE_KILLED, Actor: "test",
 	}))
 	require.NoError(t, err)
 
 	resp, err := env.adminClient.GetAuditLog(ctx, connect.NewRequest(&pbflagsv1.GetAuditLogRequest{
-		FlagId: "notifications.digest_frequency", Limit: 10,
+		FlagId: "svc_notif/2", Limit: 10,
 	}))
 	require.NoError(t, err)
 	require.Len(t, resp.Msg.Entries, 2)

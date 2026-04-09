@@ -166,9 +166,9 @@ func TestGetFlagState(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "USER")
 
-	resp, err := store.GetFlagState(ctx, "notifications.email_enabled")
+	resp, err := store.GetFlagState(ctx, "adm_notif/1")
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, pbflagsv1.State_STATE_DEFAULT, resp.Flag.State)
@@ -184,22 +184,22 @@ func TestUpdateFlagState(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "USER")
 
 	// Update to ENABLED with a value.
-	err := store.UpdateFlagState(ctx, "notifications.email_enabled", pbflagsv1.State_STATE_ENABLED, boolValue(true), "test-actor")
+	err := store.UpdateFlagState(ctx, "adm_notif/1", pbflagsv1.State_STATE_ENABLED, boolValue(true), "test-actor")
 	require.NoError(t, err)
 
-	resp, err := store.GetFlagState(ctx, "notifications.email_enabled")
+	resp, err := store.GetFlagState(ctx, "adm_notif/1")
 	require.NoError(t, err)
 	require.Equal(t, pbflagsv1.State_STATE_ENABLED, resp.Flag.State)
 	require.True(t, resp.Flag.Value.GetBoolValue())
 
 	// Update to KILLED.
-	err = store.UpdateFlagState(ctx, "notifications.email_enabled", pbflagsv1.State_STATE_KILLED, nil, "test-actor")
+	err = store.UpdateFlagState(ctx, "adm_notif/1", pbflagsv1.State_STATE_KILLED, nil, "test-actor")
 	require.NoError(t, err)
 
-	resp, err = store.GetFlagState(ctx, "notifications.email_enabled")
+	resp, err = store.GetFlagState(ctx, "adm_notif/1")
 	require.NoError(t, err)
 	require.Equal(t, pbflagsv1.State_STATE_KILLED, resp.Flag.State)
 
@@ -212,16 +212,16 @@ func TestGetKilledFlags(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER")
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.digest_frequency", "STRING", "GLOBAL")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/2", "STRING", "GLOBAL")
 
 	// Kill one flag globally.
-	err := store.UpdateFlagState(ctx, "notifications.email_enabled", pbflagsv1.State_STATE_KILLED, nil, "test-actor")
+	err := store.UpdateFlagState(ctx, "adm_notif/1", pbflagsv1.State_STATE_KILLED, nil, "test-actor")
 	require.NoError(t, err)
 
 	resp, err := store.GetKilledFlags(ctx)
 	require.NoError(t, err)
-	require.Contains(t, resp.FlagIds, "notifications.email_enabled")
+	require.Contains(t, resp.FlagIds, "adm_notif/1")
 	require.Empty(t, resp.KilledOverrides, "per-entity kills are no longer supported")
 }
 
@@ -229,25 +229,25 @@ func TestGetOverrides(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "USER")
 
 	val := boolValue(true)
 	valBytes, err := marshalFlagValue(val)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `
 		INSERT INTO feature_flags.flag_overrides (flag_id, entity_id, state, value)
-		VALUES ('notifications.email_enabled', 'user-42', 'ENABLED', $1)`, valBytes)
+		VALUES ('adm_notif/1', 'user-42', 'ENABLED', $1)`, valBytes)
 	require.NoError(t, err)
 
 	// Get all overrides for entity.
 	resp, err := store.GetOverrides(ctx, "user-42", nil)
 	require.NoError(t, err)
 	require.Len(t, resp.Overrides, 1)
-	require.Equal(t, "notifications.email_enabled", resp.Overrides[0].FlagId)
+	require.Equal(t, "adm_notif/1", resp.Overrides[0].FlagId)
 	require.True(t, resp.Overrides[0].Value.GetBoolValue())
 
 	// Get overrides filtered by flag IDs.
-	resp, err = store.GetOverrides(ctx, "user-42", []string{"notifications.email_enabled"})
+	resp, err = store.GetOverrides(ctx, "user-42", []string{"adm_notif/1"})
 	require.NoError(t, err)
 	require.Len(t, resp.Overrides, 1)
 
@@ -266,10 +266,10 @@ func TestSetFlagOverride(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "USER")
 
 	// Set override.
-	err := store.SetFlagOverride(ctx, "notifications.email_enabled", "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
+	err := store.SetFlagOverride(ctx, "adm_notif/1", "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
 	require.NoError(t, err)
 
 	// Verify via GetOverrides.
@@ -279,7 +279,7 @@ func TestSetFlagOverride(t *testing.T) {
 	require.True(t, resp.Overrides[0].Value.GetBoolValue())
 
 	// Update (upsert) override.
-	err = store.SetFlagOverride(ctx, "notifications.email_enabled", "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
+	err = store.SetFlagOverride(ctx, "adm_notif/1", "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
 	require.NoError(t, err)
 	resp, err = store.GetOverrides(ctx, "user-1", nil)
 	require.NoError(t, err)
@@ -290,9 +290,9 @@ func TestSetFlagOverride_GlobalLayerRejected(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.digest_frequency", "STRING", "GLOBAL")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/2", "STRING", "GLOBAL")
 
-	err := store.SetFlagOverride(ctx, "notifications.digest_frequency", "user-1", pbflagsv1.State_STATE_ENABLED, stringValue("weekly"), "admin")
+	err := store.SetFlagOverride(ctx, "adm_notif/2", "user-1", pbflagsv1.State_STATE_ENABLED, stringValue("weekly"), "admin")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "GLOBAL layer")
 }
@@ -310,11 +310,11 @@ func TestRemoveFlagOverride(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "USER")
 
-	err := store.SetFlagOverride(ctx, "notifications.email_enabled", "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
+	err := store.SetFlagOverride(ctx, "adm_notif/1", "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
 	require.NoError(t, err)
-	err = store.RemoveFlagOverride(ctx, "notifications.email_enabled", "user-1", "admin")
+	err = store.RemoveFlagOverride(ctx, "adm_notif/1", "user-1", "admin")
 	require.NoError(t, err)
 
 	resp, err := store.GetOverrides(ctx, "user-1", nil)
@@ -326,15 +326,15 @@ func TestAuditLog(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "USER")
 
-	err := store.UpdateFlagState(ctx, "notifications.email_enabled", pbflagsv1.State_STATE_ENABLED, boolValue(true), "deployer")
+	err := store.UpdateFlagState(ctx, "adm_notif/1", pbflagsv1.State_STATE_ENABLED, boolValue(true), "deployer")
 	require.NoError(t, err)
 
-	err = store.SetFlagOverride(ctx, "notifications.email_enabled", "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
+	err = store.SetFlagOverride(ctx, "adm_notif/1", "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
 	require.NoError(t, err)
 
-	err = store.RemoveFlagOverride(ctx, "notifications.email_enabled", "user-1", "admin")
+	err = store.RemoveFlagOverride(ctx, "adm_notif/1", "user-1", "admin")
 	require.NoError(t, err)
 
 	// Get all audit log.
@@ -349,7 +349,7 @@ func TestAuditLog(t *testing.T) {
 	require.Equal(t, "deployer", entries[2].Actor)
 
 	// Filter by flag ID with limit.
-	entries, err = store.GetAuditLog(ctx, AuditLogFilter{FlagID: "notifications.email_enabled", Limit: 2})
+	entries, err = store.GetAuditLog(ctx, AuditLogFilter{FlagID: "adm_notif/1", Limit: 2})
 	require.NoError(t, err)
 	require.Len(t, entries, 2)
 
@@ -364,26 +364,26 @@ func TestListFeatures(t *testing.T) {
 	ctx := context.Background()
 
 	seedFeatureAndFlag(t, pool, "billing", "billing.trial_days", "INT64", "GLOBAL")
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER")
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.digest_frequency", "STRING", "GLOBAL")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/2", "STRING", "GLOBAL")
 
 	features, err := store.ListFeatures(ctx)
 	require.NoError(t, err)
 	require.Len(t, features, 2)
 
-	require.Equal(t, "billing", features[0].FeatureId)
-	require.Len(t, features[0].Flags, 1)
-	require.Equal(t, "notifications", features[1].FeatureId)
-	require.Len(t, features[1].Flags, 2)
+	require.Equal(t, "adm_notif", features[0].FeatureId)
+	require.Len(t, features[0].Flags, 2)
+	require.Equal(t, "billing", features[1].FeatureId)
+	require.Len(t, features[1].Flags, 1)
 }
 
 func TestListFeatures_ArchivedExcluded(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "USER")
 
-	_, err := pool.Exec(ctx, `UPDATE feature_flags.flags SET archived_at = now() WHERE flag_id = 'notifications.email_enabled'`)
+	_, err := pool.Exec(ctx, `UPDATE feature_flags.flags SET archived_at = now() WHERE flag_id = 'adm_notif/1'`)
 	require.NoError(t, err)
 
 	features, err := store.ListFeatures(ctx)
@@ -395,15 +395,15 @@ func TestGetFlag(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "USER")
 
-	err := store.UpdateFlagState(ctx, "notifications.email_enabled", pbflagsv1.State_STATE_ENABLED, boolValue(true), "actor")
+	err := store.UpdateFlagState(ctx, "adm_notif/1", pbflagsv1.State_STATE_ENABLED, boolValue(true), "actor")
 	require.NoError(t, err)
 
-	err = store.SetFlagOverride(ctx, "notifications.email_enabled", "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
+	err = store.SetFlagOverride(ctx, "adm_notif/1", "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
 	require.NoError(t, err)
 
-	flag, err := store.GetFlag(ctx, "notifications.email_enabled")
+	flag, err := store.GetFlag(ctx, "adm_notif/1")
 	require.NoError(t, err)
 	require.NotNil(t, flag)
 	require.Equal(t, pbflagsv1.State_STATE_ENABLED, flag.State)
@@ -421,11 +421,11 @@ func TestGetFlag_Archived(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER")
-	_, err := pool.Exec(ctx, `UPDATE feature_flags.flags SET archived_at = now() WHERE flag_id = 'notifications.email_enabled'`)
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "USER")
+	_, err := pool.Exec(ctx, `UPDATE feature_flags.flags SET archived_at = now() WHERE flag_id = 'adm_notif/1'`)
 	require.NoError(t, err)
 
-	flag, err := store.GetFlag(ctx, "notifications.email_enabled")
+	flag, err := store.GetFlag(ctx, "adm_notif/1")
 	require.NoError(t, err)
 	require.NotNil(t, flag)
 	require.True(t, flag.Archived)
@@ -437,7 +437,7 @@ func TestAdversarial_SQLInjection(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "USER")
 
 	// SQL injection in flag ID — just returns not found.
 	resp, err := store.GetFlagState(ctx, "'; DROP TABLE feature_flags.flags; --")
@@ -450,11 +450,11 @@ func TestAdversarial_SQLInjection(t *testing.T) {
 	require.Empty(t, overrides.Overrides)
 
 	// SQL injection in actor.
-	err = store.UpdateFlagState(ctx, "notifications.email_enabled", pbflagsv1.State_STATE_ENABLED, nil, "'; DROP TABLE feature_flags.flags; --")
+	err = store.UpdateFlagState(ctx, "adm_notif/1", pbflagsv1.State_STATE_ENABLED, nil, "'; DROP TABLE feature_flags.flags; --")
 	require.NoError(t, err)
 
 	// Verify tables still intact.
-	resp, err = store.GetFlagState(ctx, "notifications.email_enabled")
+	resp, err = store.GetFlagState(ctx, "adm_notif/1")
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 }
@@ -463,10 +463,10 @@ func TestAdversarial_Unicode(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "USER")
 
 	// Unicode entity ID.
-	err := store.SetFlagOverride(ctx, "notifications.email_enabled", "用户-αβγ-🎉", pbflagsv1.State_STATE_ENABLED, boolValue(true), "管理员")
+	err := store.SetFlagOverride(ctx, "adm_notif/1", "用户-αβγ-🎉", pbflagsv1.State_STATE_ENABLED, boolValue(true), "管理员")
 	require.NoError(t, err)
 
 	resp, err := store.GetOverrides(ctx, "用户-αβγ-🎉", nil)
@@ -474,7 +474,7 @@ func TestAdversarial_Unicode(t *testing.T) {
 	require.Len(t, resp.Overrides, 1)
 
 	// Unicode in audit.
-	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: "notifications.email_enabled", Limit: 10})
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: "adm_notif/1", Limit: 10})
 	require.NoError(t, err)
 	require.NotEmpty(t, entries)
 	require.Equal(t, "管理员", entries[0].Actor)
@@ -491,7 +491,7 @@ func TestGetFlagState_EmptyFlagID(t *testing.T) {
 
 func TestGetKilledFlags_Empty(t *testing.T) {
 	store, pool := setupTestStore(t)
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "GLOBAL")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "GLOBAL")
 	resp, err := store.GetKilledFlags(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, resp.FlagIds)
@@ -581,8 +581,8 @@ func TestSetFlagOverride_UnspecifiedState(t *testing.T) {
 
 func TestRemoveFlagOverride_NonexistentIsNoOp(t *testing.T) {
 	store, pool := setupTestStore(t)
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "USER")
-	err := store.RemoveFlagOverride(context.Background(), "notifications.email_enabled", "nonexistent-user", "admin")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "USER")
+	err := store.RemoveFlagOverride(context.Background(), "adm_notif/1", "nonexistent-user", "admin")
 	require.NoError(t, err)
 }
 
@@ -614,14 +614,14 @@ func TestGetFlag_NotFound(t *testing.T) {
 func TestAuditLog_OldValueRecorded(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "STRING", "GLOBAL")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "STRING", "GLOBAL")
 
-	err := store.UpdateFlagState(ctx, "notifications.email_enabled", pbflagsv1.State_STATE_ENABLED, stringValue("v1"), "admin")
+	err := store.UpdateFlagState(ctx, "adm_notif/1", pbflagsv1.State_STATE_ENABLED, stringValue("v1"), "admin")
 	require.NoError(t, err)
-	err = store.UpdateFlagState(ctx, "notifications.email_enabled", pbflagsv1.State_STATE_ENABLED, stringValue("v2"), "admin")
+	err = store.UpdateFlagState(ctx, "adm_notif/1", pbflagsv1.State_STATE_ENABLED, stringValue("v2"), "admin")
 	require.NoError(t, err)
 
-	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: "notifications.email_enabled", Limit: 1})
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: "adm_notif/1", Limit: 1})
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.NotNil(t, entries[0].OldValue)
@@ -633,16 +633,16 @@ func TestAuditLog_OldValueRecorded(t *testing.T) {
 func TestAuditLog_OverrideLifecycle(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "STRING", "USER")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "STRING", "USER")
 
-	err := store.SetFlagOverride(ctx, "notifications.email_enabled", "user-1", pbflagsv1.State_STATE_ENABLED, stringValue("v1"), "admin")
+	err := store.SetFlagOverride(ctx, "adm_notif/1", "user-1", pbflagsv1.State_STATE_ENABLED, stringValue("v1"), "admin")
 	require.NoError(t, err)
-	err = store.SetFlagOverride(ctx, "notifications.email_enabled", "user-1", pbflagsv1.State_STATE_ENABLED, stringValue("v2"), "admin")
+	err = store.SetFlagOverride(ctx, "adm_notif/1", "user-1", pbflagsv1.State_STATE_ENABLED, stringValue("v2"), "admin")
 	require.NoError(t, err)
-	err = store.RemoveFlagOverride(ctx, "notifications.email_enabled", "user-1", "admin")
+	err = store.RemoveFlagOverride(ctx, "adm_notif/1", "user-1", "admin")
 	require.NoError(t, err)
 
-	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: "notifications.email_enabled", Limit: 10})
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: "adm_notif/1", Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, entries, 3)
 	assert.Equal(t, "REMOVE_OVERRIDE", entries[0].Action)
@@ -653,14 +653,14 @@ func TestAuditLog_OverrideLifecycle(t *testing.T) {
 func TestAuditLog_LimitCap(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "GLOBAL")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "GLOBAL")
 
 	for i := 0; i < 5; i++ {
-		err := store.UpdateFlagState(ctx, "notifications.email_enabled", pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
+		err := store.UpdateFlagState(ctx, "adm_notif/1", pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
 		require.NoError(t, err)
 	}
 
-	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: "notifications.email_enabled", Limit: 2})
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: "adm_notif/1", Limit: 2})
 	require.NoError(t, err)
 	assert.Len(t, entries, 2)
 }
@@ -668,15 +668,15 @@ func TestAuditLog_LimitCap(t *testing.T) {
 func TestAuditLog_LimitClampedAt1000(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "BOOL", "GLOBAL")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "BOOL", "GLOBAL")
 
 	for i := 0; i < 3; i++ {
-		err := store.UpdateFlagState(ctx, "notifications.email_enabled", pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
+		err := store.UpdateFlagState(ctx, "adm_notif/1", pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
 		require.NoError(t, err)
 	}
 
 	// Limit > 1000 should be clamped, not rejected.
-	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: "notifications.email_enabled", Limit: 2000})
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: "adm_notif/1", Limit: 2000})
 	require.NoError(t, err)
 	assert.Len(t, entries, 3)
 }
@@ -729,7 +729,7 @@ func TestFlagValueRoundtrip(t *testing.T) {
 func TestAdversarial_ConcurrentMutations(t *testing.T) {
 	env := setupTestEnv(t)
 	ctx := context.Background()
-	seedFeatureAndFlag(t, env.pool, "notifications", "notifications.email_enabled", "STRING", "USER")
+	seedFeatureAndFlag(t, env.pool, "adm_notif", "adm_notif/1", "STRING", "USER")
 
 	const goroutines = 10
 	var wg sync.WaitGroup
@@ -741,7 +741,7 @@ func TestAdversarial_ConcurrentMutations(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			states := []pbflagsv1.State{pbflagsv1.State_STATE_ENABLED, pbflagsv1.State_STATE_DEFAULT, pbflagsv1.State_STATE_KILLED}
-			err := env.store.UpdateFlagState(ctx, "notifications.email_enabled", states[i%3], stringValue("val"), "worker")
+			err := env.store.UpdateFlagState(ctx, "adm_notif/1", states[i%3], stringValue("val"), "worker")
 			if err != nil {
 				errs <- err
 			}
@@ -753,7 +753,7 @@ func TestAdversarial_ConcurrentMutations(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := env.store.SetFlagOverride(ctx, "notifications.email_enabled", fmt.Sprintf("entity-%d", i),
+			err := env.store.SetFlagOverride(ctx, "adm_notif/1", fmt.Sprintf("entity-%d", i),
 				pbflagsv1.State_STATE_ENABLED, stringValue("override"), "worker")
 			if err != nil {
 				errs <- err
@@ -766,7 +766,7 @@ func TestAdversarial_ConcurrentMutations(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := env.store.GetFlagState(ctx, "notifications.email_enabled")
+			_, err := env.store.GetFlagState(ctx, "adm_notif/1")
 			if err != nil {
 				errs <- err
 			}
@@ -781,7 +781,7 @@ func TestAdversarial_ConcurrentMutations(t *testing.T) {
 	}
 
 	// Verify flag still readable.
-	resp, err := env.store.GetFlagState(ctx, "notifications.email_enabled")
+	resp, err := env.store.GetFlagState(ctx, "adm_notif/1")
 	require.NoError(t, err)
 	validStates := map[pbflagsv1.State]bool{
 		pbflagsv1.State_STATE_ENABLED: true,
@@ -794,7 +794,7 @@ func TestAdversarial_ConcurrentMutations(t *testing.T) {
 func TestAdversarial_ConcurrentOverrideUpsert(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
-	seedFeatureAndFlag(t, pool, "notifications", "notifications.email_enabled", "STRING", "USER")
+	seedFeatureAndFlag(t, pool, "adm_notif", "adm_notif/1", "STRING", "USER")
 
 	const goroutines = 10
 	var wg sync.WaitGroup
@@ -802,7 +802,7 @@ func TestAdversarial_ConcurrentOverrideUpsert(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := store.SetFlagOverride(ctx, "notifications.email_enabled", "user-1",
+			err := store.SetFlagOverride(ctx, "adm_notif/1", "user-1",
 				pbflagsv1.State_STATE_ENABLED, stringValue(fmt.Sprintf("v%d", i)), "worker")
 			assert.NoError(t, err)
 		}()
