@@ -183,7 +183,7 @@ func notificationsDefs() []FlagDef {
 			FieldNum:  1,
 			Name:      "email_enabled",
 			FlagType:  pbflagsv1.FlagType_FLAG_TYPE_BOOL,
-			Layer:     2, // USER
+			Layer:     "user",
 			Default:   boolVal(true),
 		},
 		{
@@ -192,7 +192,7 @@ func notificationsDefs() []FlagDef {
 			FieldNum:  2,
 			Name:      "digest_frequency",
 			FlagType:  pbflagsv1.FlagType_FLAG_TYPE_STRING,
-			Layer:     1, // GLOBAL
+			Layer:     "",
 			Default:   stringVal("daily"),
 		},
 		{
@@ -201,7 +201,7 @@ func notificationsDefs() []FlagDef {
 			FieldNum:  3,
 			Name:      "max_retries",
 			FlagType:  pbflagsv1.FlagType_FLAG_TYPE_INT64,
-			Layer:     1, // GLOBAL
+			Layer:     "",
 			Default:   int64Val(3),
 		},
 		{
@@ -210,7 +210,7 @@ func notificationsDefs() []FlagDef {
 			FieldNum:  4,
 			Name:      "score_threshold",
 			FlagType:  pbflagsv1.FlagType_FLAG_TYPE_DOUBLE,
-			Layer:     1, // GLOBAL
+			Layer:     "",
 			Default:   doubleVal(0.75),
 		},
 	}

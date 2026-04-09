@@ -45,10 +45,10 @@ type serviceTestEnv struct {
 
 func notificationsDefs() []evaluator.FlagDef {
 	return []evaluator.FlagDef{
-		{FlagID: "svc_notif/1", FeatureID: "svc_notif", FieldNum: 1, Name: "email_enabled", FlagType: pbflagsv1.FlagType_FLAG_TYPE_BOOL, Layer: 2, Default: boolVal(true)},
-		{FlagID: "svc_notif/2", FeatureID: "svc_notif", FieldNum: 2, Name: "digest_frequency", FlagType: pbflagsv1.FlagType_FLAG_TYPE_STRING, Layer: 1, Default: stringVal("daily")},
-		{FlagID: "svc_notif/3", FeatureID: "svc_notif", FieldNum: 3, Name: "max_retries", FlagType: pbflagsv1.FlagType_FLAG_TYPE_INT64, Layer: 1, Default: int64Val(3)},
-		{FlagID: "svc_notif/4", FeatureID: "svc_notif", FieldNum: 4, Name: "score_threshold", FlagType: pbflagsv1.FlagType_FLAG_TYPE_DOUBLE, Layer: 1, Default: doubleVal(0.75)},
+		{FlagID: "svc_notif/1", FeatureID: "svc_notif", FieldNum: 1, Name: "email_enabled", FlagType: pbflagsv1.FlagType_FLAG_TYPE_BOOL, Layer: "user", Default: boolVal(true)},
+		{FlagID: "svc_notif/2", FeatureID: "svc_notif", FieldNum: 2, Name: "digest_frequency", FlagType: pbflagsv1.FlagType_FLAG_TYPE_STRING, Layer: "", Default: stringVal("daily")},
+		{FlagID: "svc_notif/3", FeatureID: "svc_notif", FieldNum: 3, Name: "max_retries", FlagType: pbflagsv1.FlagType_FLAG_TYPE_INT64, Layer: "", Default: int64Val(3)},
+		{FlagID: "svc_notif/4", FeatureID: "svc_notif", FieldNum: 4, Name: "score_threshold", FlagType: pbflagsv1.FlagType_FLAG_TYPE_DOUBLE, Layer: "", Default: doubleVal(0.75)},
 	}
 }
 

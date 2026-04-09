@@ -39,11 +39,11 @@ func registryWith(defs ...FlagDef) *Registry {
 }
 
 func globalFlag(id string, def *pbflagsv1.FlagValue) FlagDef {
-	return FlagDef{FlagID: id, Layer: 1, Default: def}
+	return FlagDef{FlagID: id, Layer: "", Default: def}
 }
 
 func userFlag(id string, def *pbflagsv1.FlagValue) FlagDef {
-	return FlagDef{FlagID: id, Layer: 2, Default: def}
+	return FlagDef{FlagID: id, Layer: "user", Default: def}
 }
 
 // --- 3x3 State Matrix: Global flags ---

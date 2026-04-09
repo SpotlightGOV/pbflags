@@ -3,6 +3,7 @@ package evaluator
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -27,7 +28,7 @@ type FlagDef struct {
 	FieldNum  int32
 	Name      string
 	FlagType  pbflagsv1.FlagType
-	Layer     int32 // Layer enum ordinal
+	Layer     string // Layer name from FlagOptions.layer (e.g., "user", "entity"). Empty means global.
 	Default   *pbflagsv1.FlagValue
 
 	SupportedValues *pbflagspb.SupportedValues
@@ -39,7 +40,7 @@ type FlagDef struct {
 
 // IsGlobalLayer returns true if the flag layer is global (including unspecified).
 func (d *FlagDef) IsGlobalLayer() bool {
-	return d.Layer == 0 || d.Layer == 1 // LAYER_UNSPECIFIED or LAYER_GLOBAL
+	return d.Layer == "" || strings.EqualFold(d.Layer, "global")
 }
 
 // ParseDescriptorFile reads and parses a FileDescriptorSet from the given path.
@@ -243,9 +244,9 @@ func extractFlagDef(
 		FlagType:  flagType,
 	}
 
-	layerField := extMsg.Descriptor().Fields().ByNumber(3)
+	layerField := extMsg.Descriptor().Fields().ByNumber(5)
 	if layerField != nil && extMsg.Has(layerField) {
-		def.Layer = int32(extMsg.Get(layerField).Enum())
+		def.Layer = extMsg.Get(layerField).String()
 	}
 
 	defaultField := extMsg.Descriptor().Fields().ByNumber(2)

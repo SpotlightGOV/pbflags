@@ -103,17 +103,18 @@ func TestDefaults_FlagIDs(t *testing.T) {
 
 func TestFlagDef_IsGlobalLayer(t *testing.T) {
 	tests := []struct {
-		layer int32
+		layer string
 		want  bool
 	}{
-		{0, true},
-		{1, true},
-		{2, false},
-		{3, false},
+		{"", true},
+		{"global", true},
+		{"GLOBAL", true},
+		{"user", false},
+		{"entity", false},
 	}
 
 	for _, tt := range tests {
 		def := FlagDef{Layer: tt.layer}
-		assert.Equal(t, tt.want, def.IsGlobalLayer(), "IsGlobalLayer(layer=%d)", tt.layer)
+		assert.Equal(t, tt.want, def.IsGlobalLayer(), "IsGlobalLayer(layer=%q)", tt.layer)
 	}
 }

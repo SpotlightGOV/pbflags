@@ -123,7 +123,7 @@ func TestResolveOverride_StaleCache(t *testing.T) {
 
 	reg.Swap(&Defaults{
 		flags: map[string]FlagDef{
-			"test-flag": {FlagID: "test-flag", Layer: 2},
+			"test-flag": {FlagID: "test-flag", Layer: "user"},
 		},
 	})
 
