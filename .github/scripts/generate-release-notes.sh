@@ -38,15 +38,23 @@ if [ -z "${RELEASE_TAG:-}" ]; then
   fi
 fi
 
+# If the tag doesn't exist yet (pre-generating before release), use HEAD.
+if git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
+  RELEASE_REF="$RELEASE_TAG"
+else
+  RELEASE_REF="HEAD"
+  echo "Tag ${RELEASE_TAG} not found locally — using HEAD"
+fi
+
 if [ -z "${PREVIOUS_TAG:-}" ]; then
-  PREVIOUS_TAG="$(git describe --tags --abbrev=0 "${RELEASE_TAG}^" 2>/dev/null || true)"
+  PREVIOUS_TAG="$(git describe --tags --abbrev=0 "${RELEASE_REF}^" 2>/dev/null || true)"
 fi
 
 if [ -n "$PREVIOUS_TAG" ]; then
-  RANGE="${PREVIOUS_TAG}..${RELEASE_TAG}"
-  echo "Generating release notes for ${RANGE}"
+  RANGE="${PREVIOUS_TAG}..${RELEASE_REF}"
+  echo "Generating release notes for ${PREVIOUS_TAG}..${RELEASE_TAG}"
 else
-  RANGE="${RELEASE_TAG}"
+  RANGE="${RELEASE_REF}"
   echo "Generating release notes for all commits up to ${RELEASE_TAG} (no previous tag)"
 fi
 
