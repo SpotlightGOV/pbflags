@@ -55,6 +55,7 @@ archives:
 
 release:
   mode: replace
+  replace_existing_artifacts: true
 
 checksum:
   name_template: "checksums.txt"
