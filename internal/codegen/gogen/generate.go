@@ -13,6 +13,11 @@ import (
 
 // Generate produces Go flag client code for all feature messages in the plugin request.
 func Generate(plugin *protogen.Plugin, packagePrefix string) error {
+	layers, err := discoverLayers(plugin)
+	if err != nil {
+		return err
+	}
+
 	for _, f := range plugin.Files {
 		if !f.Generate {
 			continue
@@ -22,7 +27,7 @@ func Generate(plugin *protogen.Plugin, packagePrefix string) error {
 			if feat == nil {
 				continue
 			}
-			if err := generateFeature(plugin, msg, feat, packagePrefix); err != nil {
+			if err := generateFeature(plugin, msg, feat, packagePrefix, layers); err != nil {
 				return fmt.Errorf("generating %s: %w", feat.id, err)
 			}
 		}
@@ -44,13 +49,16 @@ type flagInfo struct {
 	oneofType   string
 	defaultVal  string
 	hasDefault  bool
-	hasEntity   bool
+	layerName   string // empty = global; otherwise the lowercase layer name (e.g., "user", "entity")
 }
 
 const connectImport = "connectrpc.com/connect"
 
-func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featureInfo, packagePrefix string) error {
-	flags := extractFlags(msg)
+func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featureInfo, packagePrefix string, layers *layerDef) error {
+	flags, err := extractFlags(msg, layers)
+	if err != nil {
+		return err
+	}
 	if len(flags) == 0 {
 		return nil
 	}
@@ -104,7 +112,7 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p("// ", pascalFeat, "Flags provides type-safe access to ", feat.id, " feature flags.")
 	p("type ", pascalFeat, "Flags interface {")
 	for _, fl := range flags {
-		if fl.hasEntity {
+		if fl.layerName != "" {
 			p("	", fl.goName, "(ctx context.Context, entityID string) ", fl.goType)
 		} else {
 			p("	", fl.goName, "(ctx context.Context) ", fl.goType)
@@ -128,7 +136,7 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p()
 
 	for _, fl := range flags {
-		if fl.hasEntity {
+		if fl.layerName != "" {
 			p("func (c *", clientType, ") ", fl.goName, "(ctx context.Context, entityID string) ", fl.goType, " {")
 			p("	resp, err := c.evaluator.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{")
 			p("		FlagId:   ", fl.goName, "ID,")
@@ -275,28 +283,31 @@ func parseFeatureMessage(b []byte) *featureInfo {
 	return info
 }
 
-func extractFlags(msg *protogen.Message) []flagInfo {
+func extractFlags(msg *protogen.Message, layers *layerDef) ([]flagInfo, error) {
 	var flags []flagInfo
 	for _, field := range msg.Fields {
-		fl := extractFlagFromField(field)
+		fl, err := extractFlagFromField(field, layers)
+		if err != nil {
+			return nil, err
+		}
 		if fl != nil {
 			flags = append(flags, *fl)
 		}
 	}
-	return flags
+	return flags, nil
 }
 
-func extractFlagFromField(field *protogen.Field) *flagInfo {
+func extractFlagFromField(field *protogen.Field, layers *layerDef) (*flagInfo, error) {
 	opts := field.Desc.Options()
 	if opts == nil {
-		return nil
+		return nil, nil
 	}
 
 	protoMsg := opts.(interface{ ProtoReflect() protoreflect.Message })
 	rm := protoMsg.ProtoReflect()
 
 	var found bool
-	var hasEntity bool
+	var layerStr string
 	var defaultVal string
 	var hasDefault bool
 
@@ -307,7 +318,7 @@ func extractFlagFromField(field *protogen.Field) *flagInfo {
 			m.Range(func(innerFd protoreflect.FieldDescriptor, innerV protoreflect.Value) bool {
 				switch innerFd.Name() {
 				case "layer":
-					hasEntity = innerV.Enum() == 2
+					layerStr = innerV.String()
 				case "default":
 					defaultVal, hasDefault = extractDefaultReflect(innerV.Message())
 				}
@@ -321,11 +332,24 @@ func extractFlagFromField(field *protogen.Field) *flagInfo {
 	if !found {
 		unk := rm.GetUnknown()
 		if len(unk) == 0 {
-			return nil
+			return nil, nil
 		}
-		found, hasEntity, defaultVal, hasDefault = parseFlagFromUnknown(unk, field.Desc.Kind())
+		found, layerStr, defaultVal, hasDefault = parseFlagFromUnknown(unk, field.Desc.Kind())
 		if !found {
-			return nil
+			return nil, nil
+		}
+	}
+
+	// Validate the layer against the discovered enum.
+	var resolvedLayerName string
+	if layerStr != "" {
+		lv, ok := layers.resolveLayer(layerStr)
+		if !ok {
+			return nil, fmt.Errorf("flag %s.%s: layer %q does not match any value in the %s enum",
+				field.Parent.Desc.Name(), field.Desc.Name(), layerStr, layers.enumName)
+		}
+		if !lv.isGlobal {
+			resolvedLayerName = lv.layerName
 		}
 	}
 
@@ -340,8 +364,8 @@ func extractFlagFromField(field *protogen.Field) *flagInfo {
 		oneofType:   oneofType,
 		defaultVal:  defaultVal,
 		hasDefault:  hasDefault,
-		hasEntity:   hasEntity,
-	}
+		layerName:   resolvedLayerName,
+	}, nil
 }
 
 func extractDefaultReflect(defMsg protoreflect.Message) (string, bool) {
@@ -380,7 +404,7 @@ func extractDefaultReflect(defMsg protoreflect.Message) (string, bool) {
 	return val, ok
 }
 
-func parseFlagFromUnknown(b []byte, fieldKind protoreflect.Kind) (found, hasEntity bool, defaultVal string, hasDefault bool) {
+func parseFlagFromUnknown(b []byte, fieldKind protoreflect.Kind) (found bool, layerStr string, defaultVal string, hasDefault bool) {
 	for len(b) > 0 {
 		num, typ, n := protowire.ConsumeTag(b)
 		if n < 0 {
@@ -393,7 +417,7 @@ func parseFlagFromUnknown(b []byte, fieldKind protoreflect.Kind) (found, hasEnti
 				return
 			}
 			found = true
-			hasEntity, defaultVal, hasDefault = parseFlagOptionsMessage(data, fieldKind)
+			layerStr, defaultVal, hasDefault = parseFlagOptionsMessage(data, fieldKind)
 			return
 		}
 		n = skipField(b, typ)
@@ -405,7 +429,7 @@ func parseFlagFromUnknown(b []byte, fieldKind protoreflect.Kind) (found, hasEnti
 	return
 }
 
-func parseFlagOptionsMessage(b []byte, fieldKind protoreflect.Kind) (hasEntity bool, defaultVal string, hasDefault bool) {
+func parseFlagOptionsMessage(b []byte, fieldKind protoreflect.Kind) (layerStr string, defaultVal string, hasDefault bool) {
 	for len(b) > 0 {
 		num, typ, n := protowire.ConsumeTag(b)
 		if n < 0 {
@@ -423,14 +447,14 @@ func parseFlagOptionsMessage(b []byte, fieldKind protoreflect.Kind) (hasEntity b
 				defaultVal, hasDefault = parseFlagDefault(data, fieldKind)
 				continue
 			}
-		case 3:
-			if typ == protowire.VarintType {
-				v, n := protowire.ConsumeVarint(b)
+		case 5: // string layer field
+			if typ == protowire.BytesType {
+				data, n := protowire.ConsumeBytes(b)
 				if n < 0 {
 					return
 				}
 				b = b[n:]
-				hasEntity = v == 2
+				layerStr = string(data)
 				continue
 			}
 		}
