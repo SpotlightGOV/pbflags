@@ -601,24 +601,21 @@ release/0.7.0            └──● ...
 
 ### Cutting a release
 
-Use the `next-tag.sh` helper to determine and create the next tag:
-
 ```bash
 # On main — next minor release:
-.github/scripts/next-tag.sh          # prints the next tag (e.g., v0.7.0)
-.github/scripts/next-tag.sh --push   # creates the tag and pushes it
+make release
 
 # On main — next major release:
-.github/scripts/next-tag.sh --major --push
+make release MAJOR=1
+
+# On main — explicit version:
+make release VERSION=v1.0.0
 
 # On a release branch — next patch:
 git checkout release/0.6.0
 git cherry-pick <fix-commit>
-.github/scripts/next-tag.sh --push   # creates e.g., v0.6.3 and pushes
+make release                    # creates e.g., v0.6.3
 ```
-
-The `--tag` flag creates the tag locally without pushing. The `--push` flag
-creates and pushes in one step.
 
 ### Pre-generating release notes
 
