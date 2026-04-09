@@ -114,7 +114,7 @@ func run(ctx context.Context, dsn, descriptorPath string) error {
 			}
 		}
 
-		layer := layerString(d.Layer)
+		layer := layerDBString(d.Layer)
 		flagType := flagTypeString(d.FlagType)
 
 		if _, err := tx.Exec(ctx,
@@ -196,10 +196,11 @@ func flagTypeString(ft pbflagsv1.FlagType) string {
 	return strings.TrimPrefix(s, "FLAG_TYPE_")
 }
 
-// layerString maps the layer ordinal to a DB string.
-func layerString(layer int32) string {
-	if layer == 2 {
-		return "USER"
+// layerDBString normalizes the layer name for DB storage (uppercase).
+// Empty or "global" maps to "GLOBAL".
+func layerDBString(layer string) string {
+	if layer == "" || strings.EqualFold(layer, "global") {
+		return "GLOBAL"
 	}
-	return "GLOBAL"
+	return strings.ToUpper(layer)
 }
