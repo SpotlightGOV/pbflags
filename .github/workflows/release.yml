@@ -117,6 +117,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
       - run: buf push proto
         env:
           BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
