@@ -75,6 +75,16 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 
 	flagsV1Import := packagePrefix + "/v1"
 	flagsV1ConnectImport := packagePrefix + "/v1/pbflagsv1connect"
+	layersImport := packagePrefix + "/layers"
+
+	// Check if any flag uses a layer (needs layers import).
+	hasLayerFlags := false
+	for _, fl := range flags {
+		if fl.layerName != "" {
+			hasLayerFlags = true
+			break
+		}
+	}
 
 	g := plugin.NewGeneratedFile(outPath, importPath)
 	p := g.P
@@ -89,6 +99,9 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p(`	"`, connectImport, `"`)
 	p(`	pbflagsv1 "`, flagsV1Import, `"`)
 	p(`	"`, flagsV1ConnectImport, `"`)
+	if hasLayerFlags {
+		p(`	"`, layersImport, `"`)
+	}
 	p(")")
 	p()
 
@@ -117,7 +130,7 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p("type ", pascalFeat, "Flags interface {")
 	for _, fl := range flags {
 		if fl.layerName != "" {
-			p("	", fl.goName, "(ctx context.Context, entityID string) ", fl.goType)
+			p("	", fl.goName, "(ctx context.Context, ", layerParamName(fl.layerName), " layers.", layerTypeName(fl.layerName), ") ", fl.goType)
 		} else {
 			p("	", fl.goName, "(ctx context.Context) ", fl.goType)
 		}
@@ -141,10 +154,11 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 
 	for _, fl := range flags {
 		if fl.layerName != "" {
-			p("func (c *", clientType, ") ", fl.goName, "(ctx context.Context, entityID string) ", fl.goType, " {")
+			paramName := layerParamName(fl.layerName)
+			p("func (c *", clientType, ") ", fl.goName, "(ctx context.Context, ", paramName, " layers.", layerTypeName(fl.layerName), ") ", fl.goType, " {")
 			p("	resp, err := c.evaluator.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{")
 			p("		FlagId:   ", fl.goName, "ID,")
-			p("		EntityId: entityID,")
+			p("		EntityId: ", paramName, ".String(),")
 			p("	}))")
 		} else {
 			p("func (c *", clientType, ") ", fl.goName, "(ctx context.Context) ", fl.goType, " {")
