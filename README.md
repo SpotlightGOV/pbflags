@@ -390,6 +390,75 @@ message Notifications {
 }
 ```
 
+## Lint Tool
+
+`pbflags-lint` detects breaking changes in your proto definitions before they
+reach production. It compares the working tree against a base git ref and
+reports violations.
+
+### Installation
+
+```bash
+go install github.com/SpotlightGOV/pbflags/cmd/pbflags-lint@latest
+```
+
+### Usage
+
+```bash
+# Pre-commit: compare working tree vs HEAD
+pbflags-lint proto/
+
+# CI: compare against main branch
+pbflags-lint --base origin/main proto/
+
+# Compare against a tag
+pbflags-lint --base v1.2.0 proto/
+```
+
+Exit codes: `0` = clean, `1` = breaking changes found, `2` = tool error.
+
+### What it checks
+
+| Rule | Description |
+|---|---|
+| `flag_removed` | A flag was deleted from the proto |
+| `type_changed` | A flag's type changed (e.g., bool to string) |
+| `layer_changed` | A flag's layer changed in a forbidden direction |
+
+Layer transition rules: global to layer is allowed; layer to global and
+layer A to layer B are forbidden (see [Changing a flag's layer](#changing-a-flags-layer)).
+
+Stateless checks (invalid layer names, missing layers enum, etc.) are
+enforced by codegen at build time — the lint tool only covers
+history-dependent rules that require comparing two versions.
+
+### Pre-commit integration
+
+```yaml
+# lefthook.yml
+pre-commit:
+  commands:
+    pbflags:
+      glob: "proto/**/*.proto"
+      run: pbflags-lint proto/
+```
+
+```yaml
+# .pre-commit-config.yaml
+- repo: https://github.com/SpotlightGOV/pbflags
+  hooks:
+    - id: pbflags-lint
+      args: [proto/]
+```
+
+```json
+// package.json (lint-staged)
+{ "proto/**/*.proto": "pbflags-lint proto/" }
+```
+
+The tool skips quickly (exit 0) when no `.proto` files have changed,
+so it's safe to run on every commit.
+
 ## Repository Structure
 
 ```
@@ -400,12 +469,14 @@ pbflags/
 ├── cmd/
 │   ├── pbflags-server/     # Evaluator server binary
 │   ├── pbflags-sync/       # Database schema sync from descriptors
+│   ├── pbflags-lint/       # Pre-commit breaking change detector
 │   └── protoc-gen-pbflags/ # Code generation plugin (Go, Java)
 ├── internal/
 │   ├── evaluator/          # Evaluation engine, caching, health tracking
 │   ├── admin/              # Admin API (flag management, audit log)
 │   │   └── web/            # Embedded web UI (htmx dashboard)
-│   └── codegen/            # Code generators (Go, Java)
+│   ├── codegen/            # Code generators (Go, Java)
+│   └── lint/               # Breaking change detection logic
 ├── clients/java/           # Java client library (Gradle)
 ├── clients/java/testing/   # Java test utilities (InMemoryFlagEvaluator, JUnit 5)
 ├── db/migrations/          # PostgreSQL schema
