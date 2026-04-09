@@ -5,14 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
-
-	pbflagspb "github.com/SpotlightGOV/pbflags/gen/pbflags"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 )
@@ -192,7 +191,7 @@ func (s *Store) SetFlagOverride(ctx context.Context, flagID, entityID string, st
 	if err != nil {
 		return fmt.Errorf("read flag layer: %w", err)
 	}
-	if parseLayer(layerStr) == pbflagspb.Layer_LAYER_GLOBAL || parseLayer(layerStr) == pbflagspb.Layer_LAYER_UNSPECIFIED {
+	if isGlobalLayer(layerStr) {
 		return fmt.Errorf("flag %s has GLOBAL layer and does not support per-entity overrides", flagID)
 	}
 	if state == pbflagsv1.State_STATE_KILLED {
@@ -329,7 +328,7 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, e
 			DisplayName:  flagDisplayName,
 			Description:  flagDesc,
 			FlagType:     parseFlagType(flagType),
-			Layer:        parseLayer(layer),
+			Layer:        layer,
 			State:        parseState(state),
 			CurrentValue: val,
 			Archived:     archived,
@@ -382,7 +381,7 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 		DisplayName:  displayName,
 		Description:  description,
 		FlagType:     parseFlagType(flagType),
-		Layer:        parseLayer(layer),
+		Layer:        layer,
 		State:        parseState(state),
 		CurrentValue: val,
 		Archived:     archivedAt != nil,
@@ -576,13 +575,6 @@ func parseState(s string) pbflagsv1.State {
 	}
 }
 
-func parseLayer(s string) pbflagspb.Layer {
-	switch s {
-	case "GLOBAL":
-		return pbflagspb.Layer_LAYER_GLOBAL
-	case "USER":
-		return pbflagspb.Layer_LAYER_USER
-	default:
-		return pbflagspb.Layer_LAYER_UNSPECIFIED
-	}
+func isGlobalLayer(s string) bool {
+	return s == "" || strings.EqualFold(s, "GLOBAL")
 }
