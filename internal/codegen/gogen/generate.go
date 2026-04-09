@@ -196,6 +196,41 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p("	}")
 	p("	return resp.Msg.Status")
 	p("}")
+	p()
+
+	// Generate Defaults() constructor and default implementation (null object pattern).
+	defaultType := "default" + pascalFeat + "Flags"
+
+	p("// Defaults returns a ", pascalFeat, "Flags that always returns the compiled")
+	p("// default for every flag. Use this when no evaluator is available to avoid")
+	p("// nil checks at call sites.")
+	p("func Defaults() ", pascalFeat, "Flags {")
+	p("	return ", defaultType, "{}")
+	p("}")
+	p()
+
+	p("type ", defaultType, " struct{}")
+	p()
+
+	for _, fl := range flags {
+		if fl.layerName != "" {
+			p("func (", defaultType, ") ", fl.goName, "(_ context.Context, _ layers.", layerTypeName(fl.layerName), ") ", fl.goType, " {")
+		} else {
+			p("func (", defaultType, ") ", fl.goName, "(_ context.Context) ", fl.goType, " {")
+		}
+		if fl.hasDefault {
+			p("	return ", fl.goName, "Default")
+		} else {
+			p("	var zero ", fl.goType)
+			p("	return zero")
+		}
+		p("}")
+		p()
+	}
+
+	p("func (", defaultType, ") Status(_ context.Context) pbflagsv1.EvaluatorStatus {")
+	p("	return pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_UNSPECIFIED")
+	p("}")
 
 	return nil
 }

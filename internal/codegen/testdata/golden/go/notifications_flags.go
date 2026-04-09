@@ -109,3 +109,32 @@ func (c *notificationsFlagsClient) Status(ctx context.Context) pbflagsv1.Evaluat
 	}
 	return resp.Msg.Status
 }
+
+// Defaults returns a NotificationsFlags that always returns the compiled
+// default for every flag. Use this when no evaluator is available to avoid
+// nil checks at call sites.
+func Defaults() NotificationsFlags {
+	return defaultNotificationsFlags{}
+}
+
+type defaultNotificationsFlags struct{}
+
+func (defaultNotificationsFlags) EmailEnabled(_ context.Context, _ layers.UserID) bool {
+	return EmailEnabledDefault
+}
+
+func (defaultNotificationsFlags) DigestFrequency(_ context.Context) string {
+	return DigestFrequencyDefault
+}
+
+func (defaultNotificationsFlags) MaxRetries(_ context.Context) int64 {
+	return MaxRetriesDefault
+}
+
+func (defaultNotificationsFlags) ScoreThreshold(_ context.Context) float64 {
+	return ScoreThresholdDefault
+}
+
+func (defaultNotificationsFlags) Status(_ context.Context) pbflagsv1.EvaluatorStatus {
+	return pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_UNSPECIFIED
+}

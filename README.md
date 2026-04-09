@@ -142,6 +142,40 @@ frequency := client.DigestFrequency(ctx)                            // string
 globalDefault := client.EmailEnabled(ctx, layers.UserID{})          // bool
 ```
 
+#### Using `Defaults()` when no evaluator is available
+
+Each generated package includes a `Defaults()` constructor that returns an
+implementation backed entirely by compiled defaults. This eliminates nil
+checks when the evaluator is optional:
+
+```go
+// Without Defaults() — nil check at every call site:
+showPowered := uiflags.ShowPoweredByDefault
+if s.flags != nil {
+    showPowered = s.flags.ShowPoweredBy(ctx)
+}
+
+// With Defaults() — initialize once, call freely:
+type Server struct {
+    flags uiflags.UIFlags  // never nil
+}
+
+func NewServer(evaluator pbflagsv1connect.FlagEvaluatorServiceClient) *Server {
+    flags := uiflags.Defaults()
+    if evaluator != nil {
+        flags = uiflags.NewUIFlagsClient(evaluator)
+    }
+    return &Server{flags: flags}
+}
+
+func (s *Server) handler(ctx context.Context) {
+    showPowered := s.flags.ShowPoweredBy(ctx)  // no nil check needed
+}
+```
+
+`Defaults()` returns a zero-allocation empty struct. `Status()` returns
+`EVALUATOR_STATUS_UNSPECIFIED` since no evaluator is connected.
+
 ### 5. Use in your application (Java)
 
 ```java
