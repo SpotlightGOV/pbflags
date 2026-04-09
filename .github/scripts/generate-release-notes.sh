@@ -41,13 +41,25 @@ fi
 # If the tag doesn't exist yet (pre-generating before release), use HEAD.
 if git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
   RELEASE_REF="$RELEASE_TAG"
-  # Warn if the tag points to a commit not on main — this will fail the release
-  # workflow and indicates the tag was created on a detached HEAD or side branch.
+  # Warn if the tag points to a commit not reachable from main or a release branch.
   TAG_COMMIT="$(git rev-list -n1 "$RELEASE_TAG")"
+  ON_VALID_BRANCH=false
   MAIN_REF="$(git rev-parse refs/remotes/origin/main 2>/dev/null || git rev-parse refs/heads/main 2>/dev/null || true)"
-  if [ -n "$MAIN_REF" ] && ! git merge-base --is-ancestor "$TAG_COMMIT" "$MAIN_REF"; then
-    echo "WARNING: Tag ${RELEASE_TAG} is not on main. The release workflow will reject this." >&2
-    echo "  Delete the tag, ensure your commit is on main, and re-tag." >&2
+  if [ -n "$MAIN_REF" ] && git merge-base --is-ancestor "$TAG_COMMIT" "$MAIN_REF"; then
+    ON_VALID_BRANCH=true
+  fi
+  if [ "$ON_VALID_BRANCH" = false ]; then
+    # Check release branches.
+    for ref in $(git for-each-ref --format='%(refname)' 'refs/remotes/origin/release/' 'refs/heads/release/' 2>/dev/null); do
+      if git merge-base --is-ancestor "$TAG_COMMIT" "$ref" 2>/dev/null; then
+        ON_VALID_BRANCH=true
+        break
+      fi
+    done
+  fi
+  if [ "$ON_VALID_BRANCH" = false ]; then
+    echo "WARNING: Tag ${RELEASE_TAG} is not on main or any release branch. The release workflow will reject this." >&2
+    echo "  Delete the tag, ensure your commit is on the correct branch, and re-tag." >&2
   fi
 else
   RELEASE_REF="HEAD"

@@ -576,43 +576,83 @@ Releases are triggered by pushing a git tag matching `v*`. The GitHub Actions
 release workflow builds multi-platform binaries via GoReleaser, pushes a Docker
 image to GHCR, and creates a GitHub release with AI-generated release notes.
 
+### Branch strategy
+
+All development happens on `main`. Releases follow a branching convention:
+
+- **Minor/major releases** (`vX.Y.0`) are tagged on `main`. The release
+  workflow automatically creates a `release/X.Y.0` branch from the tag.
+- **Patch releases** (`vX.Y.Z`, Z>0) are tagged on the corresponding
+  `release/X.Y.0` branch after cherry-picking fixes.
+
+The release workflow enforces these rules — tagging a `.0` release off a
+release branch or a patch release off main will fail with a clear error.
+
+```
+main        ──●──────●──────●──────●──────────── ...
+              │ v0.6.0       │ v0.7.0
+              │              │
+release/0.6.0 └──●──────●    │
+                  v0.6.1  v0.6.2
+                         │
+release/0.7.0            └──● ...
+                            v0.7.1
+```
+
+### Cutting a release
+
+Use the `next-tag.sh` helper to determine and create the next tag:
+
+```bash
+# On main — next minor release:
+.github/scripts/next-tag.sh          # prints the next tag (e.g., v0.7.0)
+.github/scripts/next-tag.sh --push   # creates the tag and pushes it
+
+# On main — next major release:
+.github/scripts/next-tag.sh --major --push
+
+# On a release branch — next patch:
+git checkout release/0.6.0
+git cherry-pick <fix-commit>
+.github/scripts/next-tag.sh --push   # creates e.g., v0.6.3 and pushes
+```
+
+The `--tag` flag creates the tag locally without pushing. The `--push` flag
+creates and pushes in one step.
+
 ### Pre-generating release notes
 
 You can generate and review release notes **before** tagging a release:
 
 ```bash
-make release-notes VERSION=v0.6.0
+make release-notes VERSION=v0.7.0
 ```
 
 This calls the Claude API to synthesize user-facing notes from the git log
-between the previous tag and `v0.6.0`, saving them to
-`docs/releasenotes/v0.6.0.md`. Review and edit the file, then commit it:
+between the previous tag and `v0.7.0`, saving them to
+`docs/releasenotes/v0.7.0.md`. Review and edit the file, then commit it:
 
 ```bash
-git add docs/releasenotes/v0.6.0.md
-git commit -m "docs: add release notes for v0.6.0"
+git add docs/releasenotes/v0.7.0.md
+git commit -m "Add v0.7.0 release notes"
 ```
 
 When the release workflow runs, it detects the pre-committed notes and uses
 them as-is instead of generating on the fly. If no pre-committed notes exist,
-the workflow generates them automatically (the previous behavior).
+the workflow generates them automatically and commits them back to the source
+branch.
 
 To regenerate notes, delete the file and re-run `make release-notes`.
 
-### Tagging and releasing
+### What the release workflow does
 
-```bash
-git tag v0.6.0
-git push origin v0.6.0
-```
-
-The release workflow will:
-
-1. Use pre-committed release notes (or generate them via Claude API)
-2. Build binaries for linux/macOS on amd64/arm64
-3. Build and push a Docker image to `ghcr.io/spotlightgov/pbflags-server`
-4. Push proto definitions to the Buf Schema Registry
-5. Trigger Java client publishing to Maven Central
+1. Verify the tag is on the correct branch (main for `.0`, release branch for patches)
+2. Use pre-committed release notes (or generate them via Claude API)
+3. Build binaries for linux/macOS on amd64/arm64
+4. Build and push a Docker image to `ghcr.io/spotlightgov/pbflags-server`
+5. Push proto definitions to the Buf Schema Registry
+6. Create the `release/X.Y.0` branch (for `.0` releases only)
+7. Trigger Java client publishing to Maven Central
 
 ## Clients
 

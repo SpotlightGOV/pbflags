@@ -16,13 +16,44 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Verify tag is on main
+      - name: Verify tag and branch conventions
+        id: release-meta
         run: |
-          TAG_COMMIT="$(git rev-list -n1 "${{ github.ref_name }}")"
-          if ! git merge-base --is-ancestor "$TAG_COMMIT" origin/main; then
-            echo "::error::Tag ${{ github.ref_name }} points to commit ${TAG_COMMIT} which is not on main."
-            echo "Tags must point to commits reachable from main. Delete the tag, commit to main, and re-tag."
+          TAG="${{ github.ref_name }}"
+          TAG_COMMIT="$(git rev-list -n1 "$TAG")"
+
+          # Parse version components.
+          if [[ "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+          else
+            echo "::error::Tag ${TAG} does not match vMAJOR.MINOR.PATCH"
             exit 1
+          fi
+
+          RELEASE_BRANCH="release/${MAJOR}.${MINOR}.0"
+
+          if [ "$PATCH" = "0" ]; then
+            # Minor/major release — must be on main.
+            if ! git merge-base --is-ancestor "$TAG_COMMIT" origin/main; then
+              echo "::error::Tag ${TAG} (minor/major) must be on main, but commit ${TAG_COMMIT} is not."
+              exit 1
+            fi
+            echo "source_branch=main" >> "$GITHUB_OUTPUT"
+            echo "create_release_branch=${RELEASE_BRANCH}" >> "$GITHUB_OUTPUT"
+          else
+            # Patch release — must be on the corresponding release branch.
+            if ! git ls-remote --exit-code origin "refs/heads/${RELEASE_BRANCH}" >/dev/null 2>&1; then
+              echo "::error::Patch release ${TAG} requires branch ${RELEASE_BRANCH}, which does not exist."
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$TAG_COMMIT" "origin/${RELEASE_BRANCH}"; then
+              echo "::error::Tag ${TAG} (patch) must be on ${RELEASE_BRANCH}, but commit ${TAG_COMMIT} is not."
+              exit 1
+            fi
+            echo "source_branch=${RELEASE_BRANCH}" >> "$GITHUB_OUTPUT"
+            echo "create_release_branch=" >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/setup-go@v6
         with:
@@ -59,6 +90,7 @@ jobs:
       - name: Commit release notes to repo
         run: |
           VERSION="${{ github.ref_name }}"
+          TARGET_BRANCH="${{ steps.release-meta.outputs.source_branch }}"
           NOTES_FILE="docs/releasenotes/${VERSION}.md"
           if [ ! -f "$NOTES_FILE" ]; then
             mkdir -p docs/releasenotes
@@ -67,8 +99,15 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add "$NOTES_FILE"
             git commit -m "Add ${VERSION} release notes"
-            git push origin HEAD:main
+            git push origin "HEAD:${TARGET_BRANCH}"
           fi
+      - name: Create release branch
+        if: steps.release-meta.outputs.create_release_branch != ''
+        run: |
+          BRANCH="${{ steps.release-meta.outputs.create_release_branch }}"
+          git checkout -b "$BRANCH" "${{ github.ref_name }}"
+          git push origin "$BRANCH"
+          echo "Created release branch: $BRANCH"
 
   buf-push:
     runs-on: ubuntu-latest
