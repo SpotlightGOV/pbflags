@@ -102,6 +102,24 @@
       }
     }
 
+    // Feature card collapse/expand.
+    function toggleFeature(header) {
+      var card = header.closest('.feature-card');
+      if (card) card.classList.toggle('collapsed');
+    }
+
+    function toggleExpandAll() {
+      var cards = document.querySelectorAll('.feature-card');
+      var btn = document.getElementById('expand-all-btn');
+      var anyCollapsed = false;
+      cards.forEach(function(c) { if (c.classList.contains('collapsed')) anyCollapsed = true; });
+      cards.forEach(function(c) {
+        if (anyCollapsed) c.classList.remove('collapsed');
+        else c.classList.add('collapsed');
+      });
+      if (btn) btn.textContent = anyCollapsed ? 'Collapse All' : 'Expand All';
+    }
+
     // Dashboard search/filter.
     function applyDashboardFilters() {
       var search = (document.getElementById('filter-search') || {}).value;
@@ -113,6 +131,7 @@
       var cards = document.querySelectorAll('.feature-card');
       var visibleFlags = 0;
       var totalFlags = 0;
+      var visibleCards = 0;
 
       cards.forEach(function(card) {
         var rows = card.querySelectorAll('tbody tr');
@@ -145,11 +164,23 @@
           }
         });
         card.style.display = anyVisible ? '' : 'none';
+        if (anyVisible) visibleCards++;
+      });
+
+      // Auto-expand matching features when filtering; collapse all when filter is cleared.
+      var isFiltering = search || state || layer;
+      cards.forEach(function(card) {
+        if (card.style.display === 'none') return;
+        if (isFiltering) {
+          card.classList.remove('collapsed');
+        } else {
+          card.classList.add('collapsed');
+        }
       });
 
       var countEl = document.getElementById('filter-count');
       if (countEl) {
-        if (search || state || layer) {
+        if (isFiltering) {
           countEl.textContent = visibleFlags + ' of ' + totalFlags + ' flags';
         } else {
           countEl.textContent = '';

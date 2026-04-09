@@ -49,6 +49,7 @@ func NewHandler(store *admin.Store, logger *slog.Logger) (*Handler, error) {
 		"isUserLayer":   isUserLayer,
 		"isEnabled":     isEnabled,
 		"isBool":        isBool,
+		"featureSummary": featureSummary,
 		"json":          toJSON,
 		"flagIDEscape":  flagIDEscape,
 		"dict":          dict,
@@ -553,6 +554,30 @@ func isEnabled(s pbflagsv1.State) bool {
 
 func isBool(t pbflagsv1.FlagType) bool {
 	return t == pbflagsv1.FlagType_FLAG_TYPE_BOOL
+}
+
+// featureSummary returns a short summary like "2 enabled, 1 killed" for a feature's flags.
+func featureSummary(flags []*pbflagsv1.FlagDetail) string {
+	var enabled, killed int
+	for _, f := range flags {
+		switch f.State {
+		case pbflagsv1.State_STATE_ENABLED:
+			enabled++
+		case pbflagsv1.State_STATE_KILLED:
+			killed++
+		}
+	}
+	var parts []string
+	if enabled > 0 {
+		parts = append(parts, fmt.Sprintf("%d enabled", enabled))
+	}
+	if killed > 0 {
+		parts = append(parts, fmt.Sprintf("%d killed", killed))
+	}
+	if len(parts) == 0 {
+		return "all defaults"
+	}
+	return strings.Join(parts, ", ")
 }
 
 // resolvedValue returns the effective value a flag evaluates to:

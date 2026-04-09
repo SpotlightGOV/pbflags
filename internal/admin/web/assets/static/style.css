@@ -175,15 +175,39 @@ body {
 .feature-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 14px 20px;
   border-bottom: 1px solid var(--border-dim);
   cursor: pointer;
   transition: background var(--transition);
+  user-select: none;
 }
 
 .feature-header:hover {
   background: var(--bg-raised);
+}
+
+.feature-chevron {
+  font-size: 12px;
+  color: var(--text-dim);
+  transition: transform var(--transition);
+  flex-shrink: 0;
+}
+
+.feature-card:not(.collapsed) .feature-chevron {
+  transform: rotate(90deg);
+}
+
+.feature-card.collapsed .feature-header {
+  border-bottom-color: transparent;
+}
+
+.feature-body {
+  transition: none;
+}
+
+.feature-card.collapsed .feature-body {
+  display: none;
 }
 
 .feature-name {
@@ -209,6 +233,12 @@ body {
   padding: 2px 8px;
   background: var(--bg-root);
   border-radius: 2px;
+}
+
+.feature-summary {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
 }
 
 .feature-desc {
