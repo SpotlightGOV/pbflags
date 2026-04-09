@@ -1,0 +1,16 @@
+# Example buf.gen.yaml for Go flag client generation.
+#
+# Generates type-safe flag clients from your proto definitions.
+# Requires: go install github.com/SpotlightGOV/pbflags/cmd/protoc-gen-pbflags@latest
+#
+# Usage:
+#   buf generate --template buf.gen.go.yaml
+version: v2
+plugins:
+  - local: protoc-gen-pbflags
+    out: gen/flags
+    opt:
+      - lang=go
+      - package_prefix=github.com/yourorg/yourrepo/gen/flags
+inputs:
+  - directory: proto

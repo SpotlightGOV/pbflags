@@ -61,17 +61,40 @@ message Notifications {
 }
 ```
 
-### 2. Generate client code
+### 2. Set up buf dependency
+
+Add pbflags to your `buf.yaml`:
+
+```yaml
+version: v2
+modules:
+  - path: proto
+deps:
+  - buf.build/spotlightgov/pbflags
+```
+
+Then pull the latest version:
+
+```bash
+buf dep update
+```
+
+> **Important:** After upgrading pbflags, always run `buf dep update` to pull the
+> latest proto definitions from BSR. The `Layer` enum annotation
+> (`option (pbflags.layers) = true`) and string-valued `layer` fields were
+> introduced in v0.6.0 — older BSR commits do not include them.
+
+### 3. Generate client code
 
 ```bash
 # Install the codegen plugin
 go install github.com/SpotlightGOV/pbflags/cmd/protoc-gen-pbflags@latest
 
 # Generate via buf
-buf generate
+buf generate --template buf.gen.flags.yaml
 ```
 
-Example `buf.gen.yaml` for Go:
+Example `buf.gen.flags.yaml` for Go:
 
 ```yaml
 version: v2
@@ -99,7 +122,9 @@ inputs:
   - directory: proto
 ```
 
-### 3. Use in your application (Go)
+Complete example configs are in [`proto/example/`](proto/example/).
+
+### 4. Use in your application (Go)
 
 ```go
 import "github.com/yourorg/yourrepo/gen/flags/layers"
@@ -115,7 +140,7 @@ frequency := client.DigestFrequency(ctx)                            // string
 globalDefault := client.EmailEnabled(ctx, layers.UserID{})          // bool
 ```
 
-### 4. Use in your application (Java)
+### 5. Use in your application (Java)
 
 ```java
 // Create via factory method (framework-agnostic)

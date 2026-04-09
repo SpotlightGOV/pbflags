@@ -1,0 +1,16 @@
+# Example buf.yaml for a project that depends on pbflags.
+#
+# Copy this to your project root as buf.yaml and adjust the module path
+# and proto directory to match your layout.
+#
+# After creating this file, run:
+#   buf dep update
+# to generate buf.lock with the latest pbflags BSR commit.
+version: v2
+modules:
+  - path: proto
+deps:
+  - buf.build/spotlightgov/pbflags
+lint:
+  use:
+    - STANDARD
