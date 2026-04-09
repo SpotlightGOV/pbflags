@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -28,9 +29,10 @@ var assets embed.FS
 
 // EnvConfig holds environment display settings for the admin UI.
 type EnvConfig struct {
-	Name    string // e.g. "production", "staging", "dev"
-	Color   string // CSS color, e.g. "#f87171"
-	Version string // build version, e.g. "1.2.3"
+	Name         string // e.g. "production", "staging", "dev"
+	Color        string // CSS color, e.g. "#f87171"
+	Version      string // build version, e.g. "1.2.3"
+	DevAssetsDir string // if set, read assets from disk for live reload (dev only)
 }
 
 // Handler serves the admin web UI.
@@ -40,6 +42,9 @@ type Handler struct {
 	tmpl     *template.Template
 	staticFS fs.FS
 	env      EnvConfig
+	devMode  bool
+	funcMap  template.FuncMap
+	tmplFS   fs.FS
 }
 
 // NewHandler creates a web UI handler backed by the given store.
@@ -66,7 +71,20 @@ func NewHandler(store *admin.Store, logger *slog.Logger, env ...EnvConfig) (*Han
 		"dict":               dict,
 	}
 
-	tmplFS, err := fs.Sub(assets, "assets/templates")
+	var ec EnvConfig
+	if len(env) > 0 {
+		ec = env[0]
+	}
+	if ec.Color == "" && ec.Name != "" {
+		ec.Color = defaultEnvColor(ec.Name)
+	}
+
+	var rootFS fs.FS = assets
+	if ec.DevAssetsDir != "" {
+		rootFS = os.DirFS(ec.DevAssetsDir)
+	}
+
+	tmplFS, err := fs.Sub(rootFS, "assets/templates")
 	if err != nil {
 		return nil, fmt.Errorf("template fs: %w", err)
 	}
@@ -76,20 +94,26 @@ func NewHandler(store *admin.Store, logger *slog.Logger, env ...EnvConfig) (*Han
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
 
-	staticFS, err := fs.Sub(assets, "assets/static")
+	staticFS, err := fs.Sub(rootFS, "assets/static")
 	if err != nil {
 		return nil, fmt.Errorf("static fs: %w", err)
 	}
 
-	var ec EnvConfig
-	if len(env) > 0 {
-		ec = env[0]
-	}
-	if ec.Color == "" && ec.Name != "" {
-		ec.Color = defaultEnvColor(ec.Name)
+	devMode := ec.DevAssetsDir != ""
+	if devMode {
+		logger.Info("dev mode: assets served from disk", "dir", ec.DevAssetsDir)
 	}
 
-	return &Handler{store: store, logger: logger, tmpl: tmpl, staticFS: staticFS, env: ec}, nil
+	return &Handler{
+		store:    store,
+		logger:   logger,
+		tmpl:     tmpl,
+		staticFS: staticFS,
+		env:      ec,
+		devMode:  devMode,
+		funcMap:  funcMap,
+		tmplFS:   tmplFS,
+	}, nil
 }
 
 // defaultEnvColor returns a sensible default color for common environment names.
@@ -481,7 +505,17 @@ func (h *Handler) removeOverride(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) render(w http.ResponseWriter, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.tmpl.ExecuteTemplate(w, name, data); err != nil {
+	tmpl := h.tmpl
+	if h.devMode {
+		var err error
+		tmpl, err = template.New("").Funcs(h.funcMap).ParseFS(h.tmplFS, "*.html")
+		if err != nil {
+			h.logger.Error("dev: reparse templates", "error", err)
+			http.Error(w, "template parse error: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
 		h.logger.Error("render template", "template", name, "error", err)
 	}
 }

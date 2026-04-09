@@ -64,6 +64,7 @@ func main() {
 	exitAfterUpgrade := flag.Bool("exit-after-upgrade", false, "Exit after running migrations (requires --upgrade)")
 	envName := flag.String("env-name", "", "Environment label shown in admin UI (e.g. production, staging, dev)")
 	envColor := flag.String("env-color", "", "Accent color for admin UI environment banner (hex, e.g. #f87171)")
+	devAssets := flag.String("dev-assets", "", "Read admin UI assets from disk for live reload (dev only)")
 	flag.Parse()
 
 	setEnvIfFlag("PBFLAGS_ENV_NAME", *envName)
@@ -97,7 +98,7 @@ func main() {
 		}
 	}
 
-	if err := run(*configPath, logger); err != nil {
+	if err := run(*configPath, logger, *devAssets); err != nil {
 		logger.Error("fatal", "error", err)
 		os.Exit(1)
 	}
@@ -109,7 +110,7 @@ func setEnvIfFlag(key, value string) {
 	}
 }
 
-func run(configPath string, logger *slog.Logger) error {
+func run(configPath string, logger *slog.Logger, devAssetsDir string) error {
 	cfg, err := evaluator.LoadConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -182,7 +183,7 @@ func run(configPath string, logger *slog.Logger) error {
 		state = dbFetcher
 
 		if cfg.Admin != "" {
-			if err := startAdmin(ctx, cfg, pool, defs, logger); err != nil {
+			if err := startAdmin(ctx, cfg, pool, defs, logger, devAssetsDir); err != nil {
 				return fmt.Errorf("start admin: %w", err)
 			}
 		}
@@ -271,7 +272,7 @@ func modeString(root bool) string {
 	return "proxy"
 }
 
-func startAdmin(ctx context.Context, cfg evaluator.Config, pool *pgxpool.Pool, defs []evaluator.FlagDef, logger *slog.Logger) error {
+func startAdmin(ctx context.Context, cfg evaluator.Config, pool *pgxpool.Pool, defs []evaluator.FlagDef, logger *slog.Logger, devAssetsDir string) error {
 	adminLogger := logger.With("component", "admin")
 
 	store := admin.NewStore(pool, adminLogger, defs)
@@ -282,9 +283,10 @@ func startAdmin(ctx context.Context, cfg evaluator.Config, pool *pgxpool.Pool, d
 	mux.Handle(adminPath, adminHandler)
 
 	webHandler, err := adminweb.NewHandler(store, adminLogger, adminweb.EnvConfig{
-		Name:    cfg.EnvName,
-		Color:   cfg.EnvColor,
-		Version: version,
+		Name:         cfg.EnvName,
+		Color:        cfg.EnvColor,
+		Version:      version,
+		DevAssetsDir: devAssetsDir,
 	})
 	if err != nil {
 		return fmt.Errorf("create web handler: %w", err)
