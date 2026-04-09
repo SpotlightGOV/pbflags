@@ -41,13 +41,29 @@ fi
 # If the tag doesn't exist yet (pre-generating before release), use HEAD.
 if git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
   RELEASE_REF="$RELEASE_TAG"
+  # Warn if the tag points to a commit not on main — this will fail the release
+  # workflow and indicates the tag was created on a detached HEAD or side branch.
+  TAG_COMMIT="$(git rev-list -n1 "$RELEASE_TAG")"
+  MAIN_REF="$(git rev-parse refs/remotes/origin/main 2>/dev/null || git rev-parse refs/heads/main 2>/dev/null || true)"
+  if [ -n "$MAIN_REF" ] && ! git merge-base --is-ancestor "$TAG_COMMIT" "$MAIN_REF"; then
+    echo "WARNING: Tag ${RELEASE_TAG} is not on main. The release workflow will reject this." >&2
+    echo "  Delete the tag, ensure your commit is on main, and re-tag." >&2
+  fi
 else
   RELEASE_REF="HEAD"
   echo "Tag ${RELEASE_TAG} not found locally — using HEAD"
 fi
 
 if [ -z "${PREVIOUS_TAG:-}" ]; then
-  PREVIOUS_TAG="$(git describe --tags --abbrev=0 "${RELEASE_REF}^" 2>/dev/null || true)"
+  # Use version-sorted tags to find the previous release. git describe walks
+  # commit ancestry, which misses tags on side branches (e.g. a release-notes-
+  # only commit that diverged from main).
+  PREVIOUS_TAG="$(git tag --sort=-v:refname | grep -A1 "^${RELEASE_TAG}\$" | tail -1)"
+  # If grep matched the last tag (no line after it), PREVIOUS_TAG equals
+  # RELEASE_TAG — treat that as "no previous tag".
+  if [ "$PREVIOUS_TAG" = "$RELEASE_TAG" ]; then
+    PREVIOUS_TAG=""
+  fi
 fi
 
 if [ -n "$PREVIOUS_TAG" ]; then
@@ -221,8 +237,10 @@ fi
 echo "$NOTES" > "$OUTPUT_FILE"
 echo "Release notes written to ${OUTPUT_FILE}"
 
-# Also save to docs/releasenotes/ for future reference (skip if already there)
-if [ "$(cd "$(dirname "$OUTPUT_FILE")" && pwd)/$(basename "$OUTPUT_FILE")" != "$RELEASE_NOTES_FILE" ]; then
+# Also save to docs/releasenotes/ for future reference when running locally.
+# In CI (GitHub Actions sets CI=true), skip — the extra file makes git dirty and
+# goreleaser refuses to run.
+if [ -z "${CI:-}" ] && [ "$(cd "$(dirname "$OUTPUT_FILE")" && pwd)/$(basename "$OUTPUT_FILE")" != "$RELEASE_NOTES_FILE" ]; then
   mkdir -p "$RELEASE_NOTES_DIR"
   cp "$OUTPUT_FILE" "$RELEASE_NOTES_FILE"
   echo "Release notes also saved to docs/releasenotes/${RELEASE_TAG}.md"
