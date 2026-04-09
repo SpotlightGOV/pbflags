@@ -3,6 +3,11 @@
 # notes from the git log between the two most recent tags (or between a tag and
 # HEAD). The output is written to a file suitable for goreleaser --release-notes.
 #
+# When run locally (not in CI), notes are saved to docs/releasenotes/<version>.md
+# so they can be reviewed, edited, and committed before the release. If notes
+# already exist for the version, the script exits without overwriting — delete
+# the file and re-run to regenerate.
+#
 # Required env:
 #   ANTHROPIC_API_KEY   — Claude API key
 #   GITHUB_TOKEN        — GitHub token for fetching PR descriptions
@@ -15,6 +20,9 @@
 #   CLAUDE_MODEL        — model to use (default: claude-sonnet-4-20250514)
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 OUTPUT_FILE="${OUTPUT_FILE:-release-notes.md}"
 CLAUDE_MODEL="${CLAUDE_MODEL:-claude-sonnet-4-20250514}"
@@ -40,6 +48,18 @@ if [ -n "$PREVIOUS_TAG" ]; then
 else
   RANGE="${RELEASE_TAG}"
   echo "Generating release notes for all commits up to ${RELEASE_TAG} (no previous tag)"
+fi
+
+# ---------------------------------------------------------------------------
+# Check for pre-committed release notes
+# ---------------------------------------------------------------------------
+RELEASE_NOTES_DIR="${PROJECT_ROOT}/docs/releasenotes"
+RELEASE_NOTES_FILE="${RELEASE_NOTES_DIR}/${RELEASE_TAG}.md"
+
+if [ -f "$RELEASE_NOTES_FILE" ]; then
+  echo "Using pre-committed release notes: docs/releasenotes/${RELEASE_TAG}.md"
+  cp "$RELEASE_NOTES_FILE" "$OUTPUT_FILE"
+  exit 0
 fi
 
 # ---------------------------------------------------------------------------
@@ -181,3 +201,8 @@ fi
 
 echo "$NOTES" > "$OUTPUT_FILE"
 echo "Release notes written to ${OUTPUT_FILE}"
+
+# Also save to docs/releasenotes/ for future reference
+mkdir -p "$RELEASE_NOTES_DIR"
+cp "$OUTPUT_FILE" "$RELEASE_NOTES_FILE"
+echo "Release notes also saved to docs/releasenotes/${RELEASE_TAG}.md"

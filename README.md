@@ -485,6 +485,50 @@ pbflags/
 └── docker/                 # Dockerfile and docker-compose
 ```
 
+## Releasing
+
+Releases are triggered by pushing a git tag matching `v*`. The GitHub Actions
+release workflow builds multi-platform binaries via GoReleaser, pushes a Docker
+image to GHCR, and creates a GitHub release with AI-generated release notes.
+
+### Pre-generating release notes
+
+You can generate and review release notes **before** tagging a release:
+
+```bash
+make release-notes VERSION=v0.6.0
+```
+
+This calls the Claude API to synthesize user-facing notes from the git log
+between the previous tag and `v0.6.0`, saving them to
+`docs/releasenotes/v0.6.0.md`. Review and edit the file, then commit it:
+
+```bash
+git add docs/releasenotes/v0.6.0.md
+git commit -m "docs: add release notes for v0.6.0"
+```
+
+When the release workflow runs, it detects the pre-committed notes and uses
+them as-is instead of generating on the fly. If no pre-committed notes exist,
+the workflow generates them automatically (the previous behavior).
+
+To regenerate notes, delete the file and re-run `make release-notes`.
+
+### Tagging and releasing
+
+```bash
+git tag v0.6.0
+git push origin v0.6.0
+```
+
+The release workflow will:
+
+1. Use pre-committed release notes (or generate them via Claude API)
+2. Build binaries for linux/macOS on amd64/arm64
+3. Build and push a Docker image to `ghcr.io/spotlightgov/pbflags-server`
+4. Push proto definitions to the Buf Schema Registry
+5. Trigger Java client publishing to Maven Central
+
 ## Clients
 
 | Language | Status | Package |

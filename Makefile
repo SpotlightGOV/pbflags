@@ -1,4 +1,4 @@
-.PHONY: generate build test clean docker dev dev-db
+.PHONY: generate build test clean docker dev dev-db release-notes
 
 # Generate protobuf Go code from proto definitions.
 generate:
@@ -28,6 +28,17 @@ install-codegen:
 # Start only the database for local development.
 dev-db:
 	docker compose -f docker/docker-compose.yml up -d db
+
+# Pre-generate release notes for review before tagging.
+# Usage: make release-notes VERSION=v0.6.0
+# Notes are saved to docs/releasenotes/<VERSION>.md. Edit and commit before releasing.
+# Delete the file and re-run to regenerate.
+release-notes:
+ifndef VERSION
+	$(error VERSION is required, e.g. make release-notes VERSION=v0.6.0)
+endif
+	@mkdir -p docs/releasenotes
+	RELEASE_TAG=$(VERSION) .github/scripts/generate-release-notes.sh
 
 # Run the server locally with live asset reloading.
 # CSS/template changes take effect on browser refresh; Go changes need a restart.
