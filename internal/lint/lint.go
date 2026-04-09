@@ -10,8 +10,8 @@ import (
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 )
 
-// Violation represents a single breaking change detected between two
-// versions of flag definitions.
+// Violation represents a breaking change detected between two versions of
+// flag definitions.
 type Violation struct {
 	FlagID   string // e.g., "notifications/1"
 	Rule     string // machine-readable rule name
@@ -30,7 +30,6 @@ func (v Violation) String() string {
 
 // Rule names.
 const (
-	RuleFlagRemoved  = "flag_removed"
 	RuleTypeChanged  = "type_changed"
 	RuleLayerChanged = "layer_changed"
 )
@@ -46,21 +45,15 @@ func Check(base, current []evaluator.FlagDef) []Violation {
 	for id, baseDef := range baseMap {
 		curDef, exists := currentMap[id]
 		if !exists {
-			violations = append(violations, Violation{
-				FlagID:   id,
-				Rule:     RuleFlagRemoved,
-				Message:  fmt.Sprintf("flag %q was removed", baseDef.Name),
-				Guidance: "Removing a flag breaks all consumers that reference it. Archive the flag by removing it from the proto and running pbflags-sync instead.",
-			})
-			continue
+			continue // Flag removal is normal lifecycle, not a violation.
 		}
 
 		// Check type change.
 		if baseDef.FlagType != curDef.FlagType {
 			violations = append(violations, Violation{
-				FlagID:  id,
-				Rule:    RuleTypeChanged,
-				Message: fmt.Sprintf("flag type changed from %s to %s", flagTypeName(baseDef.FlagType), flagTypeName(curDef.FlagType)),
+				FlagID:   id,
+				Rule:     RuleTypeChanged,
+				Message:  fmt.Sprintf("flag type changed from %s to %s", flagTypeName(baseDef.FlagType), flagTypeName(curDef.FlagType)),
 				Guidance: "Changing a flag's type breaks generated client code and may corrupt stored values. Define a new flag with the desired type instead.",
 			})
 		}
@@ -95,9 +88,9 @@ func checkLayerChange(flagID string, base, current evaluator.FlagDef) (Violation
 	// Layer → Global: forbidden.
 	if !baseGlobal && curGlobal {
 		return Violation{
-			FlagID: flagID,
-			Rule:   RuleLayerChanged,
-			Message: fmt.Sprintf("layer changed from %q to global", baseLayer),
+			FlagID:   flagID,
+			Rule:     RuleLayerChanged,
+			Message:  fmt.Sprintf("layer changed from %q to global", baseLayer),
 			Guidance: "Changing a layered flag to global orphans existing override data. " +
 				"Define a new global flag and migrate your code to use it. " +
 				"See the \"Migrating a flag to a different layer\" section in the README.",
@@ -106,9 +99,9 @@ func checkLayerChange(flagID string, base, current evaluator.FlagDef) (Violation
 
 	// Layer A → Layer B: forbidden.
 	return Violation{
-		FlagID: flagID,
-		Rule:   RuleLayerChanged,
-		Message: fmt.Sprintf("layer changed from %q to %q", baseLayer, curLayer),
+		FlagID:   flagID,
+		Rule:     RuleLayerChanged,
+		Message:  fmt.Sprintf("layer changed from %q to %q", baseLayer, curLayer),
 		Guidance: "Changing a flag's layer invalidates existing override data (entity IDs from the old layer are misinterpreted as the new layer). " +
 			"Define a new flag with the desired layer and migrate overrides. " +
 			"See the \"Migrating a flag to a different layer\" section in the README.",

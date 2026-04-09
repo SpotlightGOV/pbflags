@@ -45,9 +45,7 @@ func TestCheck_FlagRemoved(t *testing.T) {
 		stringFlag("f/2", "name", ""),
 	}
 	violations := Check(base, current)
-	require.Len(t, violations, 1)
-	assert.Equal(t, "f/1", violations[0].FlagID)
-	assert.Equal(t, RuleFlagRemoved, violations[0].Rule)
+	assert.Empty(t, violations, "flag removal is normal lifecycle, not a violation")
 }
 
 func TestCheck_FlagAdded(t *testing.T) {
@@ -136,19 +134,16 @@ func TestCheck_MultipleViolations(t *testing.T) {
 	current := []evaluator.FlagDef{
 		// f/1: layer user → global (violation)
 		boolFlag("f/1", "enabled", ""),
-		// f/2: removed (violation)
+		// f/2: removed (not a violation)
 		// f/3: layer entity → tenant (violation)
 		boolFlag("f/3", "active", "tenant"),
 	}
 	violations := Check(base, current)
-	assert.Len(t, violations, 3)
+	assert.Len(t, violations, 2)
 
-	rules := make(map[string]int)
 	for _, v := range violations {
-		rules[v.Rule]++
+		assert.Equal(t, RuleLayerChanged, v.Rule)
 	}
-	assert.Equal(t, 1, rules[RuleFlagRemoved])
-	assert.Equal(t, 2, rules[RuleLayerChanged])
 }
 
 func TestCheck_EmptyBase(t *testing.T) {
@@ -162,12 +157,12 @@ func TestCheck_EmptyBase(t *testing.T) {
 func TestViolation_String(t *testing.T) {
 	v := Violation{
 		FlagID:   "notifications/1",
-		Rule:     RuleFlagRemoved,
-		Message:  "flag \"email_enabled\" was removed",
-		Guidance: "Archive the flag instead.",
+		Rule:     RuleLayerChanged,
+		Message:  "layer changed from \"user\" to global",
+		Guidance: "Define a new global flag instead.",
 	}
 	s := v.String()
 	assert.Contains(t, s, "notifications/1")
-	assert.Contains(t, s, RuleFlagRemoved)
-	assert.Contains(t, s, "Archive")
+	assert.Contains(t, s, RuleLayerChanged)
+	assert.Contains(t, s, "Define a new")
 }

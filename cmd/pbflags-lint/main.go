@@ -92,7 +92,7 @@ func run(baseRef, protoDir string) error {
 	}
 
 	// Report violations.
-	fmt.Fprintf(os.Stderr, "pbflags-lint: %d breaking change(s) found:\n\n", len(violations))
+	fmt.Fprintf(os.Stderr, "pbflags-lint: %d issue(s) found:\n\n", len(violations))
 	for _, v := range violations {
 		fmt.Fprintf(os.Stderr, "  %s\n\n", v)
 	}

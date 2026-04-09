@@ -20,9 +20,9 @@ func TestCheck_RealDescriptors(t *testing.T) {
 	assert.Empty(t, violations, "same descriptors should produce no violations")
 }
 
-// TestCheck_RealDescriptors_SimulatedBreaking uses real descriptors as a base
-// and simulates breaking changes by modifying the parsed FlagDefs.
-func TestCheck_RealDescriptors_SimulatedBreaking(t *testing.T) {
+// TestCheck_RealDescriptors_FlagRemoval verifies that removing a flag
+// is not treated as a violation (it's normal lifecycle).
+func TestCheck_RealDescriptors_FlagRemoval(t *testing.T) {
 	defs, err := evaluator.ParseDescriptorFile("../evaluator/testdata/descriptors.pb")
 	require.NoError(t, err)
 	require.NotEmpty(t, defs)
@@ -32,8 +32,7 @@ func TestCheck_RealDescriptors_SimulatedBreaking(t *testing.T) {
 	copy(current, defs[:len(defs)-1])
 
 	violations := lint.Check(defs, current)
-	require.Len(t, violations, 1)
-	assert.Equal(t, lint.RuleFlagRemoved, violations[0].Rule)
+	assert.Empty(t, violations, "flag removal should not produce violations")
 }
 
 // TestCheck_RealDescriptors_LayerChange uses real descriptors and simulates

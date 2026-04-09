@@ -122,6 +122,8 @@ func run(ctx context.Context, dsn, descriptorPath string) error {
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			 ON CONFLICT (flag_id) DO UPDATE SET
 			   display_name = EXCLUDED.display_name,
+			   flag_type = EXCLUDED.flag_type,
+			   layer = EXCLUDED.layer,
 			   description = EXCLUDED.description,
 			   default_value = EXCLUDED.default_value,
 			   archived_at = NULL,

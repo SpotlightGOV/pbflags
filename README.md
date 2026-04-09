@@ -421,12 +421,14 @@ Exit codes: `0` = clean, `1` = breaking changes found, `2` = tool error.
 
 | Rule | Description |
 |---|---|
-| `flag_removed` | A flag was deleted from the proto |
 | `type_changed` | A flag's type changed (e.g., bool to string) |
 | `layer_changed` | A flag's layer changed in a forbidden direction |
 
 Layer transition rules: global to layer is allowed; layer to global and
 layer A to layer B are forbidden (see [Changing a flag's layer](#changing-a-flags-layer)).
+
+Flag removal is normal lifecycle and is **not** flagged — the evaluator
+gracefully handles archived flags.
 
 Stateless checks (invalid layer names, missing layers enum, etc.) are
 enforced by codegen at build time — the lint tool only covers
