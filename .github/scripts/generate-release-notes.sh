@@ -146,10 +146,21 @@ Write concise, user-facing release notes in Markdown. Follow these rules:
 10. Use a level-2 heading (##) for each section."
 
 # ---------------------------------------------------------------------------
+# Resolve API key (env var > sops file)
+# ---------------------------------------------------------------------------
+SOPS_FILE="${PROJECT_ROOT}/secrets.sops.yml"
+if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -f "$SOPS_FILE" ] && command -v sops >/dev/null 2>&1; then
+  ANTHROPIC_API_KEY="$(sops -d --extract '["anthropic_api_key"]' "$SOPS_FILE" 2>/dev/null || true)"
+  if [ -n "$ANTHROPIC_API_KEY" ]; then
+    echo "Using API key from secrets.sops.yml"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Call Claude API
 # ---------------------------------------------------------------------------
 if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-  echo "WARNING: ANTHROPIC_API_KEY not set. Falling back to commit list." >&2
+  echo "WARNING: ANTHROPIC_API_KEY not set and no sops secret found. Falling back to commit list." >&2
   {
     echo "# ${RELEASE_TAG}"
     echo ""

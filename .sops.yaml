@@ -1,0 +1,3 @@
+creation_rules:
+  - path_regex: \.sops\.yml$
+    gcp_kms: projects/spotlightgov-dev-001/locations/us-central1/keyRings/sops/cryptoKeys/sops
