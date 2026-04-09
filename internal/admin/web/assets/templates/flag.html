@@ -2,63 +2,88 @@
 <div class="breadcrumb">
   <a href="/" hx-get="/" hx-target="#content" hx-push-url="true">dashboard</a>
   <span class="sep">/</span>
-  <span class="current">{{.FlagID}}</span>
+  <span class="current">{{flagLabel .Flag}}</span>
 </div>
 
 <div class="flag-detail-header">
   <div class="flag-detail-info">
-    <div class="flag-id">{{.Flag.FlagId}}</div>
+    <div class="flag-display-name">{{flagLabel .Flag}}</div>
+    <div class="flag-id-sub">{{.Flag.FlagId}}</div>
     {{if .Flag.Description}}<div class="flag-description">{{.Flag.Description}}</div>{{end}}
     <div class="flag-detail-badges">
       <span class="badge badge-type">{{typeLabel .Flag.FlagType}}</span>
       <span class="badge badge-layer {{if isUserLayer .Flag.Layer}}badge-layer-user{{end}}">
         {{layerLabel .Flag.Layer}}
       </span>
+      <span class="state-pill {{stateClass .Flag.State}}">{{stateLabel .Flag.State}}</span>
     </div>
   </div>
-  <div class="flag-detail-state">
-    <span class="state-pill {{stateClass .Flag.State}}">{{stateLabel .Flag.State}}</span>
+  <div class="flag-detail-actions">
+    {{if eq (stateLabel .Flag.State) "KILLED"}}
+      <button class="btn btn-primary"
+              hx-post="/api/flags/state/{{.Flag.FlagId}}"
+              hx-target="#content" hx-swap="innerHTML"
+              hx-vals='{"state":"DEFAULT"}'>Unkill</button>
+    {{else}}
+      <button class="btn btn-danger btn-kill"
+              hx-post="/api/flags/state/{{.Flag.FlagId}}"
+              hx-target="#content" hx-swap="innerHTML"
+              hx-vals='{"state":"KILLED"}'
+              hx-confirm="Kill this flag? It will return the compiled default for all evaluations.">Kill Flag</button>
+    {{end}}
   </div>
 </div>
 
-<!-- State & Value -->
+<!-- Effective Value -->
 <div class="detail-section" id="state-section">
   <div class="detail-section-header">
-    <h3>State &amp; Value</h3>
+    <h3>Value</h3>
+    <span class="state-hint">{{stateHint .Flag.State}}</span>
   </div>
   <div class="detail-section-body">
     <div class="value-grid">
-      <div class="value-cell">
-        <label>Current Value</label>
-        <div class="val">{{flagValue .Flag.CurrentValue}}</div>
+      <div class="value-cell value-cell-primary">
+        <label>Resolves To</label>
+        {{if eq (stateLabel .Flag.State) "KILLED"}}
+          <div class="val val-resolved val-muted">{{resolvedValue .Flag}}</div>
+        {{else if isBool .Flag.FlagType}}
+          <select class="flag-value-select flag-value-select-lg"
+                  onchange="setFlagFromSelect(this, '{{.Flag.FlagId}}', '{{.Flag.FlagType}}', true)">
+            <option value="" {{if not (isEnabled .Flag.State)}}selected{{end}}>default ({{flagValue .Flag.DefaultValue}})</option>
+            <option value="true" {{if isEnabled .Flag.State}}{{if eq (flagValue .Flag.CurrentValue) "true"}}selected{{end}}{{end}}>true</option>
+            <option value="false" {{if isEnabled .Flag.State}}{{if eq (flagValue .Flag.CurrentValue) "false"}}selected{{end}}{{end}}>false</option>
+          </select>
+        {{else}}
+          <form class="detail-value-form"
+                hx-post="/api/flags/state/{{.Flag.FlagId}}"
+                hx-target="#content" hx-swap="innerHTML"
+                hx-vals='{"state":"ENABLED","flag_type":"{{.Flag.FlagType}}"}'>
+            <div class="detail-value-input-group">
+              <input type="text" name="value" class="detail-value-input"
+                     value="{{if isEnabled .Flag.State}}{{flagValue .Flag.CurrentValue}}{{end}}"
+                     placeholder="{{flagValue .Flag.DefaultValue}}">
+              <button type="submit" class="btn btn-primary">Set</button>
+              {{if isEnabled .Flag.State}}
+                <button type="button" class="btn-icon btn-icon-clear" title="Revert to default"
+                        hx-post="/api/flags/state/{{.Flag.FlagId}}"
+                        hx-target="#content" hx-swap="innerHTML"
+                        hx-vals='{"state":"DEFAULT"}'>&times;</button>
+              {{else}}
+                <button type="button" class="btn-icon btn-icon-clear" disabled>&times;</button>
+              {{end}}
+            </div>
+          </form>
+        {{end}}
       </div>
       <div class="value-cell">
-        <label>Default Value</label>
-        <div class="val">{{flagValue .Flag.DefaultValue}}</div>
+        <label>Default</label>
+        <div class="val val-muted">{{flagValue .Flag.DefaultValue}}</div>
       </div>
       <div class="value-cell">
         <label>Feature</label>
         <div class="val">{{.Feature}}</div>
       </div>
     </div>
-
-    <form class="state-change-form" style="margin-top: 16px"
-          hx-post="/api/flags/state/{{.Flag.FlagId}}"
-          hx-target="#content"
-          hx-swap="innerHTML"
-          hx-vals='{"flag_type":"{{.Flag.FlagType}}"}'>
-      <select name="state">
-        <option value="ENABLED" {{if eq (stateLabel .Flag.State) "ENABLED"}}selected{{end}}>ENABLED</option>
-        <option value="DEFAULT" {{if eq (stateLabel .Flag.State) "DEFAULT"}}selected{{end}}>DEFAULT</option>
-        <option value="KILLED" {{if eq (stateLabel .Flag.State) "KILLED"}}selected{{end}}>KILLED</option>
-      </select>
-      <input type="text" name="value" placeholder="value (optional)"
-             style="width: 160px">
-      <input type="text" name="actor" placeholder="actor" value="admin-ui"
-             style="width: 120px">
-      <button type="submit" class="btn btn-primary">Update State</button>
-      <span class="htmx-indicator">saving...</span>
-    </form>
   </div>
 </div>
 
@@ -114,7 +139,7 @@
 {{define "overrides_section"}}
 <div class="detail-section">
   <div class="detail-section-header">
-    <h3>Entity Overrides</h3>
+    <h3>Overrides</h3>
     <span class="badge badge-layer badge-layer-user" style="font-size:10px">USER layer</span>
   </div>
   {{if .Flag.Overrides}}
@@ -122,7 +147,6 @@
     <thead>
       <tr>
         <th>Entity ID</th>
-        <th>State</th>
         <th>Value</th>
         <th></th>
       </tr>
@@ -131,7 +155,6 @@
       {{range .Flag.Overrides}}
       <tr class="override-row">
         <td><span class="entity-id">{{.EntityId}}</span></td>
-        <td><span class="state-pill {{stateClass .State}}">{{stateLabel .State}}</span></td>
         <td><span class="value-display">{{flagValue .Value}}</span></td>
         <td style="text-align:right">
           <button class="btn btn-sm btn-danger"
@@ -152,22 +175,21 @@
         hx-post="/api/flags/overrides/{{.Flag.FlagId}}"
         hx-target="#overrides-section"
         hx-swap="innerHTML"
-        hx-vals='{"flag_type":"{{.Flag.FlagType}}"}'>
+        hx-vals='{"state":"ENABLED","flag_type":"{{.Flag.FlagType}}"}'>
     <div class="field">
       <label>Entity ID</label>
       <input type="text" name="entity_id" placeholder="user-123" required style="width: 140px">
     </div>
     <div class="field">
-      <label>State</label>
-      <select name="state" style="width: 110px">
-        <option value="ENABLED">ENABLED</option>
-        <option value="DEFAULT">DEFAULT</option>
-        <option value="KILLED">KILLED</option>
-      </select>
-    </div>
-    <div class="field">
       <label>Value</label>
-      <input type="text" name="value" placeholder="value" style="width: 120px">
+      {{if isBool .Flag.FlagType}}
+        <select name="value" class="flag-value-select">
+          <option value="true">true</option>
+          <option value="false">false</option>
+        </select>
+      {{else}}
+        <input type="text" name="value" placeholder="value" required style="width: 140px">
+      {{end}}
     </div>
     <div class="field">
       <label>Actor</label>

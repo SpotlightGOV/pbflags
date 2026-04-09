@@ -37,16 +37,21 @@ type Handler struct {
 // NewHandler creates a web UI handler backed by the given store.
 func NewHandler(store *admin.Store, logger *slog.Logger) (*Handler, error) {
 	funcMap := template.FuncMap{
-		"flagValue":    formatFlagValue,
-		"stateClass":   stateClass,
-		"stateLabel":   stateLabel,
-		"layerLabel":   layerLabel,
-		"typeLabel":    typeLabel,
-		"timeAgo":      timeAgo,
-		"isUserLayer":  isUserLayer,
-		"json":         toJSON,
-		"flagIDEscape": flagIDEscape,
-		"dict": dict,
+		"flagValue":     formatFlagValue,
+		"resolvedValue": resolvedValue,
+		"flagLabel":     flagLabel,
+		"stateClass":    stateClass,
+		"stateLabel":    stateLabel,
+		"stateHint":     stateHint,
+		"layerLabel":    layerLabel,
+		"typeLabel":     typeLabel,
+		"timeAgo":       timeAgo,
+		"isUserLayer":   isUserLayer,
+		"isEnabled":     isEnabled,
+		"isBool":        isBool,
+		"json":          toJSON,
+		"flagIDEscape":  flagIDEscape,
+		"dict":          dict,
 	}
 
 	tmplFS, err := fs.Sub(assets, "assets/templates")
@@ -294,6 +299,11 @@ func (h *Handler) updateFlagState(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if state == pbflagsv1.State_STATE_ENABLED && value == nil {
+		http.Error(w, "a value is required when enabling a flag", http.StatusBadRequest)
+		return
+	}
+
 	actor := r.FormValue("actor")
 	if actor == "" {
 		actor = "admin-ui"
@@ -445,7 +455,7 @@ func formatFlagValue(v *pbflagsv1.FlagValue) string {
 		}
 		return "false"
 	case *pbflagsv1.FlagValue_StringValue:
-		return fmt.Sprintf("%q", val.StringValue)
+		return val.StringValue
 	case *pbflagsv1.FlagValue_Int64Value:
 		return strconv.FormatInt(val.Int64Value, 10)
 	case *pbflagsv1.FlagValue_DoubleValue:
@@ -535,6 +545,48 @@ func timeAgo(t time.Time) string {
 
 func isUserLayer(l pbflagspb.Layer) bool {
 	return l == pbflagspb.Layer_LAYER_USER
+}
+
+func isEnabled(s pbflagsv1.State) bool {
+	return s == pbflagsv1.State_STATE_ENABLED
+}
+
+func isBool(t pbflagsv1.FlagType) bool {
+	return t == pbflagsv1.FlagType_FLAG_TYPE_BOOL
+}
+
+// resolvedValue returns the effective value a flag evaluates to:
+// current_value when ENABLED, default_value otherwise.
+func resolvedValue(flag *pbflagsv1.FlagDetail) string {
+	if flag.State == pbflagsv1.State_STATE_ENABLED && flag.CurrentValue != nil {
+		return formatFlagValue(flag.CurrentValue)
+	}
+	if flag.DefaultValue != nil {
+		return formatFlagValue(flag.DefaultValue)
+	}
+	return formatFlagValue(flag.CurrentValue)
+}
+
+// flagLabel returns the display_name if set, otherwise the flag_id.
+func flagLabel(flag *pbflagsv1.FlagDetail) string {
+	if flag.DisplayName != "" {
+		return flag.DisplayName
+	}
+	return flag.FlagId
+}
+
+// stateHint returns a short description of what the state means for the UX.
+func stateHint(s pbflagsv1.State) string {
+	switch s {
+	case pbflagsv1.State_STATE_ENABLED:
+		return "Using custom value"
+	case pbflagsv1.State_STATE_DEFAULT:
+		return "Using compiled default"
+	case pbflagsv1.State_STATE_KILLED:
+		return "Emergency off — returns default"
+	default:
+		return ""
+	}
 }
 
 func toJSON(v any) template.JS {

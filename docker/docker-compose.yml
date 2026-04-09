@@ -17,7 +17,6 @@ services:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin
     volumes:
-      - ../db/migrations/001_schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - pbflags-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin -d pbflags"]
@@ -34,7 +33,7 @@ services:
       - --database=postgres://admin:admin@db:5432/pbflags?sslmode=disable
       - --descriptors=/config/descriptors.pb
     depends_on:
-      db:
+      pbflags:
         condition: service_healthy
     volumes:
       - ../internal/evaluator/testdata/descriptors.pb:/config/descriptors.pb:ro
@@ -45,6 +44,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     command:
+      - --upgrade
       - --database=postgres://admin:admin@db:5432/pbflags?sslmode=disable
       - --descriptors=/config/descriptors.pb
       - --listen=0.0.0.0:9201
@@ -55,8 +55,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      sync:
-        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9201/healthz || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
     volumes:
       - ../internal/evaluator/testdata/descriptors.pb:/config/descriptors.pb:ro
 

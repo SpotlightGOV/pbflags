@@ -252,12 +252,11 @@ body {
   background: rgba(91, 127, 255, 0.03);
 }
 
-.col-flag { width: 28%; }
-.col-type { width: 10%; }
-.col-layer { width: 10%; }
-.col-state { width: 14%; }
-.col-value { width: 18%; }
-.col-actions { width: 20%; text-align: right; }
+.col-flag { width: 25%; }
+.col-type { width: 8%; }
+.col-layer { width: 8%; }
+.col-value { width: 19%; }
+.col-actions { width: 40%; text-align: right; }
 
 /* Flag name link */
 .flag-name {
@@ -355,11 +354,36 @@ body {
   background: var(--bg-root);
 }
 
+/* Flag ID subtitle — shown below display_name */
+.flag-id-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 1px;
+  letter-spacing: 0.01em;
+}
+
 /* Value display */
 .value-display {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* "default" source badge next to resolved value */
+.value-source {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border: 1px solid var(--border-dim);
+  border-radius: 2px;
+  vertical-align: middle;
 }
 
 /* Buttons */
@@ -412,50 +436,123 @@ body {
   padding: 3px 8px;
 }
 
-/* State toggle group */
-.state-toggle {
-  display: inline-flex;
-  gap: 0;
-  border-radius: var(--radius);
-  overflow: hidden;
-  border: 1px solid var(--border);
+/* Inline actions (dashboard row) */
+.inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
 }
 
-.state-toggle button {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 4px 10px;
-  border: none;
+.inline-value-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.inline-value-input {
+  width: 120px;
+  font-size: 12px;
+}
+
+/* Icon buttons (clear ×, kill ■) */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   background: var(--bg-raised);
   color: var(--text-dim);
   cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
   transition: all var(--transition);
+  padding: 0;
 }
 
-.state-toggle button:not(:last-child) {
-  border-right: 1px solid var(--border);
-}
-
-.state-toggle button:hover {
-  color: var(--text-muted);
+.btn-icon:hover:not(:disabled) {
+  color: var(--text);
   background: var(--bg-surface);
+  border-color: var(--text-dim);
 }
 
-.state-toggle button.active-enabled {
-  background: var(--green-dim);
-  color: var(--green);
+.btn-icon:disabled {
+  opacity: 0.25;
+  cursor: default;
 }
 
-.state-toggle button.active-default {
-  background: var(--amber-dim);
+.btn-icon-clear:hover:not(:disabled) {
   color: var(--amber);
+  border-color: var(--amber-dim);
 }
 
-.state-toggle button.active-killed {
-  background: var(--red-dim);
+.btn-icon-kill:hover:not(:disabled) {
   color: var(--red);
+  border-color: var(--red-dim);
+  background: var(--red-dim);
+}
+
+/* Flag value select dropdown (bool, supported_values) */
+.flag-value-select {
+  min-width: 140px;
+}
+
+.flag-value-select-lg {
+  font-size: 14px;
+  padding: 7px 28px 7px 12px;
+  min-width: 180px;
+}
+
+/* Detail page value form — inline in the value cell */
+.detail-value-form {
+  margin-top: 4px;
+}
+
+.detail-value-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detail-value-input {
+  font-size: 14px;
+  padding: 7px 12px;
+  width: 240px;
+}
+
+/* Value display variants */
+.value-default {
+  color: var(--text-dim);
+}
+
+.value-killed {
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
+
+.value-source-killed {
+  color: var(--red);
+  border-color: var(--red-dim);
+}
+
+/* Detail action bar */
+.detail-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-dim);
+}
+
+.detail-action-hint {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  flex: 1;
 }
 
 /* Flag detail page */
@@ -467,6 +564,14 @@ body {
 }
 
 .flag-detail-info { flex: 1; }
+
+.flag-detail-info .flag-display-name {
+  font-family: var(--font-sans);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
 
 .flag-detail-info .flag-id {
   font-family: var(--font-mono);
@@ -488,10 +593,17 @@ body {
   margin-top: 10px;
 }
 
-.flag-detail-state {
+.flag-detail-actions {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-kill {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 20px;
 }
 
 /* Detail sections */
@@ -545,6 +657,30 @@ body {
   font-family: var(--font-mono);
   font-size: 14px;
   color: var(--text);
+}
+
+.value-cell-primary .val-resolved {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.value-cell .val-muted {
+  color: var(--text-dim);
+}
+
+/* State hint — inline description of what the state means */
+.state-hint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+/* Hidden value input when state is DEFAULT or KILLED */
+.value-input-hidden {
+  opacity: 0.25;
+  pointer-events: none;
 }
 
 /* Override table */
@@ -788,10 +924,6 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.state-change-form select {
-  min-width: 120px;
 }
 
 /* htmx indicator */

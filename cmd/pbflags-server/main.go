@@ -60,7 +60,8 @@ func main() {
 	descriptors := flag.String("descriptors", "", "Path to descriptors.pb")
 	listen := flag.String("listen", "", "Evaluator listen address")
 	serverURL := flag.String("server", "", "Upstream evaluator URL (proxy mode)")
-	upgrade := flag.Bool("upgrade", false, "Run database migrations and exit")
+	upgrade := flag.Bool("upgrade", false, "Run database migrations before starting the server")
+	exitAfterUpgrade := flag.Bool("exit-after-upgrade", false, "Exit after running migrations (requires --upgrade)")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -86,7 +87,9 @@ func main() {
 			os.Exit(1)
 		}
 		logger.Info("migrations complete")
-		return
+		if *exitAfterUpgrade {
+			return
+		}
 	}
 
 	if err := run(*configPath, logger); err != nil {

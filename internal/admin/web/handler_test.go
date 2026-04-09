@@ -221,7 +221,7 @@ func TestFormatFlagValue(t *testing.T) {
 	assert.Equal(t, "true", formatFlagValue(&pbflagsv1.FlagValue{
 		Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true},
 	}))
-	assert.Equal(t, `"hello"`, formatFlagValue(&pbflagsv1.FlagValue{
+	assert.Equal(t, "hello", formatFlagValue(&pbflagsv1.FlagValue{
 		Value: &pbflagsv1.FlagValue_StringValue{StringValue: "hello"},
 	}))
 	assert.Equal(t, "42", formatFlagValue(&pbflagsv1.FlagValue{

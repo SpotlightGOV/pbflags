@@ -73,6 +73,25 @@
       }
     });
 
+    // Dropdown value selector: "" = DEFAULT, anything else = ENABLED+value.
+    // Used for bool flags and will be used for supported_values dropdowns.
+    function setFlagFromSelect(sel, flagId, flagType, isDetail) {
+      var val = sel.value;
+      var target = isDetail ? '#content' : '#flag-row-' + flagId.replace(/\//g, '-');
+      var swap = isDetail ? 'innerHTML' : 'outerHTML';
+      if (val === '') {
+        htmx.ajax('POST', '/api/flags/state/' + flagId, {
+          target: target, swap: swap,
+          values: {state: 'DEFAULT'}
+        });
+      } else {
+        htmx.ajax('POST', '/api/flags/state/' + flagId, {
+          target: target, swap: swap,
+          values: {state: 'ENABLED', value: val, flag_type: flagType}
+        });
+      }
+    }
+
     // Dashboard search/filter.
     function applyDashboardFilters() {
       var search = (document.getElementById('filter-search') || {}).value;
@@ -91,6 +110,7 @@
         rows.forEach(function(row) {
           totalFlags++;
           var flagId = (row.getAttribute('data-flag') || '').toLowerCase();
+          var flagName = (row.getAttribute('data-flag-name') || '').toLowerCase();
           var flagDesc = (row.getAttribute('data-flag-desc') || '').toLowerCase();
           var rowState = row.getAttribute('data-state') || '';
           var rowLayer = row.getAttribute('data-layer') || '';
@@ -99,6 +119,7 @@
 
           var matchSearch = !search ||
             flagId.indexOf(search) !== -1 ||
+            flagName.indexOf(search) !== -1 ||
             flagDesc.indexOf(search) !== -1 ||
             featureName.indexOf(search) !== -1 ||
             featureDesc.indexOf(search) !== -1;
