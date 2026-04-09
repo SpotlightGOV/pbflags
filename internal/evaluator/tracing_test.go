@@ -51,8 +51,7 @@ func TestEvaluate_KilledFlagSpanHasKilledSource(t *testing.T) {
 	tracer := tp.Tracer("pbflags/evaluator")
 	cache := newTestCache(t)
 	cache.SetKillSet(&KillSet{
-		FlagIDs:         map[string]struct{}{"f/1": {}},
-		KilledOverrides: make(map[KillKey]struct{}),
+		FlagIDs: map[string]struct{}{"f/1": {}},
 	})
 	reg := registryWith(globalFlag("f/1", boolVal(false)))
 	fetcher := &stubFetcher{}

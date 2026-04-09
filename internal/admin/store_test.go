@@ -219,18 +219,10 @@ func TestGetKilledFlags(t *testing.T) {
 	err := store.UpdateFlagState(ctx, "notifications.email_enabled", pbflagsv1.State_STATE_KILLED, nil, "test-actor")
 	require.NoError(t, err)
 
-	// Add a killed override.
-	_, err = pool.Exec(ctx, `
-		INSERT INTO feature_flags.flag_overrides (flag_id, entity_id, state)
-		VALUES ('notifications.digest_frequency', 'user-1', 'KILLED')`)
-	require.NoError(t, err)
-
 	resp, err := store.GetKilledFlags(ctx)
 	require.NoError(t, err)
 	require.Contains(t, resp.FlagIds, "notifications.email_enabled")
-	require.Len(t, resp.KilledOverrides, 1)
-	require.Equal(t, "notifications.digest_frequency", resp.KilledOverrides[0].FlagId)
-	require.Equal(t, "user-1", resp.KilledOverrides[0].EntityId)
+	require.Empty(t, resp.KilledOverrides, "per-entity kills are no longer supported")
 }
 
 func TestGetOverrides(t *testing.T) {

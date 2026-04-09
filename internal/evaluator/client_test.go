@@ -66,9 +66,6 @@ func TestGetKilledFlags_Success(t *testing.T) {
 		getKilledFn: func(_ context.Context, _ *connect.Request[pbflagsv1.GetKilledFlagsRequest]) (*connect.Response[pbflagsv1.GetKilledFlagsResponse], error) {
 			return connect.NewResponse(&pbflagsv1.GetKilledFlagsResponse{
 				FlagIds: []string{"feat/1", "feat/2"},
-				KilledOverrides: []*pbflagsv1.KilledOverride{
-					{FlagId: "feat/3", EntityId: "user-1"},
-				},
 			}), nil
 		},
 	}
@@ -80,10 +77,6 @@ func TestGetKilledFlags_Success(t *testing.T) {
 	assert.Len(t, ks.FlagIDs, 2)
 	assert.Contains(t, ks.FlagIDs, "feat/1")
 	assert.Contains(t, ks.FlagIDs, "feat/2")
-
-	assert.Len(t, ks.KilledOverrides, 1)
-	_, ok := ks.KilledOverrides[KillKey{FlagID: "feat/3", EntityID: "user-1"}]
-	assert.True(t, ok)
 
 	// Should record success.
 	assert.Equal(t, pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_SERVING, c.tracker.Status())
@@ -113,7 +106,6 @@ func TestGetKilledFlags_EmptyResponse(t *testing.T) {
 	ks, err := c.GetKilledFlags(context.Background())
 	require.NoError(t, err)
 	assert.Empty(t, ks.FlagIDs)
-	assert.Empty(t, ks.KilledOverrides)
 }
 
 // ---------------------------------------------------------------------------

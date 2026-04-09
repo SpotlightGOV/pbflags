@@ -85,6 +85,5 @@ func (p *KillPoller) poll(ctx context.Context) {
 	p.metrics.KillSetSize.Set(float64(len(ks.FlagIDs)))
 	p.metrics.PollerLastSuccess.SetToCurrentTime()
 	p.logger.Debug("kill set updated",
-		"killed_flags", len(ks.FlagIDs),
-		"killed_overrides", len(ks.KilledOverrides))
+		"killed_flags", len(ks.FlagIDs))
 }

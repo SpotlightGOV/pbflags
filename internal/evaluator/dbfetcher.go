@@ -123,8 +123,7 @@ func (f *DBFetcher) GetKilledFlags(ctx context.Context) (*KillSet, error) {
 	defer timer.ObserveDuration()
 
 	ks := &KillSet{
-		FlagIDs:         make(map[string]struct{}),
-		KilledOverrides: make(map[KillKey]struct{}),
+		FlagIDs: make(map[string]struct{}),
 	}
 
 	rows, err := f.pool.Query(ctx, `
@@ -140,25 +139,8 @@ func (f *DBFetcher) GetKilledFlags(ctx context.Context) (*KillSet, error) {
 		}
 		ks.FlagIDs[id] = struct{}{}
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
 
-	rows2, err := f.pool.Query(ctx, `
-		SELECT flag_id, entity_id FROM feature_flags.flag_overrides WHERE state = 'KILLED'`)
-	if err != nil {
-		return nil, fmt.Errorf("query killed overrides: %w", err)
-	}
-	defer rows2.Close()
-	for rows2.Next() {
-		var flagID, entityID string
-		if err := rows2.Scan(&flagID, &entityID); err != nil {
-			return nil, err
-		}
-		ks.KilledOverrides[KillKey{FlagID: flagID, EntityID: entityID}] = struct{}{}
-	}
-
-	return ks, rows2.Err()
+	return ks, rows.Err()
 }
 
 // GetFlagStateProto implements StateServer.
@@ -209,23 +191,7 @@ func (f *DBFetcher) GetKilledFlagsProto(ctx context.Context) (*pbflagsv1.GetKill
 		return nil, err
 	}
 
-	rows2, err := f.pool.Query(ctx, `
-		SELECT flag_id, entity_id FROM feature_flags.flag_overrides WHERE state = 'KILLED'`)
-	if err != nil {
-		return nil, fmt.Errorf("query killed overrides: %w", err)
-	}
-	defer rows2.Close()
-	for rows2.Next() {
-		var flagID, entityID string
-		if err := rows2.Scan(&flagID, &entityID); err != nil {
-			return nil, err
-		}
-		resp.KilledOverrides = append(resp.KilledOverrides, &pbflagsv1.KilledOverride{
-			FlagId:   flagID,
-			EntityId: entityID,
-		})
-	}
-	return resp, rows2.Err()
+	return resp, nil
 }
 
 // GetOverridesProto implements StateServer.

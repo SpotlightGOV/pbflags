@@ -26,16 +26,9 @@ type CachedOverride struct {
 	Value    *pbflagsv1.FlagValue
 }
 
-// KillSet holds the current set of globally killed flags and per-entity kills.
+// KillSet holds the current set of globally killed flags.
 type KillSet struct {
-	FlagIDs         map[string]struct{}
-	KilledOverrides map[KillKey]struct{}
-}
-
-// KillKey identifies a per-entity kill.
-type KillKey struct {
-	FlagID   string
-	EntityID string
+	FlagIDs map[string]struct{}
 }
 
 // IsKilled checks if a flag is globally killed.
@@ -44,15 +37,6 @@ func (ks *KillSet) IsKilled(flagID string) bool {
 		return false
 	}
 	_, ok := ks.FlagIDs[flagID]
-	return ok
-}
-
-// IsEntityKilled checks if a flag is killed for a specific entity.
-func (ks *KillSet) IsEntityKilled(flagID, entityID string) bool {
-	if ks == nil {
-		return false
-	}
-	_, ok := ks.KilledOverrides[KillKey{flagID, entityID}]
 	return ok
 }
 
@@ -113,7 +97,7 @@ func NewCacheStore(cfg CacheStoreConfig) (*CacheStore, error) {
 		overrideCache:    overrideCache,
 		staleFlagMap:     make(map[string]*CachedFlagState),
 		staleOverrideMap: make(map[string]*CachedOverride),
-		killSet:          &KillSet{FlagIDs: make(map[string]struct{}), KilledOverrides: make(map[KillKey]struct{})},
+		killSet:          &KillSet{FlagIDs: make(map[string]struct{})},
 		flagTTL:          cfg.FlagTTL,
 		overrideTTL:      cfg.OverrideTTL,
 		jitterPercent:    cfg.JitterPercent,

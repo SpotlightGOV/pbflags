@@ -133,29 +133,22 @@ func TestCacheStore_KillSet_SetAndGet(t *testing.T) {
 			"flag-1": {},
 			"flag-2": {},
 		},
-		KilledOverrides: map[KillKey]struct{}{
-			{FlagID: "flag-3", EntityID: "user-1"}: {},
-		},
 	})
 
 	ks = cs.GetKillSet()
 	require.True(t, ks.IsKilled("flag-1"), "expected flag-1 killed")
 	require.True(t, ks.IsKilled("flag-2"), "expected flag-2 killed")
 	require.False(t, ks.IsKilled("flag-3"), "expected flag-3 NOT globally killed")
-	require.True(t, ks.IsEntityKilled("flag-3", "user-1"), "expected flag-3 killed for user-1")
-	require.False(t, ks.IsEntityKilled("flag-3", "user-2"), "expected flag-3 NOT killed for user-2")
 }
 
 func TestCacheStore_KillSet_AtomicReplace(t *testing.T) {
 	cs := newTestCache(t)
 
 	cs.SetKillSet(&KillSet{
-		FlagIDs:         map[string]struct{}{"flag-1": {}},
-		KilledOverrides: make(map[KillKey]struct{}),
+		FlagIDs: map[string]struct{}{"flag-1": {}},
 	})
 	cs.SetKillSet(&KillSet{
-		FlagIDs:         map[string]struct{}{"flag-2": {}},
-		KilledOverrides: make(map[KillKey]struct{}),
+		FlagIDs: map[string]struct{}{"flag-2": {}},
 	})
 
 	ks := cs.GetKillSet()
@@ -166,7 +159,6 @@ func TestCacheStore_KillSet_AtomicReplace(t *testing.T) {
 func TestKillSet_NilSafe(t *testing.T) {
 	var ks *KillSet
 	require.False(t, ks.IsKilled("anything"), "nil KillSet.IsKilled should return false")
-	require.False(t, ks.IsEntityKilled("anything", "anyone"), "nil KillSet.IsEntityKilled should return false")
 }
 
 func TestCacheStore_JitteredTTL_NoJitter(t *testing.T) {

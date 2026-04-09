@@ -51,14 +51,10 @@ func (c *FlagServerClient) GetKilledFlags(ctx context.Context) (*KillSet, error)
 	c.tracker.RecordSuccess()
 
 	ks := &KillSet{
-		FlagIDs:         make(map[string]struct{}, len(resp.Msg.FlagIds)),
-		KilledOverrides: make(map[KillKey]struct{}, len(resp.Msg.KilledOverrides)),
+		FlagIDs: make(map[string]struct{}, len(resp.Msg.FlagIds)),
 	}
 	for _, id := range resp.Msg.FlagIds {
 		ks.FlagIDs[id] = struct{}{}
-	}
-	for _, ko := range resp.Msg.KilledOverrides {
-		ks.KilledOverrides[KillKey{FlagID: ko.FlagId, EntityID: ko.EntityId}] = struct{}{}
 	}
 	return ks, nil
 }

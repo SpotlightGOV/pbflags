@@ -274,8 +274,8 @@ Environment variables override CLI flags:
 ## Flag Evaluation Precedence
 
 1. **Global KILLED** -> compiled default (polled every ~30s)
-2. **Per-entity override KILLED/DEFAULT** -> compiled default
-3. **Per-entity override ENABLED** -> override value
+2. **Per-entity override ENABLED** -> override value
+3. **Per-entity override DEFAULT** -> compiled default
 4. **Global DEFAULT** -> compiled default
 5. **Global ENABLED** -> configured value
 6. **Fallback** -> compiled default (always safe)

@@ -117,8 +117,7 @@ func TestEval_KillSet_GlobalKill(t *testing.T) {
 	cache := newTestCache(t)
 	reg := registryWith(globalFlag("f/1", boolVal(false)))
 	cache.SetKillSet(&KillSet{
-		FlagIDs:         map[string]struct{}{"f/1": {}},
-		KilledOverrides: make(map[KillKey]struct{}),
+		FlagIDs: map[string]struct{}{"f/1": {}},
 	})
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
@@ -128,49 +127,6 @@ func TestEval_KillSet_GlobalKill(t *testing.T) {
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED, src, "source")
 	require.Equal(t, false, val.GetBoolValue(), "value = compiled default false")
-}
-
-func TestEval_KillSet_EntityKill(t *testing.T) {
-	cache := newTestCache(t)
-	reg := registryWith(userFlag("f/1", strVal("default")))
-	cache.SetKillSet(&KillSet{
-		FlagIDs: make(map[string]struct{}),
-		KilledOverrides: map[KillKey]struct{}{
-			{FlagID: "f/1", EntityID: "user-1"}: {},
-		},
-	})
-	fetcher := &stubFetcher{
-		overrides: []*CachedOverride{
-			{FlagID: "f/1", EntityID: "user-1", State: pbflagsv1.State_STATE_ENABLED, Value: strVal("custom")},
-		},
-		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: strVal("global")},
-	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
-
-	val, src := eval.Evaluate(context.Background(), "f/1", "user-1")
-	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source (entity kill)")
-	require.Equal(t, "default", val.GetStringValue(), "value = compiled default")
-}
-
-func TestEval_KillSet_EntityKill_DifferentEntityNotAffected(t *testing.T) {
-	cache := newTestCache(t)
-	reg := registryWith(userFlag("f/1", strVal("default")))
-	cache.SetKillSet(&KillSet{
-		FlagIDs: make(map[string]struct{}),
-		KilledOverrides: map[KillKey]struct{}{
-			{FlagID: "f/1", EntityID: "user-1"}: {},
-		},
-	})
-	fetcher := &stubFetcher{
-		overrides: []*CachedOverride{
-			{FlagID: "f/1", EntityID: "user-2", State: pbflagsv1.State_STATE_ENABLED, Value: strVal("custom")},
-		},
-	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
-
-	val, src := eval.Evaluate(context.Background(), "f/1", "user-2")
-	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, src, "source")
-	require.Equal(t, "custom", val.GetStringValue(), "value")
 }
 
 // --- Override Tests ---

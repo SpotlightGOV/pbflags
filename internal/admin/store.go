@@ -69,7 +69,7 @@ func (s *Store) GetFlagState(ctx context.Context, flagID string) (*pbflagsv1.Get
 	}, nil
 }
 
-// GetKilledFlags returns globally killed flag IDs and per-entity killed overrides.
+// GetKilledFlags returns globally killed flag IDs.
 func (s *Store) GetKilledFlags(ctx context.Context) (*pbflagsv1.GetKilledFlagsResponse, error) {
 	resp := &pbflagsv1.GetKilledFlagsResponse{}
 
@@ -86,27 +86,7 @@ func (s *Store) GetKilledFlags(ctx context.Context) (*pbflagsv1.GetKilledFlagsRe
 		}
 		resp.FlagIds = append(resp.FlagIds, id)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	rows2, err := s.pool.Query(ctx, `
-		SELECT flag_id, entity_id FROM feature_flags.flag_overrides WHERE state = 'KILLED'`)
-	if err != nil {
-		return nil, fmt.Errorf("query killed overrides: %w", err)
-	}
-	defer rows2.Close()
-	for rows2.Next() {
-		var flagID, entityID string
-		if err := rows2.Scan(&flagID, &entityID); err != nil {
-			return nil, err
-		}
-		resp.KilledOverrides = append(resp.KilledOverrides, &pbflagsv1.KilledOverride{
-			FlagId:   flagID,
-			EntityId: entityID,
-		})
-	}
-	return resp, rows2.Err()
+	return resp, rows.Err()
 }
 
 // GetOverrides returns overrides for a specific entity.
@@ -214,6 +194,9 @@ func (s *Store) SetFlagOverride(ctx context.Context, flagID, entityID string, st
 	}
 	if parseLayer(layerStr) == pbflagspb.Layer_LAYER_GLOBAL || parseLayer(layerStr) == pbflagspb.Layer_LAYER_UNSPECIFIED {
 		return fmt.Errorf("flag %s has GLOBAL layer and does not support per-entity overrides", flagID)
+	}
+	if state == pbflagsv1.State_STATE_KILLED {
+		return fmt.Errorf("per-entity kill is not supported; use global kill instead")
 	}
 
 	valueBytes, err := marshalFlagValue(value)

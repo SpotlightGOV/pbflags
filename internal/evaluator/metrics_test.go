@@ -103,8 +103,7 @@ func TestEvaluate_IncrementsCacheHitOnKillSet(t *testing.T) {
 
 	cache := newTestCache(t)
 	cache.SetKillSet(&KillSet{
-		FlagIDs:         map[string]struct{}{"f/1": {}},
-		KilledOverrides: make(map[KillKey]struct{}),
+		FlagIDs: map[string]struct{}{"f/1": {}},
 	})
 
 	r := registryWith(globalFlag("f/1", boolVal(false)))

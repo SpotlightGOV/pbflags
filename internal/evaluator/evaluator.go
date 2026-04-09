@@ -18,6 +18,7 @@ type Fetcher interface {
 
 // Evaluator resolves flag values using the full precedence chain:
 // kill set → per-entity override → global state → stale cache → compiled default.
+// Note: per-entity kills are not supported; overrides can only be ENABLED or DEFAULT.
 type Evaluator struct {
 	registry *Registry
 	cache    *CacheStore
@@ -65,7 +66,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, flagID, entityID string) (valu
 
 	// 2. Per-entity override (if applicable and layer is not global-only).
 	if entityID != "" && known && !def.IsGlobalLayer() {
-		if val, src, ok := e.resolveOverride(ctx, flagID, entityID, ks, defaultValue); ok {
+		if val, src, ok := e.resolveOverride(ctx, flagID, entityID, defaultValue); ok {
 			return val, src
 		}
 	}
@@ -77,13 +78,8 @@ func (e *Evaluator) Evaluate(ctx context.Context, flagID, entityID string) (valu
 func (e *Evaluator) resolveOverride(
 	ctx context.Context,
 	flagID, entityID string,
-	ks *KillSet,
 	defaultValue *pbflagsv1.FlagValue,
 ) (*pbflagsv1.FlagValue, pbflagsv1.EvaluationSource, bool) {
-	if ks.IsEntityKilled(flagID, entityID) {
-		return defaultValue, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, true
-	}
-
 	override := e.cache.GetOverride(flagID, entityID)
 	if override != nil {
 		e.metrics.CacheHitsTotal.WithLabelValues("overrides").Inc()
