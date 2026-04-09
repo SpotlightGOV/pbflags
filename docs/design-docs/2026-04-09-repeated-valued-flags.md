@@ -279,16 +279,19 @@ with the existing htmx form submission pattern:
 {{end}}
 ```
 
-For list flags with `supported_values`, each line is validated against the
-allowed values on submission (server-side). The UI could optionally show a
-multi-select `<select multiple>` in a future enhancement, but the textarea
-covers all cases without additional JavaScript.
+`supported_values` remains a UI hint only — arbitrary values are accepted.
+The UI could optionally show a multi-select `<select multiple>` for list flags
+with `supported_values` in a future enhancement, but the textarea covers all
+cases without additional JavaScript.
 
 #### Value parsing (`parseFlagValue`)
 
 The handler's `parseFlagValue` function gains list-type cases. For list types,
-the raw form value (textarea content) is split by newlines, trimmed, empty
-lines discarded, and each element parsed according to the element type:
+the raw form value (textarea content) is split by newlines, trimmed, and empty
+lines discarded. For typed lists (int64, double, bool), entries that fail to
+parse are silently dropped rather than rejecting the entire submission — this
+is more forgiving for manual editing and consistent with the general
+"never-throw" philosophy:
 
 ```go
 case "STRING_LIST":
@@ -300,11 +303,13 @@ case "STRING_LIST":
     }, nil
 case "INT64_LIST":
     items := splitListValue(raw)
-    parsed := make([]int64, len(items))
-    for i, s := range items {
+    var parsed []int64
+    for _, s := range items {
         v, err := strconv.ParseInt(s, 10, 64)
-        if err != nil { return nil, fmt.Errorf("item %d: %w", i, err) }
-        parsed[i] = v
+        if err != nil {
+            continue // drop invalid entries
+        }
+        parsed = append(parsed, v)
     }
     return &pbflagsv1.FlagValue{
         Value: &pbflagsv1.FlagValue_Int64ListValue{
@@ -381,10 +386,14 @@ func (defaultIncidentConfigFlags) NotificationEmails(_ context.Context) []string
 
 #### Unknown-bytes parsing
 
-The `parseFlagDefault` function in the unknown-bytes fallback path (used when
-protoc doesn't resolve extensions) gains cases for field numbers 5-8. Each
-parses the list message's repeated field and produces the Go literal string
-(e.g., `[]string{"a", "b"}`).
+The Go codegen has two extraction paths: a reflection-based path (when protoc
+resolves the `pbflags.flag` extension into typed fields) and an unknown-bytes
+fallback (when extensions land in the unknown wire bytes, which happens with
+some protoc/buf versions that don't have the pbflags extension descriptors
+linked into the plugin's descriptor pool). The `parseFlagDefault` function in
+the unknown-bytes path gains cases for field numbers 5-8. Each parses the list
+message's repeated field and produces the Go literal string (e.g.,
+`[]string{"a", "b"}`).
 
 ### Java codegen
 
@@ -591,24 +600,21 @@ unambiguous.
 | Java codegen | `javaTypeInfo` gains list cases; generated interfaces use `ListFlag<E>` / `LayerListFlag<E, ID>` |
 | Tests | New test cases for list flag parsing, evaluation, admin CRUD, codegen golden files |
 
-## Open Questions
+## Resolved Questions
 
-1. **Max list size.** Should we enforce a maximum number of items per list at
-   the admin service layer? A cap of 100 or 1000 items would prevent misuse
-   without restricting legitimate use cases. The proto schema does not enforce
-   this — it would be a server-side validation rule, configurable per
-   deployment.
+1. **Max list size.** The admin service enforces a configurable maximum number
+   of items per list. The default is 100 items. Deployments can override this
+   via server configuration. The proto schema does not enforce this — it is a
+   server-side validation rule only.
 
-2. **Empty list semantics.** Is `[]` (empty list) a valid flag value distinct
-   from "no value set"? The proto schema supports this (an empty `StringList`
-   message is distinguishable from "no oneof field set" in both `FlagDefault`
-   and `FlagValue`). This means a flag can have a default of `[]` and an admin
-   can explicitly set the value to `[]`. The evaluator and generated code treat
-   both as `[]T{}` / `List.of()`. This seems correct but should be confirmed.
+2. **Empty list semantics.** `[]` (empty list) is a valid flag value, distinct
+   from "no value set." The proto schema supports this: an empty `StringList`
+   message in the oneof is distinguishable from "no oneof field set" in both
+   `FlagDefault` and `FlagValue`. A flag can have a default of `[]`, and an
+   admin can explicitly set the value to `[]`. The evaluator and generated code
+   treat both as `[]T{}` / `List.of()`.
 
-3. **`supported_values` enforcement for list items.** Currently
-   `supported_values` is a UI hint, not enforced at evaluation time. For list
-   flags, should the admin service validate that each item in a submitted list
-   is in the `supported_values` set? This would be a new enforcement point and
-   should probably be opt-in or warn-only to maintain consistency with scalar
-   flag behavior.
+3. **`supported_values` for list items.** `supported_values` remains a UI hint
+   only, consistent with scalar flag behavior. No server-side enforcement.
+   Improved UX for repeated fields with `supported_values` (e.g., multi-select
+   dropdown) can be done as a follow-up.
