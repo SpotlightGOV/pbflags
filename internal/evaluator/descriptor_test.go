@@ -32,7 +32,7 @@ func TestParseDescriptorFile_RealDescriptors(t *testing.T) {
 	require.True(t, ok, "expected notifications/1 (email_enabled) in parsed defs")
 	require.Equal(t, "notifications", email.FeatureID, "email_enabled.FeatureID")
 	require.Equal(t, pbflagsv1.FlagType_FLAG_TYPE_BOOL, email.FlagType, "email_enabled type")
-	require.Equal(t, int32(2), email.Layer, "email_enabled layer (USER)")
+	require.Equal(t, "user", email.Layer, "email_enabled layer")
 	require.NotNil(t, email.Default, "email_enabled default should not be nil")
 	require.Equal(t, true, email.Default.GetBoolValue(), "email_enabled default")
 	require.Equal(t, "email_enabled", email.Name, "email_enabled name")
@@ -40,7 +40,7 @@ func TestParseDescriptorFile_RealDescriptors(t *testing.T) {
 	digest, ok := byID["notifications/2"]
 	require.True(t, ok, "expected notifications/2 (digest_frequency)")
 	require.Equal(t, pbflagsv1.FlagType_FLAG_TYPE_STRING, digest.FlagType, "digest type")
-	require.Equal(t, int32(1), digest.Layer, "digest layer (GLOBAL)")
+	require.Equal(t, "", digest.Layer, "digest layer (global = empty)")
 	require.NotNil(t, digest.Default, "digest default should not be nil")
 	require.Equal(t, "daily", digest.Default.GetStringValue(), "digest default")
 

@@ -165,7 +165,7 @@ func TestStringFlag(t *testing.T) {
 	}}
 	client := nf.NewNotificationsFlagsClient(mock)
 	if got := client.DigestFrequency(context.Background()); got != "weekly" {
-		t.Errorf("DigestFrequency = %%q, want %%q", got, "weekly")
+		t.Errorf("DigestFrequency = %q, want %q", got, "weekly")
 	}
 }
 
@@ -175,7 +175,7 @@ func TestInt64Flag(t *testing.T) {
 	}}
 	client := nf.NewNotificationsFlagsClient(mock)
 	if got := client.MaxRetries(context.Background()); got != 10 {
-		t.Errorf("MaxRetries = %%d, want 10", got)
+		t.Errorf("MaxRetries = %d, want 10", got)
 	}
 }
 
@@ -185,7 +185,7 @@ func TestDoubleFlag(t *testing.T) {
 	}}
 	client := nf.NewNotificationsFlagsClient(mock)
 	if got := client.ScoreThreshold(context.Background()); got != 0.95 {
-		t.Errorf("ScoreThreshold = %%f, want 0.95", got)
+		t.Errorf("ScoreThreshold = %f, want 0.95", got)
 	}
 }
 
@@ -196,16 +196,16 @@ func TestErrorReturnsDefaults(t *testing.T) {
 	ctx := context.Background()
 
 	if got := client.EmailEnabled(ctx, layers.User("user-1")); got != nf.EmailEnabledDefault {
-		t.Errorf("EmailEnabled on error = %%v, want %%v", got, nf.EmailEnabledDefault)
+		t.Errorf("EmailEnabled on error = %v, want %v", got, nf.EmailEnabledDefault)
 	}
 	if got := client.DigestFrequency(ctx); got != nf.DigestFrequencyDefault {
-		t.Errorf("DigestFrequency on error = %%q, want %%q", got, nf.DigestFrequencyDefault)
+		t.Errorf("DigestFrequency on error = %q, want %q", got, nf.DigestFrequencyDefault)
 	}
 	if got := client.MaxRetries(ctx); got != nf.MaxRetriesDefault {
-		t.Errorf("MaxRetries on error = %%d, want %%d", got, nf.MaxRetriesDefault)
+		t.Errorf("MaxRetries on error = %d, want %d", got, nf.MaxRetriesDefault)
 	}
 	if got := client.ScoreThreshold(ctx); got != nf.ScoreThresholdDefault {
-		t.Errorf("ScoreThreshold on error = %%f, want %%f", got, nf.ScoreThresholdDefault)
+		t.Errorf("ScoreThreshold on error = %f, want %f", got, nf.ScoreThresholdDefault)
 	}
 }
 
@@ -213,7 +213,7 @@ func TestStatus(t *testing.T) {
 	mock := &mockEvaluator{responses: map[string]*pbflagsv1.EvaluateResponse{}}
 	client := nf.NewNotificationsFlagsClient(mock)
 	if got := client.Status(context.Background()); got != pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_SERVING {
-		t.Errorf("Status = %%v, want SERVING", got)
+		t.Errorf("Status = %v, want SERVING", got)
 	}
 }
 `
