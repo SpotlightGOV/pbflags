@@ -32,6 +32,34 @@ done
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 
+# ---------------------------------------------------------------------------
+# Pre-flight checks (only when creating a tag)
+# ---------------------------------------------------------------------------
+if [ "$CREATE_TAG" = true ]; then
+  # Dirty working tree means uncommitted changes would not be in the release.
+  if [ -n "$(git status --porcelain)" ]; then
+    echo "ERROR: Working tree is dirty. Commit or stash changes before releasing." >&2
+    exit 1
+  fi
+
+  # Ensure local branch is in sync with remote. Unpushed commits would
+  # produce a tag that CI rejects ("not on main / release branch").
+  git fetch origin "$BRANCH" --quiet 2>/dev/null || true
+  LOCAL="$(git rev-parse HEAD)"
+  REMOTE="$(git rev-parse "origin/$BRANCH" 2>/dev/null || true)"
+  if [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ]; then
+    AHEAD="$(git rev-list "origin/$BRANCH..HEAD" --count)"
+    BEHIND="$(git rev-list "HEAD..origin/$BRANCH" --count)"
+    if [ "$AHEAD" -gt 0 ]; then
+      echo "ERROR: Local $BRANCH is $AHEAD commit(s) ahead of origin. Push first." >&2
+    fi
+    if [ "$BEHIND" -gt 0 ]; then
+      echo "ERROR: Local $BRANCH is $BEHIND commit(s) behind origin. Pull first." >&2
+    fi
+    exit 1
+  fi
+fi
+
 if [ "$BRANCH" = "main" ]; then
   # Find the latest tag by version to determine the next minor/major.
   LATEST_TAG="$(git tag --sort=-v:refname | head -1)"
