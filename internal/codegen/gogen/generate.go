@@ -18,6 +18,10 @@ func Generate(plugin *protogen.Plugin, packagePrefix string) error {
 		return err
 	}
 
+	if err := generateLayersPackage(plugin, layers, packagePrefix); err != nil {
+		return fmt.Errorf("generating layers package: %w", err)
+	}
+
 	for _, f := range plugin.Files {
 		if !f.Generate {
 			continue
