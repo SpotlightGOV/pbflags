@@ -62,7 +62,12 @@ func DiscoverLayers(plugin *protogen.Plugin) (*LayerDef, error) {
 	}
 
 	if len(found) == 0 {
-		return nil, fmt.Errorf("no enum annotated with option (pbflags.layers) = true found in input files")
+		fileCount := len(plugin.Files)
+		hint := ""
+		if fileCount <= 2 {
+			hint = "; if using buf, set strategy: all in your buf.gen.yaml so the plugin receives all proto files in one invocation"
+		}
+		return nil, fmt.Errorf("no enum annotated with option (pbflags.layers) = true found in input files (%d file(s) in request)%s", fileCount, hint)
 	}
 	if len(found) > 1 {
 		names := make([]string, len(found))
