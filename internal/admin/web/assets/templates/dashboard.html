@@ -131,8 +131,7 @@
         {{/* Kill */}}
         <button class="btn-icon btn-icon-kill" title="Kill flag"
                 hx-post="/api/flags/state/{{.Flag.FlagId}}"
-                hx-vals='{"state":"KILLED"}'
-                hx-confirm="Kill this flag? It will return the compiled default for all evaluations.">&#9724;</button>
+                hx-vals='{"state":"KILLED"}'>&#9724;</button>
       {{end}}
     </div>
   </td>

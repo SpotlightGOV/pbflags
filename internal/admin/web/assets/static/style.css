@@ -980,6 +980,12 @@ select {
   pointer-events: none;
 }
 
+.toast-error {
+  border-left-color: var(--red);
+  color: var(--red);
+  animation: slideIn 200ms ease, fadeOut 300ms ease 3.5s forwards;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;

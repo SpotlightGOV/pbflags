@@ -28,8 +28,7 @@
       <button class="btn btn-danger btn-kill"
               hx-post="/api/flags/state/{{.Flag.FlagId}}"
               hx-target="#content" hx-swap="innerHTML"
-              hx-vals='{"state":"KILLED"}'
-              hx-confirm="Kill this flag? It will return the compiled default for all evaluations.">Kill Flag</button>
+              hx-vals='{"state":"KILLED"}'>Kill Flag</button>
     {{end}}
   </div>
 </div>
@@ -190,10 +189,6 @@
       {{else}}
         <input type="text" name="value" placeholder="value" required style="width: 140px">
       {{end}}
-    </div>
-    <div class="field">
-      <label>Actor</label>
-      <input type="text" name="actor" value="admin-ui" style="width: 100px">
     </div>
     <button type="submit" class="btn btn-primary btn-sm">Add Override</button>
   </form>

@@ -56,13 +56,13 @@
       });
     });
 
-    // Toast helper.
-    function showToast(msg) {
+    // Toast helpers.
+    function showToast(msg, isError) {
       var t = document.createElement('div');
-      t.className = 'toast';
+      t.className = 'toast' + (isError ? ' toast-error' : '');
       t.textContent = msg;
       document.body.appendChild(t);
-      setTimeout(function() { t.remove(); }, 2500);
+      setTimeout(function() { t.remove(); }, isError ? 4000 : 2500);
     }
 
     // Show toast on successful state changes.
@@ -70,6 +70,16 @@
       var trigger = e.detail.requestConfig;
       if (trigger && trigger.verb !== 'get') {
         showToast('Updated successfully');
+      }
+    });
+
+    // Show error toast on non-2xx responses; prevent htmx from swapping error text into the page.
+    document.body.addEventListener('htmx:beforeSwap', function(e) {
+      if (e.detail.xhr.status >= 400) {
+        var msg = e.detail.xhr.responseText || 'Something went wrong';
+        showToast(msg.trim(), true);
+        e.detail.shouldSwap = false;
+        e.detail.isError = true;
       }
     });
 
