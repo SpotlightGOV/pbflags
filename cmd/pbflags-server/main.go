@@ -282,8 +282,9 @@ func startAdmin(ctx context.Context, cfg evaluator.Config, pool *pgxpool.Pool, d
 	mux.Handle(adminPath, adminHandler)
 
 	webHandler, err := adminweb.NewHandler(store, adminLogger, adminweb.EnvConfig{
-		Name:  cfg.EnvName,
-		Color: cfg.EnvColor,
+		Name:    cfg.EnvName,
+		Color:   cfg.EnvColor,
+		Version: version,
 	})
 	if err != nil {
 		return fmt.Errorf("create web handler: %w", err)

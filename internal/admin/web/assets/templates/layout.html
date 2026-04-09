@@ -42,6 +42,7 @@
       </div>
       <div class="sidebar-stats">
         {{if .FlagCount}}flags: <span class="stat-val">{{.FlagCount}}</span>{{end}}
+        {{if .Version}}<div class="sidebar-version"><a href="https://github.com/SpotlightGOV/pbflags" target="_blank" rel="noopener">pbflags</a> {{.Version}}</div>{{end}}
       </div>
     </nav>
     <main class="main" id="content">

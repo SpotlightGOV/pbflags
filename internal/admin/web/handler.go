@@ -28,8 +28,9 @@ var assets embed.FS
 
 // EnvConfig holds environment display settings for the admin UI.
 type EnvConfig struct {
-	Name  string // e.g. "production", "staging", "dev"
-	Color string // CSS color, e.g. "#f87171"
+	Name    string // e.g. "production", "staging", "dev"
+	Color   string // CSS color, e.g. "#f87171"
+	Version string // build version, e.g. "1.2.3"
 }
 
 // Handler serves the admin web UI.
@@ -205,6 +206,7 @@ func (h *Handler) pageData(page string, extra ...any) map[string]any {
 		"Page":     page,
 		"EnvName":  h.env.Name,
 		"EnvColor": h.env.Color,
+		"Version":  h.env.Version,
 	}
 	for i := 0; i < len(extra)-1; i += 2 {
 		if key, ok := extra[i].(string); ok {
