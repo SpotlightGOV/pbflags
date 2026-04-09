@@ -54,7 +54,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: bufbuild/buf-setup-action@v1
-      - uses: bufbuild/buf-push-action@v1
-        with:
-          input: proto
-          buf_token: ${{ secrets.BUF_TOKEN }}
+      - run: buf push proto
+        env:
+          BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
