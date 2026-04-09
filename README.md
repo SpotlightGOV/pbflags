@@ -101,6 +101,7 @@ version: v2
 plugins:
   - local: protoc-gen-pbflags
     out: gen/flags
+    strategy: all  # required — plugin needs all files to find the Layer enum
     opt:
       - lang=go
       - package_prefix=github.com/yourorg/yourrepo/gen/flags
@@ -115,6 +116,7 @@ version: v2
 plugins:
   - local: protoc-gen-pbflags
     out: src/main/java
+    strategy: all  # required — plugin needs all files to find the Layer enum
     opt:
       - lang=java
       - java_package=com.yourorg.flags.generated

@@ -3,12 +3,18 @@
 # Generates type-safe flag clients from your proto definitions.
 # Requires: go install github.com/SpotlightGOV/pbflags/cmd/protoc-gen-pbflags@latest
 #
+# IMPORTANT: strategy must be "all" so the plugin receives all proto files
+# in a single invocation. The default per-directory strategy invokes the
+# plugin per-file, which means it won't see the Layer enum definition
+# alongside feature messages.
+#
 # Usage:
 #   buf generate --template buf.gen.java.yaml
 version: v2
 plugins:
   - local: protoc-gen-pbflags
     out: src/main/java
+    strategy: all
     opt:
       - lang=java
       - java_package=com.yourorg.flags.generated
