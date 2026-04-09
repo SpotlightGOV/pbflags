@@ -81,7 +81,7 @@
   </td>
   <td><span class="badge badge-type">{{typeLabel .Flag.FlagType}}</span></td>
   <td>
-    <span class="badge badge-layer {{if isUserLayer .Flag.Layer}}badge-layer-user{{end}}">
+    <span class="badge badge-layer {{if hasOverrides .Flag.Layer}}badge-layer-user{{end}}">
       {{layerLabel .Flag.Layer}}
     </span>
   </td>

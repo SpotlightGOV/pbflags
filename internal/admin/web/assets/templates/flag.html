@@ -12,7 +12,7 @@
     {{if .Flag.Description}}<div class="flag-description">{{.Flag.Description}}</div>{{end}}
     <div class="flag-detail-badges">
       <span class="badge badge-type">{{typeLabel .Flag.FlagType}}</span>
-      <span class="badge badge-layer {{if isUserLayer .Flag.Layer}}badge-layer-user{{end}}">
+      <span class="badge badge-layer {{if hasOverrides .Flag.Layer}}badge-layer-user{{end}}">
         {{layerLabel .Flag.Layer}}
       </span>
       <span class="state-pill {{stateClass .Flag.State}}">{{stateLabel .Flag.State}}</span>
@@ -112,7 +112,7 @@
 </div>
 
 <!-- Overrides -->
-{{if isUserLayer .Flag.Layer}}
+{{if hasOverrides .Flag.Layer}}
 <div id="overrides-section">
   {{template "overrides_section" dict "Flag" .Flag}}
 </div>

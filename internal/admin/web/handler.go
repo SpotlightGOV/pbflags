@@ -19,7 +19,6 @@ import (
 	"strings"
 	"time"
 
-	pbflagspb "github.com/SpotlightGOV/pbflags/gen/pbflags"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/internal/admin"
 )
@@ -59,7 +58,7 @@ func NewHandler(store *admin.Store, logger *slog.Logger, env ...EnvConfig) (*Han
 		"layerLabel":         layerLabel,
 		"typeLabel":          typeLabel,
 		"timeAgo":            timeAgo,
-		"isUserLayer":        isUserLayer,
+		"hasOverrides":       hasOverrides,
 		"isEnabled":          isEnabled,
 		"isBool":             isBool,
 		"hasSupportedValues": hasSupportedValues,
@@ -576,15 +575,11 @@ func stateLabel(s pbflagsv1.State) string {
 	}
 }
 
-func layerLabel(l pbflagspb.Layer) string {
-	switch l {
-	case pbflagspb.Layer_LAYER_GLOBAL:
-		return "GLOBAL"
-	case pbflagspb.Layer_LAYER_USER:
-		return "USER"
-	default:
+func layerLabel(l string) string {
+	if l == "" || strings.EqualFold(l, "GLOBAL") {
 		return "GLOBAL"
 	}
+	return strings.ToUpper(l)
 }
 
 func typeLabel(t pbflagsv1.FlagType) string {
@@ -628,8 +623,8 @@ func timeAgo(t time.Time) string {
 	}
 }
 
-func isUserLayer(l pbflagspb.Layer) bool {
-	return l == pbflagspb.Layer_LAYER_USER
+func hasOverrides(l string) bool {
+	return l != "" && !strings.EqualFold(l, "GLOBAL")
 }
 
 func isEnabled(s pbflagsv1.State) bool {
