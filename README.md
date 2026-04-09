@@ -442,6 +442,16 @@ pbflags-lint --base origin/main proto/
 pbflags-lint --base v1.2.0 proto/
 ```
 
+**Important:** Run `pbflags-lint` from the repository root. The tool uses
+`git archive` internally, which does not support paths outside the current
+directory. If your proto directory is in a subdirectory, use `go -C` to
+set the working directory:
+
+```bash
+# From a Go submodule
+go -C go tool pbflags-lint --base=origin/main proto
+```
+
 Exit codes: `0` = clean, `1` = breaking changes found, `2` = tool error.
 
 ### What it checks
@@ -463,6 +473,8 @@ history-dependent rules that require comparing two versions.
 
 ### Pre-commit integration
 
+All examples assume the hook runs from the repository root (where `.git/` lives).
+
 ```yaml
 # lefthook.yml
 pre-commit:
@@ -483,6 +495,18 @@ pre-commit:
 ```json
 // package.json (lint-staged)
 { "proto/**/*.proto": "pbflags-lint proto/" }
+```
+
+If `pbflags-lint` is installed as a Go tool dependency (`go tool`), use
+`go -C <module> tool pbflags-lint` so the working directory is the repo root:
+
+```yaml
+# lefthook.yml (Go tool in a submodule)
+pre-commit:
+  commands:
+    pbflags:
+      glob: "proto/**/*.proto"
+      run: go -C go tool pbflags-lint --base=origin/main proto
 ```
 
 The tool skips quickly (exit 0) when no `.proto` files have changed,
