@@ -114,6 +114,30 @@
             <option value="true" {{if isEnabled .Flag.State}}{{if eq (flagValue .Flag.CurrentValue) "true"}}selected{{end}}{{end}}>true</option>
             <option value="false" {{if isEnabled .Flag.State}}{{if eq (flagValue .Flag.CurrentValue) "false"}}selected{{end}}{{end}}>false</option>
           </select>
+        {{else if hasSupportedValues .Flag}}
+          <div class="sv-combo{{if isCustomSVValue .Flag}} sv-custom-active{{end}}" data-flag-id="{{.Flag.FlagId}}" data-flag-type="{{.Flag.FlagType}}">
+            <select class="flag-value-select sv-select"
+                    onchange="svSelectChanged(this)">
+              <option value="" {{if not (isEnabled .Flag.State)}}selected{{end}}>default ({{flagValue .Flag.DefaultValue}})</option>
+              {{$cur := flagValue .Flag.CurrentValue}}
+              {{$enabled := isEnabled .Flag.State}}
+              {{range supportedOptions .Flag}}
+              <option value="{{.}}" {{if $enabled}}{{if eq $cur .}}selected{{end}}{{end}}>{{.}}</option>
+              {{end}}
+              <option value="__custom__" class="sv-custom-opt">Custom&#x2026;</option>
+            </select>
+            <form class="inline-value-form sv-custom-form"
+                  hx-post="/api/flags/state/{{.Flag.FlagId}}"
+                  hx-target="#flag-row-{{flagIDEscape .Flag.FlagId}}"
+                  hx-swap="outerHTML"
+                  hx-vals='{"state":"ENABLED","flag_type":"{{.Flag.FlagType}}"}'>
+              <input type="text" name="value" class="inline-value-input sv-custom-input"
+                     value="{{if isCustomSVValue .Flag}}{{flagValue .Flag.CurrentValue}}{{end}}"
+                     placeholder="custom value">
+              <button type="submit" class="btn btn-sm btn-primary">Set</button>
+              <button type="button" class="btn-icon sv-custom-cancel" onclick="svCancelCustom(this)">&times;</button>
+            </form>
+          </div>
         {{else}}
           <form class="inline-value-form"
                 hx-post="/api/flags/state/{{.Flag.FlagId}}"

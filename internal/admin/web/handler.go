@@ -45,22 +45,25 @@ type Handler struct {
 // NewHandler creates a web UI handler backed by the given store.
 func NewHandler(store *admin.Store, logger *slog.Logger, env ...EnvConfig) (*Handler, error) {
 	funcMap := template.FuncMap{
-		"flagValue":     formatFlagValue,
-		"resolvedValue": resolvedValue,
-		"flagLabel":     flagLabel,
-		"stateClass":    stateClass,
-		"stateLabel":    stateLabel,
-		"stateHint":     stateHint,
-		"layerLabel":    layerLabel,
-		"typeLabel":     typeLabel,
-		"timeAgo":       timeAgo,
-		"isUserLayer":   isUserLayer,
-		"isEnabled":     isEnabled,
-		"isBool":        isBool,
-		"featureSummary": featureSummary,
-		"json":          toJSON,
-		"flagIDEscape":  flagIDEscape,
-		"dict":          dict,
+		"flagValue":          formatFlagValue,
+		"resolvedValue":      resolvedValue,
+		"flagLabel":          flagLabel,
+		"stateClass":         stateClass,
+		"stateLabel":         stateLabel,
+		"stateHint":          stateHint,
+		"layerLabel":         layerLabel,
+		"typeLabel":          typeLabel,
+		"timeAgo":            timeAgo,
+		"isUserLayer":        isUserLayer,
+		"isEnabled":          isEnabled,
+		"isBool":             isBool,
+		"hasSupportedValues": hasSupportedValues,
+		"supportedOptions":   supportedOptions,
+		"isCustomSVValue":    isCustomSVValue,
+		"featureSummary":     featureSummary,
+		"json":               toJSON,
+		"flagIDEscape":       flagIDEscape,
+		"dict":               dict,
 	}
 
 	tmplFS, err := fs.Sub(assets, "assets/templates")
@@ -601,6 +604,56 @@ func isEnabled(s pbflagsv1.State) bool {
 
 func isBool(t pbflagsv1.FlagType) bool {
 	return t == pbflagsv1.FlagType_FLAG_TYPE_BOOL
+}
+
+// hasSupportedValues returns true if the flag has non-empty supported values.
+func hasSupportedValues(flag *pbflagsv1.FlagDetail) bool {
+	sv := flag.GetSupportedValues()
+	if sv == nil {
+		return false
+	}
+	return len(sv.StringValues) > 0 || len(sv.Int64Values) > 0 || len(sv.DoubleValues) > 0
+}
+
+// supportedOptions returns the supported values as display strings for template iteration.
+func supportedOptions(flag *pbflagsv1.FlagDetail) []string {
+	sv := flag.GetSupportedValues()
+	if sv == nil {
+		return nil
+	}
+	if len(sv.StringValues) > 0 {
+		return sv.StringValues
+	}
+	if len(sv.Int64Values) > 0 {
+		out := make([]string, len(sv.Int64Values))
+		for i, v := range sv.Int64Values {
+			out[i] = strconv.FormatInt(v, 10)
+		}
+		return out
+	}
+	if len(sv.DoubleValues) > 0 {
+		out := make([]string, len(sv.DoubleValues))
+		for i, v := range sv.DoubleValues {
+			out[i] = strconv.FormatFloat(v, 'f', -1, 64)
+		}
+		return out
+	}
+	return nil
+}
+
+// isCustomSVValue returns true when the flag is enabled with a value that
+// doesn't match any of its supported options (i.e. a custom override).
+func isCustomSVValue(flag *pbflagsv1.FlagDetail) bool {
+	if flag.State != pbflagsv1.State_STATE_ENABLED || flag.CurrentValue == nil {
+		return false
+	}
+	cur := formatFlagValue(flag.CurrentValue)
+	for _, opt := range supportedOptions(flag) {
+		if cur == opt {
+			return false
+		}
+	}
+	return true
 }
 
 // featureSummary returns a short summary like "2 enabled, 1 killed" for a feature's flags.

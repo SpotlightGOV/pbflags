@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
 
+	pbflagspb "github.com/SpotlightGOV/pbflags/gen/pbflags"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
 
@@ -28,6 +29,8 @@ type FlagDef struct {
 	FlagType  pbflagsv1.FlagType
 	Layer     int32 // Layer enum ordinal
 	Default   *pbflagsv1.FlagValue
+
+	SupportedValues *pbflagspb.SupportedValues
 
 	FeatureDisplayName string
 	FeatureDescription string
@@ -250,6 +253,11 @@ func extractFlagDef(
 		def.Default = parseFlagDefault(extMsg.Get(defaultField).Message(), flagType)
 	}
 
+	svField := extMsg.Descriptor().Fields().ByNumber(4)
+	if svField != nil && extMsg.Has(svField) {
+		def.SupportedValues = parseSupportedValues(extMsg.Get(svField).Message(), flagType)
+	}
+
 	return def, nil
 }
 
@@ -281,6 +289,38 @@ func parseFlagDefault(msg protoreflect.Message, flagType pbflagsv1.FlagType) *pb
 	})
 
 	return fv
+}
+
+func parseSupportedValues(msg protoreflect.Message, flagType pbflagsv1.FlagType) *pbflagspb.SupportedValues {
+	if msg == nil {
+		return nil
+	}
+	sv := &pbflagspb.SupportedValues{}
+	// Field 1: repeated string string_values
+	if f := msg.Descriptor().Fields().ByNumber(1); f != nil {
+		list := msg.Get(f).List()
+		for i := 0; i < list.Len(); i++ {
+			sv.StringValues = append(sv.StringValues, list.Get(i).String())
+		}
+	}
+	// Field 2: repeated int64 int64_values
+	if f := msg.Descriptor().Fields().ByNumber(2); f != nil {
+		list := msg.Get(f).List()
+		for i := 0; i < list.Len(); i++ {
+			sv.Int64Values = append(sv.Int64Values, list.Get(i).Int())
+		}
+	}
+	// Field 3: repeated double double_values
+	if f := msg.Descriptor().Fields().ByNumber(3); f != nil {
+		list := msg.Get(f).List()
+		for i := 0; i < list.Len(); i++ {
+			sv.DoubleValues = append(sv.DoubleValues, list.Get(i).Float())
+		}
+	}
+	if len(sv.StringValues) == 0 && len(sv.Int64Values) == 0 && len(sv.DoubleValues) == 0 {
+		return nil
+	}
+	return sv
 }
 
 func kindToFlagType(k protoreflect.Kind) pbflagsv1.FlagType {

@@ -1069,6 +1069,47 @@ select {
   background: var(--text-dim);
 }
 
+/* Supported-values combo (dropdown + custom escape hatch) */
+.sv-combo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+
+.sv-combo .sv-custom-form,
+.sv-combo .sv-custom-cancel,
+.sv-combo .sv-override-custom-input {
+  display: none;
+}
+
+.sv-combo.sv-custom-active .sv-select {
+  display: none;
+}
+
+.sv-combo.sv-custom-active .sv-custom-form,
+.sv-combo.sv-custom-active .sv-custom-cancel,
+.sv-combo.sv-custom-active .sv-override-custom-input {
+  display: inline-flex;
+}
+
+.sv-combo.sv-custom-active .sv-override-cancel {
+  display: inline-flex;
+}
+
+.sv-custom-opt {
+  font-style: italic;
+  color: var(--text-dim);
+}
+
+.sv-combo-override {
+  gap: 4px;
+}
+
+.sv-custom-cancel {
+  flex-shrink: 0;
+}
+
 /* Responsive: collapse sidebar on narrow screens */
 @media (max-width: 800px) {
   .shell {

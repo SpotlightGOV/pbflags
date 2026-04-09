@@ -108,6 +108,62 @@
       }
     }
 
+    // Supported-values combo: select → custom text toggle.
+    function svSelectChanged(sel, isDetail) {
+      var combo = sel.closest('.sv-combo');
+      if (sel.value === '__custom__') {
+        combo.classList.add('sv-custom-active');
+        var input = combo.querySelector('.sv-custom-input');
+        if (input) { input.value = ''; input.focus(); }
+      } else {
+        combo.classList.remove('sv-custom-active');
+        var flagId = combo.getAttribute('data-flag-id');
+        var flagType = combo.getAttribute('data-flag-type');
+        setFlagFromSelect(sel, flagId, flagType, isDetail);
+      }
+    }
+
+    function svCancelCustom(btn) {
+      var combo = btn.closest('.sv-combo');
+      combo.classList.remove('sv-custom-active');
+      var sel = combo.querySelector('.sv-select');
+      var opts = sel.options;
+      for (var i = 0; i < opts.length; i++) {
+        if (opts[i].value !== '__custom__' && opts[i].defaultSelected) {
+          sel.selectedIndex = i;
+          return;
+        }
+      }
+      sel.selectedIndex = 0;
+    }
+
+    // Override form variant: swap select ↔ input (both named "value", only one enabled).
+    function svOverrideChanged(sel) {
+      var combo = sel.closest('.sv-combo');
+      if (sel.value === '__custom__') {
+        combo.classList.add('sv-custom-active');
+        sel.disabled = true;
+        sel.removeAttribute('name');
+        var input = combo.querySelector('.sv-override-custom-input');
+        input.disabled = false;
+        input.setAttribute('name', 'value');
+        input.value = '';
+        input.focus();
+      }
+    }
+
+    function svOverrideCancelCustom(btn) {
+      var combo = btn.closest('.sv-combo');
+      combo.classList.remove('sv-custom-active');
+      var sel = combo.querySelector('.sv-override-select');
+      var input = combo.querySelector('.sv-override-custom-input');
+      sel.disabled = false;
+      sel.setAttribute('name', 'value');
+      sel.selectedIndex = 0;
+      input.disabled = true;
+      input.removeAttribute('name');
+    }
+
     // Feature card collapse/expand.
     function toggleFeature(header) {
       var card = header.closest('.feature-card');

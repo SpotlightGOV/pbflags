@@ -355,6 +355,7 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, e
 		if desc, ok := s.descs[flagID]; ok {
 			fd.DefaultValue = desc.Default
 			fd.FlagType = desc.FlagType
+			fd.SupportedValues = desc.SupportedValues
 		}
 
 		feat.Flags = append(feat.Flags, fd)
@@ -407,6 +408,7 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 	if desc, ok := s.descs[flagID]; ok {
 		fd.DefaultValue = desc.Default
 		fd.FlagType = desc.FlagType
+		fd.SupportedValues = desc.SupportedValues
 	}
 
 	rows, err := s.pool.Query(ctx, `

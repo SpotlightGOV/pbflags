@@ -52,6 +52,31 @@
             <option value="true" {{if isEnabled .Flag.State}}{{if eq (flagValue .Flag.CurrentValue) "true"}}selected{{end}}{{end}}>true</option>
             <option value="false" {{if isEnabled .Flag.State}}{{if eq (flagValue .Flag.CurrentValue) "false"}}selected{{end}}{{end}}>false</option>
           </select>
+        {{else if hasSupportedValues .Flag}}
+          <div class="sv-combo sv-combo-lg{{if isCustomSVValue .Flag}} sv-custom-active{{end}}" data-flag-id="{{.Flag.FlagId}}" data-flag-type="{{.Flag.FlagType}}">
+            <select class="flag-value-select flag-value-select-lg sv-select"
+                    onchange="svSelectChanged(this, true)">
+              <option value="" {{if not (isEnabled .Flag.State)}}selected{{end}}>default ({{flagValue .Flag.DefaultValue}})</option>
+              {{$cur := flagValue .Flag.CurrentValue}}
+              {{$enabled := isEnabled .Flag.State}}
+              {{range supportedOptions .Flag}}
+              <option value="{{.}}" {{if $enabled}}{{if eq $cur .}}selected{{end}}{{end}}>{{.}}</option>
+              {{end}}
+              <option value="__custom__" class="sv-custom-opt">Custom&#x2026;</option>
+            </select>
+            <form class="detail-value-form sv-custom-form"
+                  hx-post="/api/flags/state/{{.Flag.FlagId}}"
+                  hx-target="#content" hx-swap="innerHTML"
+                  hx-vals='{"state":"ENABLED","flag_type":"{{.Flag.FlagType}}"}'>
+              <div class="detail-value-input-group">
+                <input type="text" name="value" class="detail-value-input sv-custom-input"
+                       value="{{if isCustomSVValue .Flag}}{{flagValue .Flag.CurrentValue}}{{end}}"
+                       placeholder="custom value">
+                <button type="submit" class="btn btn-primary">Set</button>
+                <button type="button" class="btn-icon sv-custom-cancel" onclick="svCancelCustom(this)">&times;</button>
+              </div>
+            </form>
+          </div>
         {{else}}
           <form class="detail-value-form"
                 hx-post="/api/flags/state/{{.Flag.FlagId}}"
@@ -186,6 +211,20 @@
           <option value="true">true</option>
           <option value="false">false</option>
         </select>
+      {{else if hasSupportedValues .Flag}}
+        <div class="sv-combo sv-combo-override">
+          <select name="value" class="flag-value-select sv-select sv-override-select"
+                  onchange="svOverrideChanged(this)">
+            {{range supportedOptions .Flag}}
+            <option value="{{.}}">{{.}}</option>
+            {{end}}
+            <option value="__custom__" class="sv-custom-opt">Custom&#x2026;</option>
+          </select>
+          <input type="text" name="value" class="sv-custom-input sv-override-custom-input"
+                 placeholder="custom value" disabled style="width: 140px">
+          <button type="button" class="btn-icon sv-custom-cancel sv-override-cancel"
+                  onclick="svOverrideCancelCustom(this)">&times;</button>
+        </div>
       {{else}}
         <input type="text" name="value" placeholder="value" required style="width: 140px">
       {{end}}
