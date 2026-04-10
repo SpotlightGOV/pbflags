@@ -88,8 +88,12 @@ type Notifications struct {
 	MaxRetries int64 `protobuf:"varint,3,opt,name=max_retries,json=maxRetries,proto3" json:"max_retries,omitempty"`
 	// Minimum score threshold for triggering notifications.
 	ScoreThreshold float64 `protobuf:"fixed64,4,opt,name=score_threshold,json=scoreThreshold,proto3" json:"score_threshold,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Email addresses for incident notifications.
+	NotificationEmails []string `protobuf:"bytes,5,rep,name=notification_emails,json=notificationEmails,proto3" json:"notification_emails,omitempty"`
+	// Retry delay intervals in seconds.
+	RetryDelays   []int64 `protobuf:"varint,6,rep,packed,name=retry_delays,json=retryDelays,proto3" json:"retry_delays,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Notifications) Reset() {
@@ -150,11 +154,25 @@ func (x *Notifications) GetScoreThreshold() float64 {
 	return 0
 }
 
+func (x *Notifications) GetNotificationEmails() []string {
+	if x != nil {
+		return x.NotificationEmails
+	}
+	return nil
+}
+
+func (x *Notifications) GetRetryDelays() []int64 {
+	if x != nil {
+		return x.RetryDelays
+	}
+	return nil
+}
+
 var File_example_notifications_proto protoreflect.FileDescriptor
 
 const file_example_notifications_proto_rawDesc = "" +
 	"\n" +
-	"\x1bexample/notifications.proto\x12\aexample\x1a\x15pbflags/options.proto\"\xd1\x03\n" +
+	"\x1bexample/notifications.proto\x12\aexample\x1a\x15pbflags/options.proto\"\xa5\x05\n" +
 	"\rNotifications\x12Q\n" +
 	"\remail_enabled\x18\x01 \x01(\bB,\xca\xf3\x18(\n" +
 	"\x1aEnable email notifications\x12\x04\n" +
@@ -169,7 +187,13 @@ const file_example_notifications_proto_rawDesc = "" +
 	"\x16Maximum retry attempts\x12\x04\x1a\x02\b\x03R\n" +
 	"maxRetries\x12e\n" +
 	"\x0fscore_threshold\x18\x04 \x01(\x01B<\xca\xf3\x188\n" +
-	")Score threshold for notification triggers\x12\v\"\t\t\x00\x00\x00\x00\x00\x00\xe8?R\x0escoreThreshold:K\xc2\xf3\x18G\n" +
+	")Score threshold for notification triggers\x12\v\"\t\t\x00\x00\x00\x00\x00\x00\xe8?R\x0escoreThreshold\x12~\n" +
+	"\x13notification_emails\x18\x05 \x03(\tBM\xca\xf3\x18I\n" +
+	"*Email addresses for incident notifications\x12\x132\x11\n" +
+	"\x0fops@example.com*\x06entityR\x12notificationEmails\x12R\n" +
+	"\fretry_delays\x18\x06 \x03(\x03B/\xca\xf3\x18+\n" +
+	" Retry delay intervals in seconds\x12\a:\x05\n" +
+	"\x03\x01\x05\x1eR\vretryDelays:K\xc2\xf3\x18G\n" +
 	"\rnotifications\x12'Controls notification delivery behavior\x1a\rplatform-team*X\n" +
 	"\x05Layer\x12\x15\n" +
 	"\x11LAYER_UNSPECIFIED\x10\x00\x12\x10\n" +

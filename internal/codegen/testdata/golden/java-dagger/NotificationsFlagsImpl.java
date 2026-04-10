@@ -4,6 +4,9 @@ package org.spotlightgov.pbflags.generated;
 import org.spotlightgov.pbflags.Flag;
 import org.spotlightgov.pbflags.FlagEvaluator;
 import org.spotlightgov.pbflags.LayerFlag;
+import org.spotlightgov.pbflags.LayerListFlag;
+import org.spotlightgov.pbflags.ListFlag;
+import org.spotlightgov.pbflags.generated.layers.EntityID;
 import org.spotlightgov.pbflags.generated.layers.UserID;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -16,6 +19,8 @@ public final class NotificationsFlagsImpl implements NotificationsFlags {
   private final Flag<String> digestFrequency;
   private final Flag<Long> maxRetries;
   private final Flag<Double> scoreThreshold;
+  private final LayerListFlag<String, EntityID> notificationEmails;
+  private final ListFlag<Long> retryDelays;
 
   @Inject
   public NotificationsFlagsImpl(FlagEvaluator evaluator) {
@@ -27,6 +32,10 @@ public final class NotificationsFlagsImpl implements NotificationsFlags {
         evaluator.flag(MAX_RETRIES_ID, Long.class, MAX_RETRIES_DEFAULT);
     this.scoreThreshold =
         evaluator.flag(SCORE_THRESHOLD_ID, Double.class, SCORE_THRESHOLD_DEFAULT);
+    this.notificationEmails =
+        evaluator.layerListFlag(NOTIFICATION_EMAILS_ID, String.class, NOTIFICATION_EMAILS_DEFAULT, EntityID::value);
+    this.retryDelays =
+        evaluator.listFlag(RETRY_DELAYS_ID, Long.class, RETRY_DELAYS_DEFAULT);
   }
 
   @Override
@@ -47,6 +56,16 @@ public final class NotificationsFlagsImpl implements NotificationsFlags {
   @Override
   public Flag<Double> scoreThreshold() {
     return scoreThreshold;
+  }
+
+  @Override
+  public LayerListFlag<String, EntityID> notificationEmails() {
+    return notificationEmails;
+  }
+
+  @Override
+  public ListFlag<Long> retryDelays() {
+    return retryDelays;
   }
 
 }

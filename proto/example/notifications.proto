@@ -51,4 +51,17 @@ message Notifications {
     description: "Score threshold for notification triggers"
     default: { double_value: { value: 0.75 } }
   }];
+
+  // Email addresses for incident notifications.
+  repeated string notification_emails = 5 [(pbflags.flag) = {
+    description: "Email addresses for incident notifications"
+    default: { string_list_value: { values: ["ops@example.com"] } }
+    layer: "entity"
+  }];
+
+  // Retry delay intervals in seconds.
+  repeated int64 retry_delays = 6 [(pbflags.flag) = {
+    description: "Retry delay intervals in seconds"
+    default: { int64_list_value: { values: [1, 5, 30] } }
+  }];
 }

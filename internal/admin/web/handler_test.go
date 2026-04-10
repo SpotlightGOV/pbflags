@@ -76,6 +76,13 @@ func TestParseFlagValue(t *testing.T) {
 		{"DOUBLE", "3.14", false},
 		{"DOUBLE", "xyz", true},
 		{"UNKNOWN_TYPE", "val", true},
+		// List types
+		{"STRING_LIST", "a\nb\nc", false},
+		{"INT64_LIST", "1\n5\n30", false},
+		{"INT64_LIST", "abc", false},   // silently drops invalid
+		{"DOUBLE_LIST", "1.5\n2.5", false},
+		{"BOOL_LIST", "true\nfalse", false},
+		{"STRING_LIST", "", false},     // empty list
 	}
 	for _, tt := range tests {
 		t.Run(tt.flagType+"/"+tt.raw, func(t *testing.T) {
@@ -318,4 +325,79 @@ func TestRemoveOverrideRejectsBadEntitySegment(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.removeOverride(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// ---------------------------------------------------------------------------
+// List flag support
+// ---------------------------------------------------------------------------
+
+func TestParseFlagValueListValues(t *testing.T) {
+	t.Run("STRING_LIST values", func(t *testing.T) {
+		v, err := parseFlagValue("STRING_LIST", "ops@example.com\nalerts@example.com")
+		require.NoError(t, err)
+		sl := v.GetStringListValue()
+		require.NotNil(t, sl)
+		assert.Equal(t, []string{"ops@example.com", "alerts@example.com"}, sl.Values)
+	})
+
+	t.Run("INT64_LIST values", func(t *testing.T) {
+		v, err := parseFlagValue("INT64_LIST", "1\n5\n30")
+		require.NoError(t, err)
+		il := v.GetInt64ListValue()
+		require.NotNil(t, il)
+		assert.Equal(t, []int64{1, 5, 30}, il.Values)
+	})
+
+	t.Run("INT64_LIST drops invalid entries", func(t *testing.T) {
+		v, err := parseFlagValue("INT64_LIST", "1\nbad\n30")
+		require.NoError(t, err)
+		il := v.GetInt64ListValue()
+		require.NotNil(t, il)
+		assert.Equal(t, []int64{1, 30}, il.Values)
+	})
+
+	t.Run("STRING_LIST trims empty lines", func(t *testing.T) {
+		v, err := parseFlagValue("STRING_LIST", "a\n\nb\n\n")
+		require.NoError(t, err)
+		sl := v.GetStringListValue()
+		require.NotNil(t, sl)
+		assert.Equal(t, []string{"a", "b"}, sl.Values)
+	})
+}
+
+func TestFormatFlagValueList(t *testing.T) {
+	t.Run("string list", func(t *testing.T) {
+		v := &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringListValue{
+			StringListValue: &pbflagsv1.StringList{Values: []string{"a", "b"}},
+		}}
+		assert.Equal(t, "[a, b]", formatFlagValue(v))
+	})
+
+	t.Run("int64 list", func(t *testing.T) {
+		v := &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64ListValue{
+			Int64ListValue: &pbflagsv1.Int64List{Values: []int64{1, 5, 30}},
+		}}
+		assert.Equal(t, "[1, 5, 30]", formatFlagValue(v))
+	})
+
+	t.Run("empty string list", func(t *testing.T) {
+		v := &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringListValue{
+			StringListValue: &pbflagsv1.StringList{Values: []string{}},
+		}}
+		assert.Equal(t, "[]", formatFlagValue(v))
+	})
+
+	t.Run("double list", func(t *testing.T) {
+		v := &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleListValue{
+			DoubleListValue: &pbflagsv1.DoubleList{Values: []float64{1.5, 2.5}},
+		}}
+		assert.Equal(t, "[1.5, 2.5]", formatFlagValue(v))
+	})
+}
+
+func TestTypeLabelList(t *testing.T) {
+	assert.Equal(t, "string[]", typeLabel(pbflagsv1.FlagType_FLAG_TYPE_STRING_LIST))
+	assert.Equal(t, "int64[]", typeLabel(pbflagsv1.FlagType_FLAG_TYPE_INT64_LIST))
+	assert.Equal(t, "double[]", typeLabel(pbflagsv1.FlagType_FLAG_TYPE_DOUBLE_LIST))
+	assert.Equal(t, "bool[]", typeLabel(pbflagsv1.FlagType_FLAG_TYPE_BOOL_LIST))
 }

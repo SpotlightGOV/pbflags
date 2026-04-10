@@ -15,10 +15,12 @@ const FeatureID = "notifications"
 
 // Flag ID constants. Format: feature_id/field_number.
 const (
-	EmailEnabledID    = "notifications/1"
-	DigestFrequencyID = "notifications/2"
-	MaxRetriesID      = "notifications/3"
-	ScoreThresholdID  = "notifications/4"
+	EmailEnabledID       = "notifications/1"
+	DigestFrequencyID    = "notifications/2"
+	MaxRetriesID         = "notifications/3"
+	ScoreThresholdID     = "notifications/4"
+	NotificationEmailsID = "notifications/5"
+	RetryDelaysID        = "notifications/6"
 )
 
 // Compiled defaults from proto annotations.
@@ -29,12 +31,24 @@ const (
 	ScoreThresholdDefault  = float64(0.75)
 )
 
+// NotificationEmailsDefault returns the compiled default for NotificationEmails.
+func NotificationEmailsDefault() []string {
+	return []string{"ops@example.com"}
+}
+
+// RetryDelaysDefault returns the compiled default for RetryDelays.
+func RetryDelaysDefault() []int64 {
+	return []int64{}
+}
+
 // NotificationsFlags provides type-safe access to notifications feature flags.
 type NotificationsFlags interface {
 	EmailEnabled(ctx context.Context, user layers.UserID) bool
 	DigestFrequency(ctx context.Context) string
 	MaxRetries(ctx context.Context) int64
 	ScoreThreshold(ctx context.Context) float64
+	NotificationEmails(ctx context.Context, entity layers.EntityID) []string
+	RetryDelays(ctx context.Context) []int64
 
 	// Status returns the evaluator's current health state.
 	Status(ctx context.Context) pbflagsv1.EvaluatorStatus
@@ -102,6 +116,33 @@ func (c *notificationsFlagsClient) ScoreThreshold(ctx context.Context) float64 {
 	return resp.Msg.GetValue().GetDoubleValue()
 }
 
+func (c *notificationsFlagsClient) NotificationEmails(ctx context.Context, entity layers.EntityID) []string {
+	resp, err := c.evaluator.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{
+		FlagId:   NotificationEmailsID,
+		EntityId: entity.String(),
+	}))
+	if err != nil {
+		return NotificationEmailsDefault()
+	}
+	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.FlagValue_StringListValue); !ok {
+		return NotificationEmailsDefault()
+	}
+	return resp.Msg.GetValue().GetStringListValue().GetValues()
+}
+
+func (c *notificationsFlagsClient) RetryDelays(ctx context.Context) []int64 {
+	resp, err := c.evaluator.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{
+		FlagId: RetryDelaysID,
+	}))
+	if err != nil {
+		return RetryDelaysDefault()
+	}
+	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.FlagValue_Int64ListValue); !ok {
+		return RetryDelaysDefault()
+	}
+	return resp.Msg.GetValue().GetInt64ListValue().GetValues()
+}
+
 func (c *notificationsFlagsClient) Status(ctx context.Context) pbflagsv1.EvaluatorStatus {
 	resp, err := c.evaluator.Health(ctx, connect.NewRequest(&pbflagsv1.HealthRequest{}))
 	if err != nil {
@@ -133,6 +174,14 @@ func (defaultNotificationsFlags) MaxRetries(_ context.Context) int64 {
 
 func (defaultNotificationsFlags) ScoreThreshold(_ context.Context) float64 {
 	return ScoreThresholdDefault
+}
+
+func (defaultNotificationsFlags) NotificationEmails(_ context.Context, _ layers.EntityID) []string {
+	return NotificationEmailsDefault()
+}
+
+func (defaultNotificationsFlags) RetryDelays(_ context.Context) []int64 {
+	return RetryDelaysDefault()
 }
 
 func (defaultNotificationsFlags) Status(_ context.Context) pbflagsv1.EvaluatorStatus {

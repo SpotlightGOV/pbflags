@@ -814,3 +814,108 @@ func TestAdversarial_ConcurrentOverrideUpsert(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, resp.Overrides, 1)
 }
+
+func TestValidateFlagValueType(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   *pbflagsv1.FlagValue
+		ft      pbflagsv1.FlagType
+		wantErr bool
+	}{
+		{
+			name:    "nil value, any type",
+			value:   nil,
+			ft:      pbflagsv1.FlagType_FLAG_TYPE_BOOL,
+			wantErr: false,
+		},
+		{
+			name:    "bool value + BOOL type",
+			value:   boolValue(true),
+			ft:      pbflagsv1.FlagType_FLAG_TYPE_BOOL,
+			wantErr: false,
+		},
+		{
+			name:    "bool value + STRING type",
+			value:   boolValue(true),
+			ft:      pbflagsv1.FlagType_FLAG_TYPE_STRING,
+			wantErr: true,
+		},
+		{
+			name:    "string value + STRING type",
+			value:   stringValue("hello"),
+			ft:      pbflagsv1.FlagType_FLAG_TYPE_STRING,
+			wantErr: false,
+		},
+		{
+			name:    "int64 value + INT64 type",
+			value:   int64Value(42),
+			ft:      pbflagsv1.FlagType_FLAG_TYPE_INT64,
+			wantErr: false,
+		},
+		{
+			name:    "double value + DOUBLE type",
+			value:   doubleValue(3.14),
+			ft:      pbflagsv1.FlagType_FLAG_TYPE_DOUBLE,
+			wantErr: false,
+		},
+		{
+			name: "string_list value + STRING_LIST type",
+			value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringListValue{
+				StringListValue: &pbflagsv1.StringList{Values: []string{"a", "b"}},
+			}},
+			ft:      pbflagsv1.FlagType_FLAG_TYPE_STRING_LIST,
+			wantErr: false,
+		},
+		{
+			name: "string_list value + STRING type (scalar/list mismatch)",
+			value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringListValue{
+				StringListValue: &pbflagsv1.StringList{Values: []string{"a"}},
+			}},
+			ft:      pbflagsv1.FlagType_FLAG_TYPE_STRING,
+			wantErr: true,
+		},
+		{
+			name: "int64_list value + INT64_LIST type",
+			value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64ListValue{
+				Int64ListValue: &pbflagsv1.Int64List{Values: []int64{1, 2, 3}},
+			}},
+			ft:      pbflagsv1.FlagType_FLAG_TYPE_INT64_LIST,
+			wantErr: false,
+		},
+		{
+			name: "bool_list value + BOOL_LIST type",
+			value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolListValue{
+				BoolListValue: &pbflagsv1.BoolList{Values: []bool{true, false}},
+			}},
+			ft:      pbflagsv1.FlagType_FLAG_TYPE_BOOL_LIST,
+			wantErr: false,
+		},
+		{
+			name: "double_list value + DOUBLE_LIST type",
+			value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleListValue{
+				DoubleListValue: &pbflagsv1.DoubleList{Values: []float64{1.1, 2.2}},
+			}},
+			ft:      pbflagsv1.FlagType_FLAG_TYPE_DOUBLE_LIST,
+			wantErr: false,
+		},
+		{
+			name: "int64_list value + DOUBLE_LIST type (element type mismatch)",
+			value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64ListValue{
+				Int64ListValue: &pbflagsv1.Int64List{Values: []int64{1, 2}},
+			}},
+			ft:      pbflagsv1.FlagType_FLAG_TYPE_DOUBLE_LIST,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateFlagValueType(tt.value, tt.ft)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/SpotlightGOV/pbflags/internal/codegen/layerutil"
@@ -172,7 +173,7 @@ func generateInterface(plugin *protogen.Plugin, feat *featureInfo, flags []flagI
 		p("import org.spotlightgov.pbflags.ListFlag;")
 	}
 	if hasLayerFlags || hasLayerListFlags {
-		for name := range layerImports {
+		for _, name := range sortedKeys(layerImports) {
 			p("import ", javaPackage, ".layers.", layerIDClassName(name), ";")
 		}
 	}
@@ -310,7 +311,7 @@ func generateImpl(plugin *protogen.Plugin, feat *featureInfo, flags []flagInfo, 
 		p("import org.spotlightgov.pbflags.ListFlag;")
 	}
 	if hasLayerFlags || hasLayerListFlags {
-		for name := range layerImports {
+		for _, name := range sortedKeys(layerImports) {
 			p("import ", javaPackage, ".layers.", layerIDClassName(name), ";")
 		}
 	}
@@ -1238,4 +1239,13 @@ func toScreamingSnake(s string) string {
 
 func quote(s string) string {
 	return fmt.Sprintf("%q", s)
+}
+
+func sortedKeys(m map[string]bool) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

@@ -544,6 +544,38 @@ func formatFlagValue(v *pbflagsv1.FlagValue) string {
 		return strconv.FormatInt(val.Int64Value, 10)
 	case *pbflagsv1.FlagValue_DoubleValue:
 		return strconv.FormatFloat(val.DoubleValue, 'f', -1, 64)
+	case *pbflagsv1.FlagValue_StringListValue:
+		if val.StringListValue == nil || len(val.StringListValue.Values) == 0 {
+			return "[]"
+		}
+		return "[" + strings.Join(val.StringListValue.Values, ", ") + "]"
+	case *pbflagsv1.FlagValue_Int64ListValue:
+		if val.Int64ListValue == nil || len(val.Int64ListValue.Values) == 0 {
+			return "[]"
+		}
+		parts := make([]string, len(val.Int64ListValue.Values))
+		for i, v := range val.Int64ListValue.Values {
+			parts[i] = strconv.FormatInt(v, 10)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	case *pbflagsv1.FlagValue_DoubleListValue:
+		if val.DoubleListValue == nil || len(val.DoubleListValue.Values) == 0 {
+			return "[]"
+		}
+		parts := make([]string, len(val.DoubleListValue.Values))
+		for i, v := range val.DoubleListValue.Values {
+			parts[i] = strconv.FormatFloat(v, 'f', -1, 64)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	case *pbflagsv1.FlagValue_BoolListValue:
+		if val.BoolListValue == nil || len(val.BoolListValue.Values) == 0 {
+			return "[]"
+		}
+		parts := make([]string, len(val.BoolListValue.Values))
+		for i, v := range val.BoolListValue.Values {
+			parts[i] = strconv.FormatBool(v)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
 	default:
 		return "—"
 	}
@@ -592,6 +624,14 @@ func typeLabel(t pbflagsv1.FlagType) string {
 		return "int64"
 	case pbflagsv1.FlagType_FLAG_TYPE_DOUBLE:
 		return "double"
+	case pbflagsv1.FlagType_FLAG_TYPE_STRING_LIST:
+		return "string[]"
+	case pbflagsv1.FlagType_FLAG_TYPE_INT64_LIST:
+		return "int64[]"
+	case pbflagsv1.FlagType_FLAG_TYPE_DOUBLE_LIST:
+		return "double[]"
+	case pbflagsv1.FlagType_FLAG_TYPE_BOOL_LIST:
+		return "bool[]"
 	default:
 		return "unknown"
 	}
@@ -830,7 +870,61 @@ func parseFlagValue(flagType, raw string) (*pbflagsv1.FlagValue, error) {
 			return nil, fmt.Errorf("parse double: %w", err)
 		}
 		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleValue{DoubleValue: v}}, nil
+	case "STRING_LIST", "FLAG_TYPE_STRING_LIST", "6":
+		values := splitListLines(raw)
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringListValue{
+			StringListValue: &pbflagsv1.StringList{Values: values},
+		}}, nil
+	case "INT64_LIST", "FLAG_TYPE_INT64_LIST", "7":
+		var values []int64
+		for _, line := range splitListLines(raw) {
+			v, err := strconv.ParseInt(line, 10, 64)
+			if err != nil {
+				continue // silently drop invalid entries
+			}
+			values = append(values, v)
+		}
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64ListValue{
+			Int64ListValue: &pbflagsv1.Int64List{Values: values},
+		}}, nil
+	case "DOUBLE_LIST", "FLAG_TYPE_DOUBLE_LIST", "8":
+		var values []float64
+		for _, line := range splitListLines(raw) {
+			v, err := strconv.ParseFloat(line, 64)
+			if err != nil {
+				continue // silently drop invalid entries
+			}
+			values = append(values, v)
+		}
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleListValue{
+			DoubleListValue: &pbflagsv1.DoubleList{Values: values},
+		}}, nil
+	case "BOOL_LIST", "FLAG_TYPE_BOOL_LIST", "5":
+		var values []bool
+		for _, line := range splitListLines(raw) {
+			v, err := strconv.ParseBool(line)
+			if err != nil {
+				continue // silently drop invalid entries
+			}
+			values = append(values, v)
+		}
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolListValue{
+			BoolListValue: &pbflagsv1.BoolList{Values: values},
+		}}, nil
 	default:
 		return nil, fmt.Errorf("unknown flag type %q", flagType)
 	}
+}
+
+// splitListLines splits raw input by newlines, trims whitespace, and drops empty lines.
+func splitListLines(raw string) []string {
+	lines := strings.Split(raw, "\n")
+	var out []string
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
 }

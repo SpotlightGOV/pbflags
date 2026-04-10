@@ -57,6 +57,61 @@ func TestParseDescriptorFile_RealDescriptors(t *testing.T) {
 	require.Equal(t, 0.75, score.Default.GetDoubleValue(), "score_threshold default")
 }
 
+func TestParseDescriptorFile_ListFlags(t *testing.T) {
+	path := testdataPath("descriptors.pb")
+	defs, err := ParseDescriptorFile(path)
+	require.NoError(t, err, "ParseDescriptorFile")
+
+	byID := make(map[string]FlagDef, len(defs))
+	for _, d := range defs {
+		byID[d.FlagID] = d
+	}
+
+	// notification_emails — STRING_LIST, entity layer
+	emails, ok := byID["notifications/5"]
+	require.True(t, ok, "expected notifications/5 (notification_emails) in parsed defs")
+	assert.Equal(t, pbflagsv1.FlagType_FLAG_TYPE_STRING_LIST, emails.FlagType, "notification_emails type")
+	assert.Equal(t, "entity", emails.Layer, "notification_emails layer")
+	assert.False(t, emails.IsGlobalLayer(), "notification_emails should not be global")
+	require.NotNil(t, emails.Default, "notification_emails default should not be nil")
+	slv := emails.Default.GetStringListValue()
+	require.NotNil(t, slv, "notification_emails default should be a StringList")
+	assert.Equal(t, []string{"ops@example.com"}, slv.GetValues(), "notification_emails default values")
+
+	// retry_delays — INT64_LIST, global layer
+	delays, ok := byID["notifications/6"]
+	require.True(t, ok, "expected notifications/6 (retry_delays) in parsed defs")
+	assert.Equal(t, pbflagsv1.FlagType_FLAG_TYPE_INT64_LIST, delays.FlagType, "retry_delays type")
+	assert.Equal(t, "", delays.Layer, "retry_delays layer (global = empty)")
+	assert.True(t, delays.IsGlobalLayer(), "retry_delays should be global")
+	require.NotNil(t, delays.Default, "retry_delays default should not be nil")
+	ilv := delays.Default.GetInt64ListValue()
+	require.NotNil(t, ilv, "retry_delays default should be an Int64List")
+	assert.Equal(t, []int64{1, 5, 30}, ilv.GetValues(), "retry_delays default values")
+}
+
+func TestParseDescriptorFile_AllEightTypes(t *testing.T) {
+	path := testdataPath("descriptors.pb")
+	defs, err := ParseDescriptorFile(path)
+	require.NoError(t, err, "ParseDescriptorFile")
+
+	types := make(map[pbflagsv1.FlagType]bool)
+	for _, d := range defs {
+		types[d.FlagType] = true
+	}
+
+	for _, ft := range []pbflagsv1.FlagType{
+		pbflagsv1.FlagType_FLAG_TYPE_BOOL,
+		pbflagsv1.FlagType_FLAG_TYPE_STRING,
+		pbflagsv1.FlagType_FLAG_TYPE_INT64,
+		pbflagsv1.FlagType_FLAG_TYPE_DOUBLE,
+		pbflagsv1.FlagType_FLAG_TYPE_STRING_LIST,
+		pbflagsv1.FlagType_FLAG_TYPE_INT64_LIST,
+	} {
+		assert.True(t, types[ft], "expected flag type %v in parsed defs", ft)
+	}
+}
+
 func TestParseDescriptorFile_AllFourTypes(t *testing.T) {
 	path := testdataPath("descriptors.pb")
 	defs, err := ParseDescriptorFile(path)
