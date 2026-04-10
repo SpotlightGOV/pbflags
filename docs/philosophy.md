@@ -76,7 +76,7 @@ A flag's layer is part of its contract with consumers — changing it changes th
 | Layer → Global | **No** | Orphaned overrides remain in the database. Cannot be deleted until rollout is complete, but if not deleted, silently reappear if the flag is later re-layered. |
 | Layer A → Layer B | **No** | Existing override rows were written with Layer A's ID semantics (e.g., user IDs). After the change, they're interpreted as Layer B IDs (e.g., entity IDs). If ID spaces overlap, overrides evaluate incorrectly. |
 
-The lint tool (`pbflags-lint`) enforces these rules at pre-commit time.
+The lint tool (`pbflags-lint`) enforces these rules at pre-commit or release time.
 
 ### Migrating a flag to a different layer
 
