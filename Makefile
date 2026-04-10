@@ -1,4 +1,31 @@
-.PHONY: generate build test clean docker dev dev-db release-notes release
+.PHONY: help generate build test test-e2e clean docker dev dev-db release-notes release
+
+.DEFAULT_GOAL := help
+
+## help: Show this help message.
+help:
+	@echo "Usage: make <target>"
+	@echo ""
+	@echo "Development:"
+	@echo "  dev             Start admin server locally with live asset reloading (standalone mode)"
+	@echo "  dev-db          Start only the PostgreSQL container for local development"
+	@echo ""
+	@echo "Build:"
+	@echo "  build           Build all Go binaries (admin, evaluator, sync, codegen plugin)"
+	@echo "  generate        Regenerate protobuf Go code (builds codegen plugin first)"
+	@echo "  docker          Build the Docker image"
+	@echo "  install-codegen Install protoc-gen-pbflags to GOPATH/bin"
+	@echo ""
+	@echo "Test:"
+	@echo "  test            Run Go unit and integration tests"
+	@echo "  test-e2e        Run browser E2E tests via Playwright (HEADED=1 for visible browser)"
+	@echo ""
+	@echo "Release:"
+	@echo "  release         Tag and push a release (VERSION=, MAJOR=1, or auto)"
+	@echo "  release-notes   Generate release notes (VERSION= required)"
+	@echo ""
+	@echo "Cleanup:"
+	@echo "  clean           Remove build artifacts"
 
 # Generate protobuf Go code from proto definitions.
 # Builds protoc-gen-pbflags first so buf can invoke it.
@@ -16,6 +43,11 @@ build:
 # Run Go tests.
 test:
 	go test ./...
+
+# Run browser E2E tests (requires Playwright: go tool playwright install --with-deps).
+# Set HEADED=1 for visible browser with slowdown.
+test-e2e:
+	go test -tags e2e -count=1 -p 1 -v ./internal/e2e/
 
 # Remove build artifacts.
 clean:

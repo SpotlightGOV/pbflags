@@ -17,6 +17,9 @@ release-notes.md
 /pbflags-sync
 /protoc-gen-pbflags
 
+# E2E test traces (Playwright)
+internal/e2e/testdata/
+
 # Java
 clients/java/.gradle/
 clients/java/build/
