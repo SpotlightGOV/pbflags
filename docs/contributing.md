@@ -130,20 +130,25 @@ make release MAJOR=1      # next major from main
 make release VERSION=v1.0.0  # explicit version
 ```
 
+This runs lint, tests, and E2E tests, then generates release notes (if none exist), opens `$EDITOR` for review, and prompts for confirmation before tagging and pushing.
+
 ### Release notes
 
 ```bash
-make release-notes VERSION=v0.7.0
+make release-notes                # auto-detect version from branch
+make release-notes VERSION=v0.7.0 # explicit version
 ```
 
-This generates notes to `docs/releasenotes/<VERSION>.md` via the Claude API. Review, edit, and commit the file before tagging. If no pre-committed notes exist, the workflow generates them automatically.
+Generates notes to `docs/releasenotes/<VERSION>.md` via the Claude API, opens `$EDITOR` for review, and stages the file. You can prepare release notes ahead of time this way — `make release` will skip generation if the file already exists.
 
-### What the release workflow does
+### What the CI release workflow does
 
-1. Verify tag is on the correct branch (main for `.0`, release branch for patches)
-2. Use pre-committed release notes (or generate them)
-3. Build binaries for linux/macOS on amd64/arm64
-4. Build and push Docker image to `ghcr.io/spotlightgov/pbflags`
-5. Push proto definitions to the Buf Schema Registry
-6. Create `release/X.Y.0` branch (for `.0` releases only)
-7. Trigger Java client publishing to Maven Central
+After the tag is pushed, GitHub Actions:
+
+1. Verifies the tag is on the correct branch (main for `.0`, release branch for patches)
+2. Uses pre-committed release notes (or generates them)
+3. Builds binaries for linux/macOS on amd64/arm64
+4. Builds and pushes Docker image to `ghcr.io/spotlightgov/pbflags`
+5. Pushes proto definitions to the Buf Schema Registry
+6. Creates `release/X.Y.0` branch (for `.0` releases only)
+7. Triggers Java client publishing to Maven Central
