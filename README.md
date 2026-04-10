@@ -6,11 +6,11 @@ Protocol Buffer-based feature flags with type-safe code generation, multi-tier c
 
 ## Overview
 
-pbflags lets you define feature flags as protobuf messages and generates type-safe client code for Go and Java (with TypeScript, Rust, and Node planned). Flags are evaluated by a standalone server that supports three deployment modes:
+pbflags lets you define feature flags as protobuf messages and generates type-safe client code for Go and Java (with TypeScript, Rust, and Node planned). Flags are evaluated by a standalone server with the database as the single source of truth for definitions:
 
-- **Root mode**: Direct PostgreSQL access, serves as the source of truth
-- **Proxy mode**: Connects to an upstream evaluator, reduces database connection fan-out
-- **Combined mode**: Root mode with an embedded admin API
+- **Monolithic**: Single instance with auto-migration, descriptor sync, and definition loading — ideal for local dev, demos, and small deployments
+- **Distributed**: Multi-instance production mode where `pbflags-sync` manages migrations and sync externally, and servers read definitions from DB
+- **Proxy**: Connects to an upstream root evaluator, reducing database connection fan-out
 
 ## Architecture
 
@@ -251,45 +251,76 @@ This starts PostgreSQL + pbflags-server in combined mode (evaluator + admin API)
 ### Binary
 
 ```bash
-# Root mode (direct database access)
+# Monolithic (single instance — auto-migrates, syncs, and serves)
 pbflags-server \
-  --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable \
   --descriptors=descriptors.pb \
-  --listen=:9201
-
-# Combined mode (root + admin API)
-pbflags-server \
   --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable \
-  --descriptors=descriptors.pb \
-  --listen=:9201 \
   --admin=:9200
 
-# Proxy mode (connects to upstream)
+# Distributed (multi-instance — reads definitions from DB only)
 pbflags-server \
-  --server=http://root-evaluator:9201 \
-  --descriptors=descriptors.pb \
-  --listen=:9201
+  --distributed \
+  --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable
+
+# Proxy (connects to upstream root evaluator)
+pbflags-server \
+  --upstream=http://root-evaluator:9201
 ```
 
-### Database Migrations
+### Deployment Modes
 
-Schema is managed by [goose](https://github.com/pressly/goose). Run migrations before first startup or after upgrading:
+#### Monolithic
+
+When both `--descriptors` and `--database` are provided, the server runs in monolithic mode. On startup it:
+
+1. Runs pending schema migrations automatically
+2. Parses `descriptors.pb` and syncs definitions to the database
+3. Loads definitions from the database into an in-memory registry
+4. Watches the descriptor file for changes (re-syncs on change)
+5. Polls the database for definition updates (60s default)
+
+This is the easiest way to run pbflags — one binary, one command.
+
+**Single-instance only.** Do not run multiple monolithic instances behind a load balancer. Each instance would race to migrate and sync, causing split-brain definition conflicts. If you need multiple instances, use distributed mode.
+
+#### Distributed
+
+For production multi-instance deployments, use `--distributed`. The server only reads definitions from the database — no descriptor file, no migrations. An external `pbflags-sync` job in your CI/CD pipeline handles schema migrations and definition sync:
 
 ```bash
-pbflags-server \
-  --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable \
-  --upgrade
-```
-
-This applies all pending migrations and exits. Migration state is tracked in the `goose_db_version` table.
-
-### Database schema sync
-
-```bash
-# Sync flag definitions from descriptors.pb into PostgreSQL
+# CI/CD pipeline (runs once per deploy):
 pbflags-sync \
-  --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable \
-  --descriptors=descriptors.pb
+  --descriptors=descriptors.pb \
+  --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable
+
+# Any number of application instances:
+pbflags-server --distributed --database=postgres://...
+```
+
+`pbflags-sync` runs migrations automatically before syncing, so there is no separate migration step.
+
+Distributed servers poll the database for definition changes (default 60s, configurable via `--definition-poll-interval`). For immediate propagation after a deploy, call the admin reload endpoint:
+
+```bash
+curl -X POST http://localhost:9200/admin/reload-definitions
+```
+
+#### Proxy
+
+Proxy mode connects to an upstream root evaluator and caches responses locally. No database or descriptor file needed. Use this to reduce connection fan-out in large deployments:
+
+```bash
+pbflags-server --upstream=http://root-evaluator:9201
+```
+
+### Legacy migration command
+
+For one-off migration runs (e.g., init containers), you can still use:
+
+```bash
+pbflags-server \
+  --database=postgres://... \
+  --upgrade --exit-after-upgrade
 ```
 
 ## Admin Web UI
@@ -305,12 +336,19 @@ When running in combined mode (`--admin`), pbflags serves an embedded web dashbo
 
 ### Enabling
 
-Pass the `--admin` flag (or set `PBFLAGS_ADMIN`) to start the admin UI:
+Pass the `--admin` flag (or set `PBFLAGS_ADMIN`) to start the admin UI alongside the evaluator:
 
 ```bash
+# Monolithic with admin
 pbflags-server \
-  --database=postgres://... \
   --descriptors=descriptors.pb \
+  --database=postgres://... \
+  --admin=:9200
+
+# Distributed with admin
+pbflags-server \
+  --distributed \
+  --database=postgres://... \
   --admin=:9200
 ```
 
@@ -338,11 +376,11 @@ Environment variables override CLI flags:
 
 | Variable | Description |
 |---|---|
-| `PBFLAGS_DESCRIPTORS` | Path to `descriptors.pb` |
-| `PBFLAGS_DATABASE` | PostgreSQL connection string (root mode) |
-| `PBFLAGS_SERVER` | Upstream evaluator URL (proxy mode) |
+| `PBFLAGS_DESCRIPTORS` | Path to `descriptors.pb` (monolithic mode) |
+| `PBFLAGS_DATABASE` | PostgreSQL connection string |
+| `PBFLAGS_UPSTREAM` | Upstream evaluator URL (proxy mode) |
 | `PBFLAGS_LISTEN` | Evaluator listen address (default: `localhost:9201`) |
-| `PBFLAGS_ADMIN` | Admin API listen address (enables combined mode) |
+| `PBFLAGS_ADMIN` | Admin API listen address (enables admin UI) |
 
 ## Flag Evaluation Precedence
 
