@@ -1,96 +1,43 @@
 # pbflags Roadmap
 
 This document tracks planned improvements and features for pbflags, organized
-by theme and approximate priority. Items are sequenced so that foundational
-work (observability, security) lands before features that depend on it
-(advanced evaluation, ecosystem integrations).
+by approximate priority. Items are sequenced so that foundational work lands
+before features that depend on it.
 
 ---
 
-## Phase 1 — Observability & Operations (Next)
+## Soon
 
-Low risk, high operational value, no API surface changes required.
+### 1. Client-Side Flags
 
-### 1. OpenTelemetry Instrumentation
-
-Add distributed tracing and metrics via OpenTelemetry SDK instrumentation.
-
-**Scope:**
-- Trace evaluation calls end-to-end (receive request, cache lookup, fetch, respond)
-- Record cache hit/miss ratios per tier (kill set, global flags, overrides)
-- Measure fetch latency to PostgreSQL and upstream proxy
-- Propagate trace context through the Connect RPC boundary
-
-**Why:** The three-tier cache architecture is the core performance story.
-Without tracing, operators can't diagnose whether slowness is in the cache
-layer, the database, or the upstream proxy. OTel is the industry standard and
-integrates with Grafana, Datadog, Honeycomb, etc.
-
-**Key files:** `internal/evaluator/evaluator.go`, `cache.go`, `dbfetcher.go`, `client.go`
-
-### 2. Prometheus Metrics Endpoint
-
-Expose a `/metrics` endpoint with operational counters and histograms.
+Define the first-class pattern for how client-side applications (browser,
+mobile, edge) consume flags from pbflags.
 
 **Scope:**
-- `pbflags_evaluations_total` — counter by feature, source, status
-- `pbflags_cache_hits_total` / `pbflags_cache_misses_total` — by tier
-- `pbflags_fetch_duration_seconds` — histogram for DB and upstream fetches
-- `pbflags_kill_set_size` — gauge of currently killed flags
-- `pbflags_override_cache_size` — gauge of LRU entries
-- `pbflags_health_consecutive_failures` — gauge per upstream
-- `pbflags_poller_last_success_timestamp` — for staleness alerting
+- **Evaluation model**: server-evaluated flags delivered to the client (not
+  client-side rule evaluation — flag rules and targeting logic stay server-side)
+- **Transport**: Connect-Web for browser clients, aligning with the existing
+  Connect RPC server. Evaluate SSE streaming vs. polling for flag updates.
+- **TypeScript SDK**: codegen target generating typed flag accessors with
+  compiled defaults. Target both Node.js (server) and browser runtimes.
+  Publish to npm as `@spotlightgov/pbflags`.
+- **Security boundary**: clients receive only their evaluated results, never
+  the full flag ruleset or other entities' overrides
+- **Never-throw guarantee**: catch transport errors, return compiled defaults.
+  Offline/disconnected clients always have safe values.
+- **Developer ergonomics**: framework integrations (React hooks, etc.) that
+  make flag consumption feel native
 
-**Why:** Metrics are the first thing an on-call engineer reaches for. The
-health endpoint (`/healthz`) gives a binary signal; metrics give the gradient.
-Cache eviction rates, override cardinality, and poller freshness are all
-operationally critical and currently invisible.
-
-**Key files:** `internal/evaluator/cache.go`, `poller.go`, `health.go`, `service.go`
-
-### 3. Structured Logging
-
-Migrate from implicit logging to Go's `log/slog` with consistent fields.
-
-**Scope:**
-- Adopt `slog.Logger` throughout the evaluator and admin packages
-- Attach structured fields: `feature_id`, `entity_id`, `evaluation_source`,
-  `cache_tier`, `latency_ms`
-- Support JSON output for log aggregation pipelines
-- Configurable log level via flag or environment variable
-
-**Why:** The current logging is ad-hoc. In production, operators need to
-correlate evaluation decisions with specific entities and features. Structured
-fields enable filtering and aggregation in ELK, Loki, CloudWatch, etc.
-
-**Key files:** All files in `internal/evaluator/`, `internal/admin/`, `cmd/pbflags-server/main.go`
-
----
-
-## Phase 2 — Reach & Hardening (Soon)
-
-Broadens language support, adds security basics, and improves developer
-ergonomics.
-
-### 4. TypeScript Client Code Generation
-
-Add TypeScript as a codegen target in `protoc-gen-pbflags`.
-
-**Scope:**
-- Generate typed flag accessors with compiled defaults
-- Target both Node.js (server) and browser runtimes
-- Use Connect-Web for transport (aligns with existing Connect RPC server)
-- Maintain the never-throw guarantee: catch transport errors, return defaults
-- Generate `.d.ts` type declarations
-- Publish to npm as `@spotlightgov/pbflags`
-
-**Why:** TypeScript has the largest potential user base. Connect-Web is the
-natural client for the existing Connect RPC server, making this the
-lowest-friction language expansion.
+**Why:** Server-side Go and Java clients exist, but there's no story for how
+browser or mobile applications consume flags. This is a different problem
+than server-side evaluation — it involves transport choices, security
+boundaries, and update propagation that don't arise in backend services.
+Without a defined client-side pattern, teams will build ad-hoc solutions
+that bypass the type safety and never-throw guarantees.
 
 **Key files:** `internal/codegen/` (new `tsgen/` package), `cmd/protoc-gen-pbflags/main.go`
 
-### 5. API Authentication
+### 2. API Authentication
 
 Add token-based authentication for evaluator and admin services.
 
@@ -107,7 +54,7 @@ scheme prevents accidental exposure and enables audit trail attribution.
 
 **Key files:** `cmd/pbflags-server/main.go`, new `internal/auth/` package
 
-### 6. RBAC for Admin API
+### 3. RBAC for Admin API
 
 Role-based access control separating read and write operations.
 
@@ -120,13 +67,13 @@ Role-based access control separating read and write operations.
 
 **Why:** The admin API already has audit logging — adding RBAC completes the
 security story. Without it, anyone with network access can kill flags or set
-overrides. Depends on authentication (item 5) being in place.
+overrides.
 
-**Depends on:** Item 5 (API Authentication)
+**Depends on:** Item 2 (API Authentication)
 
 **Key files:** `internal/admin/service.go`, new `internal/auth/rbac.go`
 
-### 7. Native TLS Support
+### 4. Native TLS Support
 
 Optional in-process TLS termination.
 
@@ -141,79 +88,16 @@ Simplifies single-binary deployments and development setups.
 
 **Key files:** `cmd/pbflags-server/main.go`
 
-### 8. CLI Tool for Flag Management
-
-A `pbflags` CLI for scriptable flag operations.
-
-**Scope:**
-- `pbflags flags list` — list features and flag states
-- `pbflags flags get <feature_id>/<field_number>` — show flag details
-- `pbflags flags set <feature_id>/<field_number> --state=ENABLED --value=...`
-- `pbflags flags kill <feature_id>/<field_number>` — emergency kill switch
-- `pbflags overrides set <feature_id>/<field_number> --entity=<id> --value=...`
-- `pbflags overrides remove <feature_id>/<field_number> --entity=<id>`
-- `pbflags audit <feature_id>` — view audit log
-- Connect to admin API via `--server` flag, authenticate via `--token` or env var
-- Output formats: table (default), JSON, YAML
-
-**Why:** Flag operations shouldn't require curl/grpcurl incantations or a UI.
-A CLI enables scripting (CI/CD flag gates, incident runbooks) and is the
-fastest path to usable flag management before a full UI exists.
-
-**Key files:** New `cmd/pbflags/` directory, consumes admin API client
-
 ---
 
-## Phase 3 — Developer Experience (Later)
+## Later
 
-Higher effort, builds on earlier work.
-
-### 9. Admin Web UI
-
-A lightweight web dashboard for flag management.
-
-**Scope:**
-- Feature list with current state (enabled/killed/default) and value
-- Flag detail view with override list and audit history
-- Toggle flag state, manage overrides via forms
-- Search and filter by feature, label, state
-- Read-only mode for viewer role, full controls for editor/admin
-- Embed in the pbflags-server binary via `//go:embed`
-- Tech: lightweight framework (preact/htmx) to minimize bundle size
-
-**Why:** Non-engineering stakeholders (product managers, support) need
-visibility into flag state without CLI or API access. The admin API already
-exposes all necessary operations — this is a presentation layer.
-
-**Depends on:** Items 5-6 (auth/RBAC) for access control
-
-**Key files:** New `internal/admin/ui/` directory, `cmd/pbflags-server/main.go` (embed + serve)
-
-### 10. Percentage Rollouts
-
-Gradual feature rollout by consistent entity hashing.
-
-**Scope:**
-- New `rollout_percentage` field on flag configuration (0-100)
-- Deterministic hashing: `hash(feature_id + entity_id) % 100 < percentage`
-- Consistent — same entity always gets same result for same percentage
-- Monotonic — increasing percentage never removes previously-included entities
-- Integrates into evaluation precedence between override and global state checks
-- Admin API support for setting and viewing rollout percentage
-- Codegen updates for typed rollout configuration
-
-**Why:** Binary on/off is insufficient for safe production rollouts. Percentage
-rollouts are the most requested feature flag capability and the `Layer` enum
-plus override system provide a natural extension point.
-
-**Key files:** `internal/evaluator/evaluator.go`, `proto/pbflags/v1/types.proto`, `db/migrations/`
-
-### 11. Dry-Run / What-If Evaluation
+### 5. Dry-Run / What-If Evaluation
 
 Preview evaluation results without changing state.
 
 **Scope:**
-- New RPC: `DryRunEvaluate(feature_id, entity_id, hypothetical_state)` 
+- New RPC: `DryRunEvaluate(feature_id, entity_id, hypothetical_state)`
 - Returns: what the entity would see under the hypothetical configuration
 - Supports hypothetical: state changes, override additions, rollout percentages
 - No side effects — read-only operation
@@ -225,7 +109,7 @@ making the change and checking. A dry-run endpoint makes this safe and fast.
 
 **Key files:** `internal/evaluator/service.go`, `proto/pbflags/v1/evaluator.proto`
 
-### 12. Cross-Language Integration Tests
+### 6. Cross-Language Integration Tests
 
 End-to-end tests validating Go server + Java client consistency.
 
@@ -234,7 +118,7 @@ End-to-end tests validating Go server + Java client consistency.
 - Cover all evaluation precedence levels across the language boundary
 - Validate proto wire format compatibility
 - Run in CI with both PostgreSQL and in-memory modes
-- Extend to TypeScript client when available (item 4)
+- Extend to TypeScript client when available
 
 **Why:** The proto contract is the source of truth, but serialization edge cases
 (wrapper types, default values, unknown fields) can diverge between language
@@ -242,7 +126,7 @@ runtimes. Integration tests catch these before users do.
 
 **Key files:** New `tests/integration/` directory, CI workflow updates
 
-### 13. Chaos / Failure-Mode Tests
+### 7. Chaos / Failure-Mode Tests
 
 Validate graceful degradation under simulated failures.
 
@@ -260,7 +144,7 @@ failure conditions. Chaos tests validate the system-level behavior.
 
 **Key files:** `internal/evaluator/cache_test.go`, `health_test.go`, new `tests/chaos/`
 
-### 14. Performance Benchmarks
+### 8. Performance Benchmarks
 
 Document evaluation latency and throughput characteristics.
 
@@ -280,32 +164,137 @@ detection — if a change doubles evaluation latency, the benchmark catches it.
 
 ---
 
-## Phase 4 — Advanced Evaluation (Horizon)
+## Future
 
-Strategic features that depend on adoption signal and earlier foundational work.
+Items in this section are not committed work — they represent the logical
+extension of the system based on where the industry has converged. Informed
+by competitive analysis against LaunchDarkly, Flipt, Unleash, and Flagsmith.
+Sequencing is meaningful: each item builds on the one before it.
 
-### 15. Targeting Rules
+### 9. Attribute-Based Targeting and Segmentation
 
-Attribute-based evaluation for entity segmentation.
+Replace per-entity overrides as the only targeting mechanism with a rule
+engine that evaluates structured attributes.
 
 **Scope:**
-- Define targeting rules on flags: `attribute op value` (e.g., `region == "EU"`)
-- Evaluation receives entity attributes as key-value context
-- Rule engine evaluates conditions (equality, set membership, regex, numeric range)
-- Precedence: kill > override > targeting rule > global state > default
-- Admin API for rule CRUD, audit logging for rule changes
-- Proto schema for rule definitions
+- Introduce an **evaluation context** to replace the opaque `entity_id` string:
+  structured key-value attributes (plan, region, role, email, custom properties)
+- Define **segments** as reusable audience slices with attribute constraints
+  (equals, contains, in, regex, numeric range) and match-all/match-any logic
+- Define **targeting rules** on flags that reference segments, evaluated
+  top-to-bottom with first-match-wins semantics
+- Precedence: kill > per-entity override > targeting rule > global state > default
+- Proto schema for rules, segments, and evaluation context
+- Admin API + UI for rule and segment CRUD
+- Audit logging for all rule/segment changes
+- Backward compatible: existing entity_id overrides continue to work
 
-**Why:** "Enable for users in region=EU" is a fundamental segmentation need.
-Without targeting rules, operators must create per-entity overrides for every
-entity — which doesn't scale. This is the bridge from feature flags to
-feature management.
-
-**Depends on:** Core evaluation stable, admin API mature
+**Why:** "Enable for users where `plan = enterprise`" is the fundamental
+capability that every competitor provides and pbflags currently lacks. Without
+targeting rules, operators must create per-entity overrides for every entity —
+which doesn't scale. This is the bridge from feature flags to feature
+management. Every subsequent item in this section depends on it.
 
 **Key files:** `proto/pbflags/v1/types.proto`, `internal/evaluator/evaluator.go`, new rule engine
 
-### 16. Flag Dependencies / Prerequisites
+### 10. Percentage-Based Rollouts
+
+Gradual feature rollout by consistent entity hashing, integrated with the
+targeting rule engine.
+
+**Scope:**
+- Deterministic hashing: `hash(flag_key + entity_id) % 10000` for 0.01% granularity
+- Consistent — same entity always gets same result for same percentage
+- Monotonic — increasing percentage never removes previously-included entities
+- Rollouts operate within targeting rules: "for segment X, roll out to 25%"
+- Support percentage distributions across multiple values/variants
+- Admin API + UI for configuring rollout percentages
+- Codegen updates for typed rollout configuration
+
+**Why:** Binary on/off is insufficient for safe production rollouts. Percentage
+rollouts are the most commonly expected feature flag capability and the
+primary mechanism for risk mitigation during releases. Combined with
+targeting, this enables "roll out to 10% of enterprise users in US-EAST" —
+the bread and butter of progressive delivery.
+
+**Depends on:** Item 9 (targeting) — rollouts are a distribution within a
+targeting rule, and require the evaluation context for entity identity.
+
+**Key files:** `internal/evaluator/evaluator.go`, `proto/pbflags/v1/types.proto`, `db/migrations/`
+
+### 11. OpenFeature Provider
+
+Implement the OpenFeature provider interface for Go and Java.
+
+**Scope:**
+- Go: implement `openfeature.FeatureProvider` interface wrapping pbflags evaluator
+- Java: implement `dev.openfeature.sdk.FeatureProvider` wrapping `FlagEvaluator`
+- Map OpenFeature `EvaluationContext` to pbflags evaluation context (from item 9)
+- Support OpenFeature hooks for logging and metrics
+- Publish as separate modules (`pbflags-openfeature-go`, `pbflags-openfeature-java`)
+
+**Why:** OpenFeature is the CNCF-incubating standard for feature flag client
+interfaces. Every major competitor (LaunchDarkly, Flipt, Unleash, Flagsmith)
+ships OpenFeature providers. Providing one lets teams adopt pbflags without
+client-side vendor lock-in and enables interop with the OpenFeature hook
+ecosystem. The evaluation context model from item 9 maps naturally to
+OpenFeature's `EvaluationContext`.
+
+**Depends on:** Item 10 (percentage rollouts) — OpenFeature's evaluation model
+assumes the backend supports contextual evaluation; without targeting and
+rollouts, the provider would be a thin wrapper with limited value.
+
+**Key files:** New `clients/openfeature/` packages for Go and Java
+
+### 12. Additional SDK Support (Rust)
+
+Expand SDK coverage beyond Go, Java, and TypeScript.
+
+**Scope:**
+- **Rust**: codegen target using `tonic` for gRPC transport, published to
+  crates.io as `pbflags`. Never-panic guarantee via `Result` with default fallback.
+- **OpenFeature providers** for additional languages (lower bar than full codegen)
+
+**Why:** With OpenFeature in place, teams using unsupported languages can use
+the OpenFeature SDK with a pbflags provider as the breadth path, while codegen
+clients remain the premium type-safe path. Rust is a natural fit for
+proto-first systems. LaunchDarkly ships 29+ SDKs — pbflags doesn't need
+parity, but breadth matters for platform adoption.
+
+**Depends on:** Item 11 (OpenFeature) — OpenFeature providers for new languages
+are faster to ship than full codegen targets and provide immediate coverage.
+
+**Key files:** `internal/codegen/` (new `rustgen/` package), `cmd/protoc-gen-pbflags/main.go`
+
+### 13. Experimentation Framework (A/B Testing)
+
+Measure the impact of flag variations with statistical analysis.
+
+**Scope:**
+- Event collection: SDK-side impression tracking (flag evaluated, variation seen,
+  entity context)
+- Metrics pipeline: ingest outcome events (conversion, latency, error rate) and
+  correlate with flag assignments
+- Statistical engine: significance testing (frequentist or Bayesian), sample size
+  estimation, guardrail metrics
+- Experiment lifecycle: create experiment → assign traffic via rollouts →
+  collect data → analyze → conclude
+- Admin UI for experiment creation, monitoring, and results
+- Integration with external analytics (export to warehouse, webhook on conclusion)
+
+**Why:** Experimentation is the end state of feature management — not just
+"is the flag on?" but "is the flag *working*?" LaunchDarkly has built-in
+A/B testing; most open-source tools do not. This is a significant
+differentiator but also the highest-effort item on the roadmap. It requires
+targeting + rollouts as prerequisites, plus an event/metrics pipeline that
+doesn't exist yet.
+
+**Depends on:** Items 9-10 (targeting + rollouts) — experiments are rollouts
+with measurement.
+
+**Key files:** New `internal/experiment/` package, `proto/pbflags/v1/experiment.proto`
+
+### 14. Flag Dependencies / Prerequisites
 
 Conditional flag activation based on other flag states.
 
@@ -323,7 +312,7 @@ implicit explicit.
 
 **Key files:** `internal/evaluator/evaluator.go`, `proto/pbflags/v1/types.proto`, `internal/admin/store.go`
 
-### 17. Scheduled Activation / Deactivation
+### 15. Scheduled Activation / Deactivation
 
 Time-based flag lifecycle management.
 
@@ -342,73 +331,35 @@ eliminates the risk of forgetting to disable a flag.
 
 **Key files:** `internal/evaluator/evaluator.go`, `proto/pbflags/v1/types.proto`, `internal/admin/store.go`
 
-### 18. Rust Client Code Generation
+### 16. CLI Tool for Flag Management
 
-Add Rust as a codegen target in `protoc-gen-pbflags`.
-
-**Scope:**
-- Generate typed flag accessors with compiled defaults as constants
-- Use `tonic` for gRPC transport (standard Rust gRPC library)
-- Never-panic guarantee: all evaluation errors return compiled defaults
-- Publish to crates.io as `pbflags`
-- Include integration test support utilities
-
-**Why:** Rust is a natural fit for proto-first systems and zero-cost
-abstractions. The never-throw pattern maps elegantly to Rust's `Result` type
-with default fallback. Growing Rust adoption in infrastructure makes this a
-strategic language target.
-
-**Key files:** `internal/codegen/` (new `rustgen/` package), `cmd/protoc-gen-pbflags/main.go`
-
-### 19. Node.js Client Code Generation
-
-Add Node.js as a codegen target (if not covered by TypeScript).
+A `pbflags` CLI for scriptable flag operations.
 
 **Scope:**
-- Evaluate whether the TypeScript client (item 4) fully covers Node.js use cases
-- If separate target needed: generate CommonJS/ESM modules with typed accessors
-- Support both Connect-Node and gRPC-Node transports
-- Never-throw guarantee with compiled defaults
-- Publish to npm alongside TypeScript package
+- `pbflags flags list` — list features and flag states
+- `pbflags flags get <feature_id>/<field_number>` — show flag details
+- `pbflags flags set <feature_id>/<field_number> --state=ENABLED --value=...`
+- `pbflags flags kill <feature_id>/<field_number>` — emergency kill switch
+- `pbflags overrides set <feature_id>/<field_number> --entity=<id> --value=...`
+- `pbflags overrides remove <feature_id>/<field_number> --entity=<id>`
+- `pbflags audit <feature_id>` — view audit log
+- Connect to admin API via `--server` flag, authenticate via `--token` or env var
+- Output formats: table (default), JSON, YAML
 
-**Why:** Some Node.js projects don't use TypeScript. If the TS client requires
-a TypeScript build step, a pure JS target removes that friction. Decision
-depends on item 4's implementation — may be unnecessary if TS output is
-directly consumable.
+**Why:** Flag operations shouldn't require curl/grpcurl incantations or a UI.
+A CLI enables scripting (CI/CD flag gates, incident runbooks).
 
-**Depends on:** Item 4 (TypeScript client) — evaluate coverage gap first
-
-**Key files:** `internal/codegen/` (potentially `nodegen/`), `cmd/protoc-gen-pbflags/main.go`
-
-### 20. OpenFeature Provider
-
-Implement the OpenFeature provider interface for Go and Java.
-
-**Scope:**
-- Go: implement `openfeature.FeatureProvider` interface wrapping pbflags evaluator
-- Java: implement `dev.openfeature.sdk.FeatureProvider` wrapping `FlagEvaluator`
-- Map pbflags evaluation to OpenFeature evaluation context
-- Support OpenFeature hooks for logging and metrics
-- Publish as separate modules (`pbflags-openfeature-go`, `pbflags-openfeature-java`)
-
-**Why:** OpenFeature is the emerging standard for feature flag client
-interfaces. Providing an OpenFeature provider lets teams adopt pbflags without
-client-side vendor lock-in — they can swap providers without changing
-application code. Also enables interop with OpenFeature's ecosystem of hooks
-and tooling.
-
-**Key files:** New `clients/openfeature/` packages for Go and Java
+**Key files:** New `cmd/pbflags/` directory, consumes admin API client
 
 ---
 
 ## Sequencing Summary
 
-| Phase | Items | Timeline Signal |
-|-------|-------|-----------------|
-| **Next** | 1-3 (observability) | Low risk, high operational value |
-| **Soon** | 4-8 (reach & hardening) | Broadens adoption, hardens for real use |
-| **Later** | 9-14 (developer experience) | Higher effort, builds on earlier work |
-| **Horizon** | 15-20 (advanced eval & ecosystem) | Strategic bets, depend on adoption |
+| Phase | Items | Signal |
+|-------|-------|--------|
+| **Soon** | 1-4 | Client-side story, security hardening |
+| **Later** | 5-8 | Testing, benchmarks, operator tooling |
+| **Future** | 9-16 | Feature management platform, not committed |
 
 ---
 
