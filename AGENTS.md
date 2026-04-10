@@ -47,98 +47,41 @@ bd close <id>         # Complete work
 - If push fails, resolve and retry until it succeeds
 <!-- END BEADS INTEGRATION -->
 
-## Services and binaries
+## Documentation
 
-Three runtime services, each with a distinct role and explicit DB permission requirements:
+Detailed docs are in the `docs/` directory. Key references for contributors:
 
-- **`pbflags-admin`** — Flag management control plane: admin API, web UI, and a local evaluator interface. Requires R/W database access (no DDL). With `--standalone`, runs all three roles in one process (including migrations and sync). Requires DDL+R/W in standalone mode.
-- **`pbflags-evaluator`** — Read-only flag resolution service. Requires either `--database` (readonly) or `--upstream` (proxy to another evaluator). Does not need descriptors.
-- **`pbflags-sync`** — Runs schema migrations and syncs flag definitions from `descriptors.pb` into PostgreSQL. Requires DDL+R/W. Runs once per deploy in CI/CD pipelines.
+- [docs/contributing.md](docs/contributing.md) — Dev setup, testing, releasing, migration rules
+- [docs/deployment.md](docs/deployment.md) — Service topology and configuration
+- [docs/philosophy.md](docs/philosophy.md) — Design principles, layers, evaluation precedence
 
-Build-time tools:
+## Quick reference
 
-- **`protoc-gen-pbflags`** — `protoc` / `buf` plugin for Go and Java client codegen.
-- **`pbflags-lint`** — Pre-commit breaking change detector.
+Runtime services: `pbflags-admin`, `pbflags-evaluator`, `pbflags-sync`. Build tools: `protoc-gen-pbflags`, `pbflags-lint`. See [docs/deployment.md](docs/deployment.md) for details.
 
-## Deployment topologies
-
-### Standalone (development / single instance)
-
-```bash
-pbflags-admin --standalone \
-  --descriptors=descriptors.pb \
-  --database=postgres://... \
-  --env-name=local
-```
-
-Runs all three roles (admin + evaluator + sync) in one process. Auto-migrates, syncs definitions, watches descriptor file. A lease row warns if another standalone instance is active.
-
-### Production (multi-instance)
-
-```bash
-# CI/CD pipeline (once per deploy):
-pbflags-sync --descriptors=descriptors.pb --database=postgres://...
-
-# Control plane (one or more instances):
-pbflags-admin --database=postgres://...
-
-# Evaluators (any number, as sidecars or in a hierarchy):
-pbflags-evaluator --database=postgres://...
-
-# Optional: upstream proxy evaluators for fan-out reduction:
-pbflags-evaluator --upstream=http://evaluator:9201
-```
-
-`pbflags-sync` is the single writer for definitions. Admin instances serve the UI and manage flag state (R/W). Evaluator instances resolve flags (readonly). All poll the DB for changes.
-
-## Prerequisites
-
-- Go 1.26+ (see `go.mod`)
-- [Docker](https://docs.docker.com/get-docker/) and Docker Compose (for PostgreSQL in local integration tests)
-- [Buf CLI](https://buf.build/docs/installation) (for `make generate`)
-
-## PostgreSQL for integration tests
-
-Integration tests expect PostgreSQL on port **5433** (see `internal/integration/service_test.go` and `internal/evaluator/integration_test.go`). Start the stack from the repo root:
-
-```bash
-docker compose -f docker/docker-compose.yml up -d
-```
-
-## Running tests
-
-**Use parallel package isolation for the full suite:** several packages share the same database. Running them in parallel can deadlock or flake.
+Tests require PostgreSQL on port 5433 (`make dev-db`). Run the full suite with:
 
 ```bash
 go test -count=1 -p 1 ./...
 ```
 
-The `Makefile` `test` target runs `go test ./...` without `-p 1`; prefer the command above for a reliable full run locally and in agents.
+Use `-p 1` — several packages share the same database and will deadlock without it.
 
-## Admin web UI routes and `http.ServeMux`
+E2E browser tests (Playwright, gated behind `e2e` build tag):
 
-Go 1.22+ `http.ServeMux` **panics at registration** if a `{name...}` wildcard segment is not the **last** segment of the pattern (for example, `/api/flags/{flagID...}/state` is invalid).
+```bash
+make test-e2e
+```
 
-The admin UI uses URLs where the flag id is `feature/field` (contains `/`). Wildcards are therefore placed **last**, for example:
+## Admin web UI routes
+
+Go 1.22+ `http.ServeMux` panics if a `{name...}` wildcard is not the last segment. The admin UI uses flag IDs containing `/`, so wildcards are placed last:
 
 - `POST /api/flags/state/{flagID...}`
 - `POST /api/flags/overrides/{flagID...}`
 - `DELETE /api/flags/overrides/entity/{entityID}/{flagID...}`
 
-When adding new routes, keep multi-segment ids in a trailing `{...}` segment only.
-
 ## Database migrations
 
-Migrations live in `db/migrations/` and are applied by goose. `pbflags-sync` and `pbflags-admin --standalone` run them automatically on startup; `pbflags-admin` (normal) and `pbflags-evaluator` only check the schema version.
-
-**Backwards compatibility rule:** every migration must be compatible with the previous release's queries. During a production rollout, `pbflags-sync` applies the new schema first, then admin and evaluator instances are updated — so the old code runs against the new schema during the rollout window. Concretely:
-
-- Add columns as nullable or with defaults.
-- Add tables freely.
-- Rename or drop columns across two releases (add new, then remove old).
-- Never change column types in place.
-
-## Common commands
-
-See the root **`Makefile`** and **`README.md`** for `make build`, `make generate`, and server startup examples.
+Migrations in `db/migrations/` must be backwards-compatible with the previous release. See [docs/contributing.md](docs/contributing.md) for rules.
 
