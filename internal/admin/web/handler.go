@@ -65,9 +65,12 @@ func NewHandler(store *admin.Store, logger *slog.Logger, env ...EnvConfig) (*Han
 		"supportedOptions":   supportedOptions,
 		"isCustomSVValue":    isCustomSVValue,
 		"featureSummary":     featureSummary,
-		"json":               toJSON,
-		"flagIDEscape":       flagIDEscape,
-		"dict":               dict,
+		"isListType":          isListType,
+		"listItems":           listItems,
+		"listForTextarea":     formatListForTextarea,
+		"json":                toJSON,
+		"flagIDEscape":        flagIDEscape,
+		"dict":                dict,
 	}
 
 	var ec EnvConfig
@@ -673,6 +676,67 @@ func isEnabled(s pbflagsv1.State) bool {
 
 func isBool(t pbflagsv1.FlagType) bool {
 	return t == pbflagsv1.FlagType_FLAG_TYPE_BOOL
+}
+
+func isListType(t pbflagsv1.FlagType) bool {
+	switch t {
+	case pbflagsv1.FlagType_FLAG_TYPE_STRING_LIST,
+		pbflagsv1.FlagType_FLAG_TYPE_INT64_LIST,
+		pbflagsv1.FlagType_FLAG_TYPE_DOUBLE_LIST,
+		pbflagsv1.FlagType_FLAG_TYPE_BOOL_LIST:
+		return true
+	default:
+		return false
+	}
+}
+
+// listItems returns individual list entries as strings for chip display.
+func listItems(v *pbflagsv1.FlagValue) []string {
+	if v == nil {
+		return nil
+	}
+	switch val := v.Value.(type) {
+	case *pbflagsv1.FlagValue_StringListValue:
+		if val.StringListValue == nil {
+			return nil
+		}
+		return val.StringListValue.Values
+	case *pbflagsv1.FlagValue_Int64ListValue:
+		if val.Int64ListValue == nil {
+			return nil
+		}
+		out := make([]string, len(val.Int64ListValue.Values))
+		for i, n := range val.Int64ListValue.Values {
+			out[i] = strconv.FormatInt(n, 10)
+		}
+		return out
+	case *pbflagsv1.FlagValue_DoubleListValue:
+		if val.DoubleListValue == nil {
+			return nil
+		}
+		out := make([]string, len(val.DoubleListValue.Values))
+		for i, n := range val.DoubleListValue.Values {
+			out[i] = strconv.FormatFloat(n, 'f', -1, 64)
+		}
+		return out
+	case *pbflagsv1.FlagValue_BoolListValue:
+		if val.BoolListValue == nil {
+			return nil
+		}
+		out := make([]string, len(val.BoolListValue.Values))
+		for i, b := range val.BoolListValue.Values {
+			out[i] = strconv.FormatBool(b)
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+// formatListForTextarea returns list entries as newline-separated text for textarea editing.
+func formatListForTextarea(v *pbflagsv1.FlagValue) string {
+	items := listItems(v)
+	return strings.Join(items, "\n")
 }
 
 // hasSupportedValues returns true if the flag has non-empty supported values.

@@ -1110,6 +1110,92 @@ select {
   flex-shrink: 0;
 }
 
+/* List flag display — chips */
+.list-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.list-chip {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.list-chips-muted .list-chip {
+  color: var(--text-dim);
+  border-color: var(--border-dim);
+  background: var(--bg-root);
+}
+
+/* List flag editing — textarea */
+.detail-value-textarea,
+.override-textarea {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 8px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  width: 100%;
+  max-width: 360px;
+  min-height: 72px;
+  resize: vertical;
+  line-height: 1.6;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.detail-value-textarea:focus,
+.override-textarea:focus {
+  border-color: var(--accent);
+}
+
+.detail-value-textarea::placeholder,
+.override-textarea::placeholder {
+  color: var(--text-dim);
+}
+
+.detail-list-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.detail-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.textarea-hint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+
+.override-textarea {
+  width: 200px;
+  min-height: 60px;
+  font-size: 12px;
+}
+
+/* Override form wraps when list textarea is present */
+.override-form {
+  flex-wrap: wrap;
+}
+
 /* Responsive: collapse sidebar on narrow screens */
 @media (max-width: 800px) {
   .shell {

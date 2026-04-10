@@ -44,7 +44,11 @@
       <div class="value-cell value-cell-primary">
         <label>Resolves To</label>
         {{if eq (stateLabel .Flag.State) "KILLED"}}
-          <div class="val val-resolved val-muted">{{resolvedValue .Flag}}</div>
+          {{if isListType .Flag.FlagType}}
+            {{template "list_chips" dict "Items" (listItems .Flag.DefaultValue) "Muted" true}}
+          {{else}}
+            <div class="val val-resolved val-muted">{{resolvedValue .Flag}}</div>
+          {{end}}
         {{else if isBool .Flag.FlagType}}
           <select class="flag-value-select flag-value-select-lg"
                   onchange="setFlagFromSelect(this, '{{.Flag.FlagId}}', '{{.Flag.FlagType}}', true)">
@@ -77,6 +81,28 @@
               </div>
             </form>
           </div>
+        {{else if isListType .Flag.FlagType}}
+          <form class="detail-value-form"
+                hx-post="/api/flags/state/{{.Flag.FlagId}}"
+                hx-target="#content" hx-swap="innerHTML"
+                hx-vals='{"state":"ENABLED","flag_type":"{{.Flag.FlagType}}"}'>
+            <div class="detail-list-editor">
+              <textarea name="value" class="detail-value-textarea" rows="4"
+                        placeholder="one value per line">{{if isEnabled .Flag.State}}{{listForTextarea .Flag.CurrentValue}}{{end}}</textarea>
+              <div class="detail-list-actions">
+                <button type="submit" class="btn btn-primary">Set</button>
+                {{if isEnabled .Flag.State}}
+                  <button type="button" class="btn-icon btn-icon-clear" title="Revert to default"
+                          hx-post="/api/flags/state/{{.Flag.FlagId}}"
+                          hx-target="#content" hx-swap="innerHTML"
+                          hx-vals='{"state":"DEFAULT"}'>&times;</button>
+                {{else}}
+                  <button type="button" class="btn-icon btn-icon-clear" disabled>&times;</button>
+                {{end}}
+                <span class="textarea-hint">{{typeLabel .Flag.FlagType}} &middot; one entry per line</span>
+              </div>
+            </div>
+          </form>
         {{else}}
           <form class="detail-value-form"
                 hx-post="/api/flags/state/{{.Flag.FlagId}}"
@@ -101,7 +127,11 @@
       </div>
       <div class="value-cell">
         <label>Default</label>
-        <div class="val val-muted">{{flagValue .Flag.DefaultValue}}</div>
+        {{if isListType .Flag.FlagType}}
+          {{template "list_chips" dict "Items" (listItems .Flag.DefaultValue) "Muted" true}}
+        {{else}}
+          <div class="val val-muted">{{flagValue .Flag.DefaultValue}}</div>
+        {{end}}
       </div>
       <div class="value-cell">
         <label>Feature</label>
@@ -160,6 +190,16 @@
 </div>
 {{end}}
 
+{{define "list_chips"}}
+<div class="list-chips{{if .Muted}} list-chips-muted{{end}}">
+  {{if .Items}}
+    {{range .Items}}<span class="list-chip">{{.}}</span>{{end}}
+  {{else}}
+    <span class="val val-muted">[]</span>
+  {{end}}
+</div>
+{{end}}
+
 {{define "overrides_section"}}
 <div class="detail-section">
   <div class="detail-section-header">
@@ -179,7 +219,13 @@
       {{range .Flag.Overrides}}
       <tr class="override-row">
         <td><span class="entity-id">{{.EntityId}}</span></td>
-        <td><span class="value-display">{{flagValue .Value}}</span></td>
+        <td>
+          {{if isListType $.Flag.FlagType}}
+            {{template "list_chips" dict "Items" (listItems .Value) "Muted" false}}
+          {{else}}
+            <span class="value-display">{{flagValue .Value}}</span>
+          {{end}}
+        </td>
         <td style="text-align:right">
           <button class="btn btn-sm btn-danger"
                   hx-delete="/api/flags/overrides/entity/{{.EntityId}}/{{$.Flag.FlagId}}"
@@ -225,6 +271,9 @@
           <button type="button" class="btn-icon sv-custom-cancel sv-override-cancel"
                   onclick="svOverrideCancelCustom(this)">&times;</button>
         </div>
+      {{else if isListType .Flag.FlagType}}
+        <textarea name="value" class="override-textarea" rows="3"
+                  placeholder="one value per line"></textarea>
       {{else}}
         <input type="text" name="value" placeholder="value" required style="width: 140px">
       {{end}}

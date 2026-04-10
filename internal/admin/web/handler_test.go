@@ -401,3 +401,53 @@ func TestTypeLabelList(t *testing.T) {
 	assert.Equal(t, "double[]", typeLabel(pbflagsv1.FlagType_FLAG_TYPE_DOUBLE_LIST))
 	assert.Equal(t, "bool[]", typeLabel(pbflagsv1.FlagType_FLAG_TYPE_BOOL_LIST))
 }
+
+func TestIsListType(t *testing.T) {
+	assert.True(t, isListType(pbflagsv1.FlagType_FLAG_TYPE_STRING_LIST))
+	assert.True(t, isListType(pbflagsv1.FlagType_FLAG_TYPE_INT64_LIST))
+	assert.True(t, isListType(pbflagsv1.FlagType_FLAG_TYPE_DOUBLE_LIST))
+	assert.True(t, isListType(pbflagsv1.FlagType_FLAG_TYPE_BOOL_LIST))
+	assert.False(t, isListType(pbflagsv1.FlagType_FLAG_TYPE_BOOL))
+	assert.False(t, isListType(pbflagsv1.FlagType_FLAG_TYPE_STRING))
+	assert.False(t, isListType(pbflagsv1.FlagType_FLAG_TYPE_INT64))
+	assert.False(t, isListType(pbflagsv1.FlagType_FLAG_TYPE_DOUBLE))
+}
+
+func TestListItems(t *testing.T) {
+	tests := []struct {
+		name string
+		val  *pbflagsv1.FlagValue
+		want []string
+	}{
+		{"nil", nil, nil},
+		{"string list", &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringListValue{
+			StringListValue: &pbflagsv1.StringList{Values: []string{"a", "b", "c"}},
+		}}, []string{"a", "b", "c"}},
+		{"int64 list", &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64ListValue{
+			Int64ListValue: &pbflagsv1.Int64List{Values: []int64{10, 20}},
+		}}, []string{"10", "20"}},
+		{"double list", &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleListValue{
+			DoubleListValue: &pbflagsv1.DoubleList{Values: []float64{1.5, 2.5}},
+		}}, []string{"1.5", "2.5"}},
+		{"bool list", &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolListValue{
+			BoolListValue: &pbflagsv1.BoolList{Values: []bool{true, false}},
+		}}, []string{"true", "false"}},
+		{"empty string list", &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringListValue{
+			StringListValue: &pbflagsv1.StringList{Values: nil},
+		}}, nil},
+		{"scalar falls through", &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}}, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, listItems(tc.val))
+		})
+	}
+}
+
+func TestFormatListForTextarea(t *testing.T) {
+	val := &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringListValue{
+		StringListValue: &pbflagsv1.StringList{Values: []string{"alpha", "bravo", "charlie"}},
+	}}
+	assert.Equal(t, "alpha\nbravo\ncharlie", formatListForTextarea(val))
+	assert.Equal(t, "", formatListForTextarea(nil))
+}

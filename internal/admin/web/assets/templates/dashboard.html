@@ -136,6 +136,9 @@
               <button type="button" class="btn-icon sv-custom-cancel" onclick="svCancelCustom(this)">&times;</button>
             </form>
           </div>
+        {{else if isListType .Flag.FlagType}}
+          <a class="btn btn-sm" href="/flags/{{.Flag.FlagId}}"
+             hx-get="/flags/{{.Flag.FlagId}}" hx-target="#content" hx-push-url="true">Edit List</a>
         {{else}}
           <form class="inline-value-form"
                 hx-post="/api/flags/state/{{.Flag.FlagId}}"
