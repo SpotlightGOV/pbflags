@@ -263,6 +263,140 @@ func (s *Store) SetFlagOverride(ctx context.Context, flagID, entityID string, st
 	return tx.Commit(ctx)
 }
 
+// BulkOverride represents a single entity override for batch import.
+type BulkOverride struct {
+	EntityID string
+	Value    *pbflagsv1.FlagValue
+}
+
+// BulkOverrideResult reports the outcome of a batch override import.
+type BulkOverrideResult struct {
+	Created int
+	Updated int
+}
+
+// SetFlagOverrides upserts multiple per-entity overrides in a single
+// transaction using pipelined queries. It validates the flag once, then
+// batch-inserts all overrides and their audit log entries.
+func (s *Store) SetFlagOverrides(ctx context.Context, flagID string, overrides []BulkOverride, state pbflagsv1.State, actor string) (*BulkOverrideResult, error) {
+	if len(overrides) == 0 {
+		return &BulkOverrideResult{}, nil
+	}
+	if state == pbflagsv1.State_STATE_KILLED {
+		return nil, fmt.Errorf("per-entity kill is not supported; use global kill instead")
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Validate flag once.
+	var layerStr, flagTypeStr string
+	err = tx.QueryRow(ctx, `
+		SELECT layer, flag_type FROM feature_flags.flags WHERE flag_id = $1`, flagID).Scan(&layerStr, &flagTypeStr)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("flag %s not found", flagID)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read flag layer: %w", err)
+	}
+	if isGlobalLayer(layerStr) {
+		return nil, fmt.Errorf("flag %s has GLOBAL layer and does not support per-entity overrides", flagID)
+	}
+	ft := parseFlagType(flagTypeStr)
+
+	// Validate all values up-front before touching the database.
+	type prepared struct {
+		entityID   string
+		valueBytes []byte
+		value      *pbflagsv1.FlagValue
+	}
+	items := make([]prepared, 0, len(overrides))
+	for i, o := range overrides {
+		if err := validateFlagValueType(o.Value, ft); err != nil {
+			return nil, fmt.Errorf("row %d (%s): %w", i+1, o.EntityID, err)
+		}
+		vb, err := marshalFlagValue(o.Value)
+		if err != nil {
+			return nil, fmt.Errorf("row %d (%s): marshal value: %w", i+1, o.EntityID, err)
+		}
+		items = append(items, prepared{entityID: o.EntityID, valueBytes: vb, value: o.Value})
+	}
+
+	// Determine which entity_ids already have overrides (for audit action).
+	entityIDs := make([]string, len(items))
+	for i, it := range items {
+		entityIDs[i] = it.entityID
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT entity_id FROM feature_flags.flag_overrides
+		WHERE flag_id = $1 AND entity_id = ANY($2)`, flagID, entityIDs)
+	if err != nil {
+		return nil, fmt.Errorf("check existing overrides: %w", err)
+	}
+	existing := make(map[string]bool)
+	for rows.Next() {
+		var eid string
+		if err := rows.Scan(&eid); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		existing[eid] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Pipeline upserts + audit entries via pgx.Batch.
+	stateStr := stateToString(state)
+	batch := &pgx.Batch{}
+	for _, it := range items {
+		batch.Queue(`
+			INSERT INTO feature_flags.flag_overrides (flag_id, entity_id, state, value)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (flag_id, entity_id) DO UPDATE SET
+				state = EXCLUDED.state,
+				value = EXCLUDED.value,
+				updated_at = now()`, flagID, it.entityID, stateStr, it.valueBytes)
+
+		action := "CREATE_OVERRIDE"
+		if existing[it.entityID] {
+			action = "UPDATE_OVERRIDE"
+		}
+		newBytes, _ := marshalFlagValue(it.value)
+		batch.Queue(`
+			INSERT INTO feature_flags.flag_audit_log (flag_id, action, old_value, new_value, actor)
+			VALUES ($1, $2, $3, $4, $5)`, flagID, action, nil, newBytes, actor)
+	}
+
+	br := tx.SendBatch(ctx, batch)
+	result := &BulkOverrideResult{}
+	for _, it := range items {
+		if _, err := br.Exec(); err != nil {
+			br.Close()
+			return nil, fmt.Errorf("upsert %s: %w", it.entityID, err)
+		}
+		if _, err := br.Exec(); err != nil {
+			br.Close()
+			return nil, fmt.Errorf("audit %s: %w", it.entityID, err)
+		}
+		if existing[it.entityID] {
+			result.Updated++
+		} else {
+			result.Created++
+		}
+	}
+	br.Close()
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+	return result, nil
+}
+
 // RemoveFlagOverride deletes a per-entity override.
 func (s *Store) RemoveFlagOverride(ctx context.Context, flagID, entityID, actor string) error {
 	tx, err := s.pool.Begin(ctx)

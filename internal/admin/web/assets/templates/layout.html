@@ -461,9 +461,16 @@
 
     function showBulkResults(el, data) {
       var html = '<div class="bulk-results-summary">';
-      html += '<div class="bulk-stat"><span class="bulk-stat-dot success"></span> ';
-      html += '<span class="bulk-stat-value">' + (data.created || 0) + '</span>';
-      html += '<span class="bulk-stat-label">imported</span></div>';
+      if (data.created) {
+        html += '<div class="bulk-stat"><span class="bulk-stat-dot success"></span> ';
+        html += '<span class="bulk-stat-value">' + data.created + '</span>';
+        html += '<span class="bulk-stat-label">created</span></div>';
+      }
+      if (data.updated) {
+        html += '<div class="bulk-stat"><span class="bulk-stat-dot" style="background:var(--amber)"></span> ';
+        html += '<span class="bulk-stat-value">' + data.updated + '</span>';
+        html += '<span class="bulk-stat-label">updated</span></div>';
+      }
       if (data.failed) {
         html += '<div class="bulk-stat"><span class="bulk-stat-dot fail"></span> ';
         html += '<span class="bulk-stat-value">' + data.failed + '</span>';

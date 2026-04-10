@@ -524,14 +524,17 @@ func (h *Handler) bulkImportOverrides(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse pairs into BulkOverride values, collecting per-row errors.
 	var result bulkResult
+	result.Total = len(req.Pairs)
+
+	overrides := make([]admin.BulkOverride, 0, len(req.Pairs))
 	for i, p := range req.Pairs {
 		if p.EntityID == "" {
 			result.Failed++
 			result.Errors = append(result.Errors, fmt.Sprintf("row %d: empty entity_id", i+1))
 			continue
 		}
-
 		var value *pbflagsv1.FlagValue
 		if p.Value != "" {
 			var err error
@@ -542,21 +545,25 @@ func (h *Handler) bulkImportOverrides(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-
-		err := h.store.SetFlagOverride(r.Context(), flagID, p.EntityID, pbflagsv1.State_STATE_ENABLED, value, "admin-ui/bulk-import")
-		if err != nil {
-			result.Failed++
-			result.Errors = append(result.Errors, fmt.Sprintf("row %d (%s): %v", i+1, p.EntityID, err))
-			continue
-		}
-		result.Created++ // simplified: count all successes as created
+		overrides = append(overrides, admin.BulkOverride{EntityID: p.EntityID, Value: value})
 	}
-	result.Total = len(req.Pairs)
+
+	if len(overrides) > 0 {
+		br, err := h.store.SetFlagOverrides(r.Context(), flagID, overrides, pbflagsv1.State_STATE_ENABLED, "admin-ui/bulk-import")
+		if err != nil {
+			result.Failed += len(overrides)
+			result.Errors = append(result.Errors, err.Error())
+		} else {
+			result.Created = br.Created
+			result.Updated = br.Updated
+		}
+	}
 
 	h.logger.Info("bulk override import",
 		"flag_id", flagID,
 		"total", result.Total,
 		"created", result.Created,
+		"updated", result.Updated,
 		"failed", result.Failed,
 	)
 
@@ -571,6 +578,7 @@ type bulkPair struct {
 type bulkResult struct {
 	Total   int      `json:"total"`
 	Created int      `json:"created"`
+	Updated int      `json:"updated"`
 	Failed  int      `json:"failed"`
 	Errors  []string `json:"errors,omitempty"`
 }
