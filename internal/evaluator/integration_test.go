@@ -568,4 +568,3 @@ func TestNilDefaultValue(t *testing.T) {
 	require.Nil(t, val)
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
 }
-

@@ -88,9 +88,9 @@ func checkLayerChange(flagID string, base, current evaluator.FlagDef) (Violation
 	// Layer → Global: forbidden.
 	if !baseGlobal && curGlobal {
 		return Violation{
-			FlagID:   flagID,
-			Rule:     RuleLayerChanged,
-			Message:  fmt.Sprintf("layer changed from %q to global", baseLayer),
+			FlagID:  flagID,
+			Rule:    RuleLayerChanged,
+			Message: fmt.Sprintf("layer changed from %q to global", baseLayer),
 			Guidance: "Changing a layered flag to global orphans existing override data. " +
 				"Define a new global flag and migrate your code to use it. " +
 				"See the \"Migrating a flag to a different layer\" section in the README.",
@@ -99,9 +99,9 @@ func checkLayerChange(flagID string, base, current evaluator.FlagDef) (Violation
 
 	// Layer A → Layer B: forbidden.
 	return Violation{
-		FlagID:   flagID,
-		Rule:     RuleLayerChanged,
-		Message:  fmt.Sprintf("layer changed from %q to %q", baseLayer, curLayer),
+		FlagID:  flagID,
+		Rule:    RuleLayerChanged,
+		Message: fmt.Sprintf("layer changed from %q to %q", baseLayer, curLayer),
 		Guidance: "Changing a flag's layer invalidates existing override data (entity IDs from the old layer are misinterpreted as the new layer). " +
 			"Define a new flag with the desired layer and migrate overrides. " +
 			"See the \"Migrating a flag to a different layer\" section in the README.",

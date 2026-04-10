@@ -21,7 +21,8 @@ import (
 	pluginpb "google.golang.org/protobuf/types/pluginpb"
 )
 
-var version = "dev"
+// version is set via -ldflags at build time (see .goreleaser.yml).
+var version = "dev" //lint:ignore U1000 injected by linker
 
 func main() {
 	var flags flag.FlagSet

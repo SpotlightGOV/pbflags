@@ -3,6 +3,7 @@ plugins {
     `java-library`
     `maven-publish`
     signing
+    id("com.diffplug.spotless") version "7.0.4"
 }
 
 group = "org.spotlightgov.pbflags"
@@ -27,6 +28,14 @@ dependencies {
     api(project(":"))
     compileOnly("org.junit.jupiter:junit-jupiter-api:6.0.3")
     compileOnly("javax.annotation:javax.annotation-api:1.3.2")
+}
+
+spotless {
+    java {
+        target("src/**/*.java")
+        googleJavaFormat()
+        removeUnusedImports()
+    }
 }
 
 publishing {

@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
+	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
+	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
-	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 )
 
 const maxAuditLogLimit = 1000

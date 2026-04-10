@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCacheStore_FlagState_SetAndGet(t *testing.T) {

@@ -20,9 +20,9 @@ import (
 type mockEvalClient struct {
 	pbflagsv1connect.UnimplementedFlagEvaluatorServiceHandler
 
-	getFlagStateFn  func(context.Context, *connect.Request[pbflagsv1.GetFlagStateRequest]) (*connect.Response[pbflagsv1.GetFlagStateResponse], error)
-	getKilledFn     func(context.Context, *connect.Request[pbflagsv1.GetKilledFlagsRequest]) (*connect.Response[pbflagsv1.GetKilledFlagsResponse], error)
-	getOverridesFn  func(context.Context, *connect.Request[pbflagsv1.GetOverridesRequest]) (*connect.Response[pbflagsv1.GetOverridesResponse], error)
+	getFlagStateFn func(context.Context, *connect.Request[pbflagsv1.GetFlagStateRequest]) (*connect.Response[pbflagsv1.GetFlagStateResponse], error)
+	getKilledFn    func(context.Context, *connect.Request[pbflagsv1.GetKilledFlagsRequest]) (*connect.Response[pbflagsv1.GetKilledFlagsResponse], error)
+	getOverridesFn func(context.Context, *connect.Request[pbflagsv1.GetOverridesRequest]) (*connect.Response[pbflagsv1.GetOverridesResponse], error)
 }
 
 func (m *mockEvalClient) GetFlagState(ctx context.Context, req *connect.Request[pbflagsv1.GetFlagStateRequest]) (*connect.Response[pbflagsv1.GetFlagStateResponse], error) {

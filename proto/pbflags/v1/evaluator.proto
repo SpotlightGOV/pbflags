@@ -31,7 +31,7 @@ service FlagEvaluatorService {
 
 message EvaluateRequest {
   string flag_id = 1;
-  string entity_id = 2;  // Empty for global-only evaluation.
+  string entity_id = 2; // Empty for global-only evaluation.
 }
 
 message EvaluateResponse {
@@ -43,18 +43,18 @@ message EvaluateResponse {
 // EvaluationSource indicates where the resolved value came from.
 enum EvaluationSource {
   EVALUATION_SOURCE_UNSPECIFIED = 0;
-  EVALUATION_SOURCE_DEFAULT = 1;       // Compiled default (last resort)
-  EVALUATION_SOURCE_GLOBAL = 2;        // Server global state (fresh)
-  EVALUATION_SOURCE_OVERRIDE = 3;      // Server per-entity override (fresh)
-  EVALUATION_SOURCE_KILLED = 4;        // Kill switch active
-  EVALUATION_SOURCE_CACHED = 5;        // Stale cache (server unreachable)
-  EVALUATION_SOURCE_ARCHIVED = 6;      // Archived flag's last known value
+  EVALUATION_SOURCE_DEFAULT = 1; // Compiled default (last resort)
+  EVALUATION_SOURCE_GLOBAL = 2; // Server global state (fresh)
+  EVALUATION_SOURCE_OVERRIDE = 3; // Server per-entity override (fresh)
+  EVALUATION_SOURCE_KILLED = 4; // Kill switch active
+  EVALUATION_SOURCE_CACHED = 5; // Stale cache (server unreachable)
+  EVALUATION_SOURCE_ARCHIVED = 6; // Archived flag's last known value
 }
 
 message BulkEvaluateRequest {
   // Empty = all known flags. Populated = only these.
   repeated string flag_ids = 1;
-  string entity_id = 2;  // Applied to all flags in the batch.
+  string entity_id = 2; // Applied to all flags in the batch.
 }
 
 message BulkEvaluateResponse {
@@ -75,17 +75,17 @@ message HealthResponse {
 
 enum EvaluatorStatus {
   EVALUATOR_STATUS_UNSPECIFIED = 0;
-  EVALUATOR_STATUS_CONNECTING = 1;  // Startup, no server contact yet
-  EVALUATOR_STATUS_SERVING = 2;     // Fully connected, fetches succeeding
-  EVALUATOR_STATUS_DEGRADED = 3;    // Server unreachable, serving from stale cache + defaults
+  EVALUATOR_STATUS_CONNECTING = 1; // Startup, no server contact yet
+  EVALUATOR_STATUS_SERVING = 2; // Fully connected, fetches succeeding
+  EVALUATOR_STATUS_DEGRADED = 3; // Server unreachable, serving from stale cache + defaults
 }
 
 // EvaluatorMode controls whether the evaluator runs as a standalone root
 // (with its own admin server) or as a lightweight proxy.
 enum EvaluatorMode {
   EVALUATOR_MODE_UNSPECIFIED = 0;
-  EVALUATOR_MODE_ROOT = 1;   // Full evaluator with embedded admin server
-  EVALUATOR_MODE_PROXY = 2;  // Lightweight proxy, delegates to a root evaluator
+  EVALUATOR_MODE_ROOT = 1; // Full evaluator with embedded admin server
+  EVALUATOR_MODE_PROXY = 2; // Lightweight proxy, delegates to a root evaluator
 }
 
 // Messages for flag state RPCs.

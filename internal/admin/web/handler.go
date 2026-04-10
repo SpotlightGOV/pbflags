@@ -4,8 +4,8 @@
 package web
 
 import (
-	"embed"
 	"crypto/rand"
+	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -65,12 +65,12 @@ func NewHandler(store *admin.Store, logger *slog.Logger, env ...EnvConfig) (*Han
 		"supportedOptions":   supportedOptions,
 		"isCustomSVValue":    isCustomSVValue,
 		"featureSummary":     featureSummary,
-		"isListType":          isListType,
-		"listItems":           listItems,
-		"listForTextarea":     formatListForTextarea,
-		"json":                toJSON,
-		"flagIDEscape":        flagIDEscape,
-		"dict":                dict,
+		"isListType":         isListType,
+		"listItems":          listItems,
+		"listForTextarea":    formatListForTextarea,
+		"json":               toJSON,
+		"flagIDEscape":       flagIDEscape,
+		"dict":               dict,
 	}
 
 	var ec EnvConfig

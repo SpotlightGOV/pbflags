@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
 
 // --- Helpers ---

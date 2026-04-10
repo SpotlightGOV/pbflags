@@ -24,8 +24,8 @@ type LayerValue struct {
 
 // LayerDef holds the discovered layer enum and its parsed values.
 type LayerDef struct {
-	EnumName string       // fully qualified enum name
-	Values   []LayerValue // all enum values
+	EnumName string                // fully qualified enum name
+	Values   []LayerValue          // all enum values
 	ByName   map[string]LayerValue // keyed by lowercase layer name (prefix-stripped)
 }
 

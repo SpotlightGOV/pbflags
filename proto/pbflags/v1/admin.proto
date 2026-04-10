@@ -1,9 +1,9 @@
 syntax = "proto3";
 package pbflags.v1;
 
+import "google/protobuf/timestamp.proto";
 import "pbflags/options.proto";
 import "pbflags/v1/types.proto";
-import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1";
 option java_multiple_files = true;
@@ -67,7 +67,7 @@ message GetFlagResponse {
 message UpdateFlagStateRequest {
   string flag_id = 1;
   State state = 2;
-  FlagValue value = 3;  // Optional: set value at the same time.
+  FlagValue value = 3; // Optional: set value at the same time.
   string actor = 4;
 }
 
@@ -78,7 +78,7 @@ message SetFlagOverrideRequest {
   string flag_id = 1;
   string entity_id = 2;
   State state = 3;
-  FlagValue value = 4;  // Required when state is ENABLED, ignored otherwise.
+  FlagValue value = 4; // Required when state is ENABLED, ignored otherwise.
   string actor = 5;
 }
 
@@ -93,8 +93,8 @@ message RemoveFlagOverrideRequest {
 message RemoveFlagOverrideResponse {}
 
 message GetAuditLogRequest {
-  string flag_id = 1;  // Optional: filter by flag. Empty = all flags.
-  int32 limit = 2;     // Max entries to return. Default 50.
+  string flag_id = 1; // Optional: filter by flag. Empty = all flags.
+  int32 limit = 2; // Max entries to return. Default 50.
 }
 
 message GetAuditLogResponse {

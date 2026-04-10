@@ -104,8 +104,7 @@ public interface FlagEvaluator {
    * @param compiledDefault the compiled default from the proto definition
    * @return the resolved list, never null
    */
-  default <E> List<E> evaluateList(
-      String flagId, Class<E> elementType, List<E> compiledDefault) {
+  default <E> List<E> evaluateList(String flagId, Class<E> elementType, List<E> compiledDefault) {
     return evaluateList(flagId, elementType, compiledDefault, null);
   }
 
@@ -127,8 +126,7 @@ public interface FlagEvaluator {
    * <p>The returned object is lightweight and stateless — it delegates to this evaluator on each
    * {@code get()} call. Safe to cache as a singleton.
    */
-  default <E> ListFlag<E> listFlag(
-      String flagId, Class<E> elementType, List<E> compiledDefault) {
+  default <E> ListFlag<E> listFlag(String flagId, Class<E> elementType, List<E> compiledDefault) {
     return new ListFlag<>() {
       @Override
       public List<E> get() {

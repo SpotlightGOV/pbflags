@@ -3,21 +3,10 @@ package evaluator
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
-
-func normalizeAddr(addr string) string {
-	if strings.HasPrefix(addr, ":") {
-		return addr
-	}
-	if _, port, ok := strings.Cut(addr, ":"); ok {
-		return ":" + port
-	}
-	return ":" + addr
-}
 
 // Config is the shared evaluator/admin configuration.
 type Config struct {

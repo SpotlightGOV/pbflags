@@ -1,0 +1,55 @@
+# lefthook pre-commit hooks.
+#
+# Install:  go tool lefthook install
+# Skip:     git commit --no-verify (escape hatch)
+
+pre-commit:
+  piped: true
+  commands:
+    beads:
+      priority: 0
+      run: |
+        if [ -d .beads ] && command -v bd >/dev/null 2>&1; then
+          BD_GIT_HOOK=1 bd hooks run pre-commit
+        fi
+    # ── Formatters (auto-fix, priority 1) ─────────────────────────
+    goimports:
+      priority: 1
+      glob: "*.go"
+      exclude: "^(gen|clients)/"
+      run: go tool goimports -w {staged_files}
+      stage_fixed: true
+
+    buf-format:
+      priority: 1
+      glob: "*.proto"
+      run: buf format -w {staged_files}
+      stage_fixed: true
+
+    java-format:
+      priority: 1
+      glob: "clients/java/**/*.java"
+      root: "clients/java/"
+      run: ./gradlew spotlessApply
+      stage_fixed: true
+
+    # ── Linters (check-only, priority 2) ──────────────────────────
+    go-vet:
+      priority: 2
+      glob: "*.go"
+      run: go vet ./...
+
+    staticcheck:
+      priority: 2
+      glob: "*.go"
+      run: go tool staticcheck ./...
+
+    buf-lint:
+      priority: 2
+      glob: "*.proto"
+      run: buf lint
+
+    go-mod-tidy:
+      priority: 2
+      glob: "{go.mod,go.sum,*.go}"
+      run: go mod tidy && git diff --exit-code go.mod go.sum

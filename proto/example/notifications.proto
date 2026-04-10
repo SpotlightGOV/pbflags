@@ -29,39 +29,65 @@ message Notifications {
   // Enable email notifications globally or per-user.
   bool email_enabled = 1 [(pbflags.flag) = {
     description: "Enable email notifications"
-    default: { bool_value: { value: true } }
+    default: {
+      bool_value: {value: true}
+    }
     layer: "user"
   }];
 
   // How often to send digest emails.
   string digest_frequency = 2 [(pbflags.flag) = {
     description: "How often to send digest emails"
-    default: { string_value: { value: "daily" } }
-    supported_values: { string_values: ["hourly", "daily", "weekly"] }
+    default: {
+      string_value: {value: "daily"}
+    }
+    supported_values: {
+      string_values: [
+        "hourly",
+        "daily",
+        "weekly"
+      ]
+    }
   }];
 
   // Maximum retry attempts for notification delivery.
   int64 max_retries = 3 [(pbflags.flag) = {
     description: "Maximum retry attempts"
-    default: { int64_value: { value: 3 } }
+    default: {
+      int64_value: {value: 3}
+    }
   }];
 
   // Minimum score threshold for triggering notifications.
   double score_threshold = 4 [(pbflags.flag) = {
     description: "Score threshold for notification triggers"
-    default: { double_value: { value: 0.75 } }
+    default: {
+      double_value: {value: 0.75}
+    }
   }];
 
   // Email addresses for incident notifications.
   repeated string notification_emails = 5 [(pbflags.flag) = {
     description: "Email addresses for incident notifications"
-    default: { string_list_value: { values: ["ops@example.com"] } }
+    default: {
+      string_list_value: {
+        values: ["ops@example.com"]
+      }
+    }
     layer: "entity"
   }];
 
   // Retry delay intervals in seconds.
   repeated int64 retry_delays = 6 [(pbflags.flag) = {
     description: "Retry delay intervals in seconds"
-    default: { int64_list_value: { values: [1, 5, 30] } }
+    default: {
+      int64_list_value: {
+        values: [
+          1,
+          5,
+          30
+        ]
+      }
+    }
   }];
 }

@@ -211,8 +211,7 @@ class FlagEvaluatorClientTest {
         return;
       }
 
-      EvaluateResponse.Builder resp =
-          EvaluateResponse.newBuilder().setFlagId(request.getFlagId());
+      EvaluateResponse.Builder resp = EvaluateResponse.newBuilder().setFlagId(request.getFlagId());
       if (nextValue != null) {
         resp.setValue(nextValue);
       }

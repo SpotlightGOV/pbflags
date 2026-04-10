@@ -4,9 +4,9 @@ import (
 	"sync"
 	"testing"
 
+	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
 
 func TestRegistry_LoadAndSwap(t *testing.T) {

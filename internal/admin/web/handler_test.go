@@ -79,10 +79,10 @@ func TestParseFlagValue(t *testing.T) {
 		// List types
 		{"STRING_LIST", "a\nb\nc", false},
 		{"INT64_LIST", "1\n5\n30", false},
-		{"INT64_LIST", "abc", false},   // silently drops invalid
+		{"INT64_LIST", "abc", false}, // silently drops invalid
 		{"DOUBLE_LIST", "1.5\n2.5", false},
 		{"BOOL_LIST", "true\nfalse", false},
-		{"STRING_LIST", "", false},     // empty list
+		{"STRING_LIST", "", false}, // empty list
 	}
 	for _, tt := range tests {
 		t.Run(tt.flagType+"/"+tt.raw, func(t *testing.T) {

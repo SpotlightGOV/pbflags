@@ -1,4 +1,4 @@
-.PHONY: help generate build test test-e2e clean docker dev dev-db release-notes release
+.PHONY: help generate build test test-e2e lint fmt setup clean docker dev dev-db release-notes release
 
 .DEFAULT_GOAL := help
 
@@ -15,6 +15,11 @@ help:
 	@echo "  generate        Regenerate protobuf Go code (builds codegen plugin first)"
 	@echo "  docker          Build the Docker image"
 	@echo "  install-codegen Install protoc-gen-pbflags to GOPATH/bin"
+	@echo ""
+	@echo "Quality:"
+	@echo "  fmt             Auto-format Go, Java, and proto files"
+	@echo "  lint            Run all linters (go vet, staticcheck, buf lint)"
+	@echo "  setup           Install pre-commit hooks and dev tooling"
 	@echo ""
 	@echo "Test:"
 	@echo "  test            Run Go unit and integration tests"
@@ -48,6 +53,25 @@ test:
 # Set HEADED=1 for visible browser with slowdown.
 test-e2e:
 	go test -tags e2e -count=1 -p 1 -v ./internal/e2e/
+
+# Auto-format Go, proto, and Java source files.
+fmt:
+	go tool goimports -w $(shell find . -name '*.go' -not -path './gen/*' -not -path './clients/*' -not -path './vendor/*')
+	buf format -w
+	cd clients/java && ./gradlew spotlessApply
+
+# Run all linters.
+lint:
+	go vet ./...
+	go tool staticcheck ./...
+	buf lint
+
+# Install pre-commit hooks and required dev tools.
+setup:
+	go tool lefthook install
+	@echo "Pre-commit hooks installed."
+	@echo ""
+	@echo "For E2E tests: go tool playwright install --with-deps"
 
 # Remove build artifacts.
 clean:

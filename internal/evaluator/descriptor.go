@@ -165,7 +165,7 @@ func getFeatureInfo(
 		return featureInfo{}, nil
 	}
 
-	raw, err := proto.Marshal(opts.(proto.Message))
+	raw, err := proto.Marshal(opts)
 	if err != nil {
 		return featureInfo{}, nil
 	}
@@ -211,7 +211,7 @@ func extractFlagDef(
 		return nil, nil
 	}
 
-	raw, err := proto.Marshal(opts.(proto.Message))
+	raw, err := proto.Marshal(opts)
 	if err != nil {
 		return nil, nil
 	}

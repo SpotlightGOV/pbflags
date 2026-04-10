@@ -59,6 +59,32 @@ Detailed docs are in the `docs/` directory. Key references for contributors:
 
 Runtime services: `pbflags-admin`, `pbflags-evaluator`, `pbflags-sync`. Build tools: `protoc-gen-pbflags`, `pbflags-lint`. See [docs/deployment.md](docs/deployment.md) for details.
 
+All Go dev tools (lefthook, staticcheck, goimports, Playwright CLI) are declared as `tool` dependencies in `go.mod` and invoked via `go tool <name>` — no separate install step needed.
+
+## Environment setup
+
+After cloning, install the pre-commit hooks:
+
+```bash
+make setup
+```
+
+This registers [lefthook](https://github.com/evilmartians/lefthook) git hooks that auto-format and lint on every commit. The hooks run:
+
+1. **Formatters** (auto-fix, re-staged): `goimports`, `buf format`, Spotless/google-java-format
+2. **Linters** (check-only): `go vet`, `staticcheck`, `buf lint`, `go mod tidy` drift check
+
+You can also run these manually:
+
+```bash
+make fmt    # auto-format all Go, proto, and Java source
+make lint   # run all linters
+```
+
+Skip hooks for a one-off commit with `git commit --no-verify`.
+
+## Tests
+
 Tests require PostgreSQL on port 5433 (`make dev-db`). Run the full suite with:
 
 ```bash
@@ -70,8 +96,12 @@ Use `-p 1` — several packages share the same database and will deadlock withou
 E2E browser tests (Playwright, gated behind `e2e` build tag):
 
 ```bash
-make test-e2e
+go tool playwright install --with-deps   # one-time browser install
+make test-e2e                             # run headless
+HEADED=1 make test-e2e                    # visible browser with slowdown
 ```
+
+On failure, Playwright traces are saved to `internal/e2e/testdata/traces/` — open with `npx playwright show-trace <file>.zip`.
 
 ## Admin web UI routes
 
@@ -84,4 +114,3 @@ Go 1.22+ `http.ServeMux` panics if a `{name...}` wildcard is not the last segmen
 ## Database migrations
 
 Migrations in `db/migrations/` must be backwards-compatible with the previous release. See [docs/contributing.md](docs/contributing.md) for rules.
-

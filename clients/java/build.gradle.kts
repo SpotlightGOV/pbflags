@@ -7,6 +7,7 @@ plugins {
     signing
     id("com.google.protobuf") version "0.9.6"
     id("io.github.gradle-nexus.publish-plugin") version "2.0.0"
+    id("com.diffplug.spotless") version "7.0.4"
 }
 
 group = "org.spotlightgov.pbflags"
@@ -47,6 +48,14 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+spotless {
+    java {
+        target("src/**/*.java")
+        googleJavaFormat()
+        removeUnusedImports()
+    }
 }
 
 protobuf {

@@ -615,7 +615,7 @@ type flagInfo struct {
 	javaClassLiteral string
 	defaultVal       string
 	hasDefault       bool
-	isList           bool   // true for repeated (list-valued) flags
+	isList           bool // true for repeated (list-valued) flags
 	description      string
 	layerName        string // empty = global; otherwise the lowercase layer name (e.g., "user", "entity")
 }

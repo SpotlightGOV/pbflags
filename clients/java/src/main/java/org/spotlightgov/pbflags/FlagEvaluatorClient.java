@@ -1,12 +1,5 @@
 package org.spotlightgov.pbflags;
 
-import org.spotlightgov.pbflags.v1.proto.EvaluateRequest;
-import org.spotlightgov.pbflags.v1.proto.EvaluateResponse;
-import org.spotlightgov.pbflags.v1.proto.EvaluatorStatus;
-import org.spotlightgov.pbflags.v1.proto.FlagEvaluatorServiceGrpc;
-import org.spotlightgov.pbflags.v1.proto.FlagValue;
-import org.spotlightgov.pbflags.v1.proto.HealthRequest;
-import org.spotlightgov.pbflags.v1.proto.HealthResponse;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.StatusRuntimeException;
@@ -15,6 +8,13 @@ import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.spotlightgov.pbflags.v1.proto.EvaluateRequest;
+import org.spotlightgov.pbflags.v1.proto.EvaluateResponse;
+import org.spotlightgov.pbflags.v1.proto.EvaluatorStatus;
+import org.spotlightgov.pbflags.v1.proto.FlagEvaluatorServiceGrpc;
+import org.spotlightgov.pbflags.v1.proto.FlagValue;
+import org.spotlightgov.pbflags.v1.proto.HealthRequest;
+import org.spotlightgov.pbflags.v1.proto.HealthResponse;
 
 /**
  * Thin gRPC client to a pbflags evaluator. Implements {@link FlagEvaluator} so it can be injected
@@ -51,8 +51,7 @@ public final class FlagEvaluatorClient implements FlagEvaluator {
    * which will shut down the provided channel.
    */
   public static FlagEvaluatorClient forChannel(ManagedChannel channel) {
-    return new FlagEvaluatorClient(
-        channel, FlagEvaluatorServiceGrpc.newBlockingStub(channel));
+    return new FlagEvaluatorClient(channel, FlagEvaluatorServiceGrpc.newBlockingStub(channel));
   }
 
   FlagEvaluatorClient(
