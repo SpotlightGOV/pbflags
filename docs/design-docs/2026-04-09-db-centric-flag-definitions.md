@@ -65,8 +65,10 @@ foundation:
 - **Distributed deployment** — external sync job manages definitions,
   server(s) read from DB
 
-Both models build the in-memory defaults registry from the database. The
-difference is who writes definitions to the database.
+In distributed mode, the server builds its in-memory defaults registry from
+the database. In monolithic mode, the server builds its registry directly
+from the descriptor (no DB round-trip) and syncs definitions to the database
+as a side effect for the admin UI and override FK integrity.
 
 ## Deployment models
 
@@ -82,13 +84,19 @@ pbflags-server --database=postgres://... --descriptors=descriptors.pb --admin=:8
 
 On startup:
 1. Run pending schema migrations
-2. Parse `descriptors.pb` and sync definitions to DB
-3. Load definitions from DB into in-memory defaults registry
+2. Parse `descriptors.pb` → build in-memory defaults registry directly
+3. Sync definitions to DB (side effect for admin UI / override FKs)
 4. Start serving (evaluator + admin UI)
 
 On fsnotify (descriptor file changes):
-1. Re-parse `descriptors.pb` and re-sync to DB
-2. Reload definitions from DB, swap registry
+1. Re-parse `descriptors.pb` → swap registry directly from parsed definitions
+2. Re-sync to DB (side effect)
+
+The registry is built directly from the parsed descriptor, **not** from a
+DB round-trip. This means the evaluator can start and serve defaults even if
+the database is temporarily unreachable — only the sync step fails, and it
+retries on the next poll interval. The DB sync is a side effect that keeps
+the admin UI and override FK constraints in sync with the evaluator.
 
 One binary, one flag file, one database. No CI pipeline, no separate sync
 job, no cron.
@@ -134,7 +142,7 @@ changes. No descriptor file is needed at runtime.
 
 | Concern | Current | Monolithic | Distributed |
 |---------|---------|------------|-------------|
-| Server startup | Parse `descriptors.pb` → in-memory defaults | Migrate → sync → load DB → in-memory defaults | Load DB → in-memory defaults |
+| Server startup | Parse `descriptors.pb` → in-memory defaults | Migrate → parse descriptor → registry + sync to DB | Load DB → in-memory defaults |
 | `--descriptors` flag | Required | Provided (enables sync + fsnotify) | Omitted (DB-only) |
 | Who runs migrations | Manual `goose up` | Server at startup | `pbflags-sync` |
 | Who syncs definitions | Manual `pbflags-sync` | Server at startup + fsnotify | `pbflags-sync` in CI/CD |
@@ -152,10 +160,26 @@ instance count.
 
 ## Design
 
-### Server startup: load defaults from DB
+### Server startup: building the defaults registry
 
-In both deployment models, the server ultimately loads definitions from the
-database to build its in-memory defaults registry:
+Both deployment models produce the same `[]evaluator.FlagDef` slice and
+build the registry identically via `NewDefaults(defs)` → `NewRegistry()`.
+The difference is where the `[]FlagDef` comes from.
+
+**Monolithic mode** (`--descriptors` provided):
+
+1. `ParseDescriptorFile()` → `[]FlagDef` (same as today)
+2. `NewDefaults(defs)` → `NewRegistry(defaults)` (registry built directly)
+3. Sync `[]FlagDef` to DB in background (side effect for admin UI / FKs)
+
+The registry is built from the descriptor parse result with no DB
+dependency. The evaluator can start and serve defaults even if the database
+is temporarily unreachable — only the sync step fails.
+
+**Distributed mode** (`--descriptors` omitted):
+
+1. `LoadDefinitionsFromDB(pool)` → `[]FlagDef`
+2. `NewDefaults(defs)` → `NewRegistry(defaults)`
 
 ```sql
 SELECT f.feature_id, f.display_name, f.description, f.owner,
@@ -167,18 +191,16 @@ WHERE fl.archived_at IS NULL
 ORDER BY f.feature_id, fl.field_number
 ```
 
-The result is mapped to `[]evaluator.FlagDef` — the same struct that
-`ParseDescriptorFile()` returns today. For large flag sets (thousands of
-flags), the query is executed in batches (e.g., 500 flags per batch,
-paginated by `flag_id`) and accumulated before building the registry.
-From there, `NewDefaults(defs)` and `NewRegistry(defaults)` work
-identically. The evaluator, admin API, and reload mechanism see no
-difference.
+For large flag sets (thousands of flags), the query is executed in batches
+(e.g., 500 flags per batch, paginated by `flag_id`) and accumulated before
+building the registry.
 
-In monolithic mode, the server first runs migrations and syncs definitions
-from the descriptor to the database, then loads from DB. In distributed
-mode, the server just loads from DB directly — `pbflags-sync` has already
-populated it.
+**Equivalence guarantee:** Both paths produce `[]FlagDef`. Integration
+tests must verify that for any given set of flag definitions,
+`ParseDescriptorFile()` and `LoadDefinitionsFromDB()` produce identical
+`[]FlagDef` slices (same flags, same types, same defaults, same layers).
+This is the critical invariant that allows the two modes to be
+interchangeable.
 
 ### `pbflags-sync` as the CI/CD deploy command
 
@@ -227,9 +249,10 @@ proxy mode health tracker — consecutive failures increase the poll interval
 
 **2. fsnotify (monolithic mode, when `--descriptors` provided)**
 
-Same mechanism as today. Descriptor file changes trigger a re-parse, re-sync
-to DB, and registry swap. The DB poll also runs, so other instances (if any)
-pick up the change within the poll interval.
+Same mechanism as today. Descriptor file changes trigger a re-parse and
+registry swap directly from the parsed definitions. The DB sync runs as a
+side effect. The DB poll also runs, so distributed instances (if any) pick
+up the change within the poll interval.
 
 **3. Admin reload endpoint**
 
@@ -246,19 +269,49 @@ near-instant propagation without polling. Deferred — the polling approach
 is sufficient for most deployments and doesn't require a persistent
 listener connection.
 
-### Fallback and resilience
+### Failure modes
 
-**DB unreachable at startup:** The server fails to start. This is the same
-behavior as today when `descriptors.pb` is missing or unparseable — the
-server cannot serve without knowing what flags exist.
+Sync can fail for three reasons: the descriptor can't be parsed, the
+database is unreachable, or the sync detects a type/layer conflict (an
+operator error that requires a two-deploy fix per the v1 design). Each
+failure type has different behavior depending on when it occurs.
 
-**DB unreachable after startup:** The in-memory defaults registry is
-unaffected. Evaluation continues using cached state and compiled defaults,
-same as today. The definition poller backs off using the health tracker.
+**Monolithic mode — startup failures:**
 
-**Monolithic mode, descriptor parse failure:** Same as today — the server
-logs an error and continues serving with the current registry. The failed
-parse does not sync to the database, so other instances are unaffected.
+| Failure | Behavior | Rationale |
+|---------|----------|-----------|
+| Descriptor parse fails | **Fail to start.** | Server can't build registry without definitions. Same as today. |
+| DB unreachable | **Start and serve.** Registry built from descriptor. Sync retries on poll interval. Admin UI shows stale definitions until DB recovers. | Evaluator has everything it needs from the descriptor. DB is only needed for overrides/kills, which degrade gracefully via cache. |
+| Type/layer conflict | **Fail to start.** | Operator error. The descriptor contains a breaking change (type or layer mutation) that conflicts with existing DB state. Must be fixed via two-deploy process: remove old field first, then add new field with new field number. |
+
+**Monolithic mode — fsnotify reload failures:**
+
+| Failure | Behavior | Rationale |
+|---------|----------|-----------|
+| Descriptor parse fails | Log error, **keep current registry.** | Same as today. Corrupted descriptor can't take down a running evaluator. |
+| DB unreachable | **Swap registry from new descriptor.** Log warning about sync failure, retry sync on next poll. | Evaluator should serve updated defaults. DB sync is a side effect — its failure shouldn't block the evaluator from using better data. |
+| Type/layer conflict | Log error, **keep current registry.** Do not swap. DB unchanged. | The new descriptor has a breaking change. Swapping the registry would put the evaluator and DB out of sync (evaluator sees new type, DB has old type, admin UI would set values of wrong type). |
+
+**Distributed mode — startup failures:**
+
+| Failure | Behavior | Rationale |
+|---------|----------|-----------|
+| DB unreachable | **Fail to start.** | No descriptor to fall back on. Server can't build registry. |
+
+Type/layer conflicts can't occur in distributed mode — `pbflags-sync`
+catches them and fails before the server ever starts. Parse failures can't
+occur because there's no descriptor to parse.
+
+**Distributed mode — poll reload failures:**
+
+| Failure | Behavior | Rationale |
+|---------|----------|-----------|
+| DB unreachable | **Keep current registry.** Back off using health tracker. | Same graceful degradation as all other DB-dependent operations. |
+
+**After startup (both modes):** The in-memory defaults registry is
+unaffected by DB outages. Evaluation continues using cached state and
+compiled defaults. The definition poller backs off using the existing
+health tracker (2x, 4x, 8x capped).
 
 ### Comparison of deployment models
 
@@ -295,8 +348,10 @@ parse does not sync to the database, so other instances are unaffected.
 | **1. Embed migrations** | Embed goose migrations in both `pbflags-sync` and `pbflags-server`. Run pending migrations automatically in monolithic mode. |
 | **2. DB definition loader** | New function `LoadDefinitionsFromDB(pool) ([]FlagDef, error)` that queries features+flags in batches and returns the same `[]FlagDef` slice that `ParseDescriptorFile` returns. |
 | **3. Extract sync package** | Extract sync logic from `pbflags-sync` into a shared package. Both `pbflags-sync` and `pbflags-server` (monolithic mode) call the same code. |
-| **4. Server startup modes** | When `--descriptors` is provided (monolithic): migrate → sync → load from DB. When omitted (distributed): load from DB only. Both paths build the registry identically. |
+| **4. Server startup modes** | When `--descriptors` is provided (monolithic): migrate → parse descriptor → build registry → sync to DB. When omitted (distributed): load from DB → build registry. Both paths produce `[]FlagDef` and build the registry identically. |
 | **5. Definition poller** | Background goroutine that polls `MAX(updated_at)` with jitter (± 20%) and reloads definitions in batches when they change. Reuses `Registry.Swap()` and the existing `HealthTracker` backoff logic. |
 | **6. Admin registry access** | Give the admin service a reference to the `Registry` instead of a static `[]FlagDef` slice. The admin's metadata enrichment reads from `registry.Load()` so it stays current after definition reloads. |
 | **7. Reload endpoint** | `POST /admin/reload-definitions` triggers an immediate definition refresh. |
-| **8. Documentation** | Update README, getting-started guide, and deploy examples. Document monolithic and distributed deployment models with clear guidance on when to use each. |
+| **8. Equivalence tests** | Integration tests that sync a descriptor to DB via `pbflags-sync`, then compare `ParseDescriptorFile()` output against `LoadDefinitionsFromDB()` output for the same flag set. Must be identical: same flags, types, defaults, layers, metadata. |
+| **9. Scale benchmark** | Benchmark with 5K+ flags: definition loading (batched DB query), registry construction, atomic swap under concurrent readers. Validates that batching works correctly and swap doesn't block evaluations. |
+| **10. Documentation** | Update README, getting-started guide, and deploy examples. Document monolithic and distributed deployment models with clear guidance on when to use each. |
