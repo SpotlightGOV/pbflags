@@ -187,3 +187,73 @@ func (defaultNotificationsFlags) RetryDelays(_ context.Context) []int64 {
 func (defaultNotificationsFlags) Status(_ context.Context) pbflagsv1.EvaluatorStatus {
 	return pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_UNSPECIFIED
 }
+
+// TestNotificationsFlags is a mutable implementation of NotificationsFlags for use in tests.
+// Each method delegates to its corresponding Func field, which is pre-populated
+// with the compiled default. Override individual fields to stub specific flags.
+type TestNotificationsFlags struct {
+	EmailEnabledFunc       func(context.Context, layers.UserID) bool
+	DigestFrequencyFunc    func(context.Context) string
+	MaxRetriesFunc         func(context.Context) int64
+	ScoreThresholdFunc     func(context.Context) float64
+	NotificationEmailsFunc func(context.Context, layers.EntityID) []string
+	RetryDelaysFunc        func(context.Context) []int64
+	StatusFunc             func(context.Context) pbflagsv1.EvaluatorStatus
+}
+
+// Testing returns a mutable NotificationsFlags whose func fields are pre-populated
+// with compiled defaults. Override individual Func fields to stub specific flags
+// without implementing the entire interface.
+func Testing() *TestNotificationsFlags {
+	return &TestNotificationsFlags{
+		EmailEnabledFunc: func(_ context.Context, _ layers.UserID) bool {
+			return EmailEnabledDefault
+		},
+		DigestFrequencyFunc: func(_ context.Context) string {
+			return DigestFrequencyDefault
+		},
+		MaxRetriesFunc: func(_ context.Context) int64 {
+			return MaxRetriesDefault
+		},
+		ScoreThresholdFunc: func(_ context.Context) float64 {
+			return ScoreThresholdDefault
+		},
+		NotificationEmailsFunc: func(_ context.Context, _ layers.EntityID) []string {
+			return NotificationEmailsDefault()
+		},
+		RetryDelaysFunc: func(_ context.Context) []int64 {
+			return RetryDelaysDefault()
+		},
+		StatusFunc: func(_ context.Context) pbflagsv1.EvaluatorStatus {
+			return pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_UNSPECIFIED
+		},
+	}
+}
+
+func (t *TestNotificationsFlags) EmailEnabled(ctx context.Context, user layers.UserID) bool {
+	return t.EmailEnabledFunc(ctx, user)
+}
+
+func (t *TestNotificationsFlags) DigestFrequency(ctx context.Context) string {
+	return t.DigestFrequencyFunc(ctx)
+}
+
+func (t *TestNotificationsFlags) MaxRetries(ctx context.Context) int64 {
+	return t.MaxRetriesFunc(ctx)
+}
+
+func (t *TestNotificationsFlags) ScoreThreshold(ctx context.Context) float64 {
+	return t.ScoreThresholdFunc(ctx)
+}
+
+func (t *TestNotificationsFlags) NotificationEmails(ctx context.Context, entity layers.EntityID) []string {
+	return t.NotificationEmailsFunc(ctx, entity)
+}
+
+func (t *TestNotificationsFlags) RetryDelays(ctx context.Context) []int64 {
+	return t.RetryDelaysFunc(ctx)
+}
+
+func (t *TestNotificationsFlags) Status(ctx context.Context) pbflagsv1.EvaluatorStatus {
+	return t.StatusFunc(ctx)
+}

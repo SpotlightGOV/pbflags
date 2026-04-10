@@ -241,6 +241,63 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p("func (", defaultType, ") Status(_ context.Context) pbflagsv1.EvaluatorStatus {")
 	p("	return pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_UNSPECIFIED")
 	p("}")
+	p()
+
+	// Generate Testing() constructor and mutable func-field struct.
+	testType := "Test" + pascalFeat + "Flags"
+
+	p("// ", testType, " is a mutable implementation of ", pascalFeat, "Flags for use in tests.")
+	p("// Each method delegates to its corresponding Func field, which is pre-populated")
+	p("// with the compiled default. Override individual fields to stub specific flags.")
+	p("type ", testType, " struct {")
+	for _, fl := range flags {
+		if fl.layerName != "" {
+			p("	", fl.goName, "Func func(context.Context, layers.", layerTypeName(fl.layerName), ") ", fl.goType)
+		} else {
+			p("	", fl.goName, "Func func(context.Context) ", fl.goType)
+		}
+	}
+	p("	StatusFunc func(context.Context) pbflagsv1.EvaluatorStatus")
+	p("}")
+	p()
+
+	p("// Testing returns a mutable ", pascalFeat, "Flags whose func fields are pre-populated")
+	p("// with compiled defaults. Override individual Func fields to stub specific flags")
+	p("// without implementing the entire interface.")
+	p("func Testing() *", testType, " {")
+	p("	return &", testType, "{")
+	for _, fl := range flags {
+		if fl.layerName != "" {
+			p("		", fl.goName, "Func: func(_ context.Context, _ layers.", layerTypeName(fl.layerName), ") ", fl.goType, " {")
+		} else {
+			p("		", fl.goName, "Func: func(_ context.Context) ", fl.goType, " {")
+		}
+		emitReturnDefault(p, fl)
+		p("		},")
+	}
+	p("		StatusFunc: func(_ context.Context) pbflagsv1.EvaluatorStatus {")
+	p("			return pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_UNSPECIFIED")
+	p("		},")
+	p("	}")
+	p("}")
+	p()
+
+	for _, fl := range flags {
+		if fl.layerName != "" {
+			paramName := layerParamName(fl.layerName)
+			p("func (t *", testType, ") ", fl.goName, "(ctx context.Context, ", paramName, " layers.", layerTypeName(fl.layerName), ") ", fl.goType, " {")
+			p("	return t.", fl.goName, "Func(ctx, ", paramName, ")")
+		} else {
+			p("func (t *", testType, ") ", fl.goName, "(ctx context.Context) ", fl.goType, " {")
+			p("	return t.", fl.goName, "Func(ctx)")
+		}
+		p("}")
+		p()
+	}
+
+	p("func (t *", testType, ") Status(ctx context.Context) pbflagsv1.EvaluatorStatus {")
+	p("	return t.StatusFunc(ctx)")
+	p("}")
 
 	return nil
 }
