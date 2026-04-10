@@ -20,12 +20,15 @@ const maxAuditLogLimit = 1000
 
 // Store provides PostgreSQL persistence for flag state.
 type Store struct {
-	pool   *pgxpool.Pool
-	logger *slog.Logger
-	descs  map[string]evaluator.FlagDef
+	pool     *pgxpool.Pool
+	logger   *slog.Logger
+	descs    map[string]evaluator.FlagDef // static fallback (classic mode)
+	registry *evaluator.Registry          // live registry (monolithic/distributed mode)
 }
 
 // NewStore creates a Store backed by the given connection pool.
+// In classic mode, pass a static []FlagDef for metadata enrichment.
+// In monolithic/distributed mode, call SetRegistry instead.
 func NewStore(pool *pgxpool.Pool, logger *slog.Logger, descriptors ...[]evaluator.FlagDef) *Store {
 	descs := make(map[string]evaluator.FlagDef)
 	for _, defs := range descriptors {
@@ -34,6 +37,21 @@ func NewStore(pool *pgxpool.Pool, logger *slog.Logger, descriptors ...[]evaluato
 		}
 	}
 	return &Store{pool: pool, logger: logger, descs: descs}
+}
+
+// SetRegistry sets the live registry for metadata enrichment. When set,
+// the store reads from registry.Load() instead of the static descs map,
+// so it stays current after definition reloads.
+func (s *Store) SetRegistry(reg *evaluator.Registry) {
+	s.registry = reg
+}
+
+func (s *Store) getDesc(flagID string) (evaluator.FlagDef, bool) {
+	if s.registry != nil {
+		return s.registry.Load().Get(flagID)
+	}
+	d, ok := s.descs[flagID]
+	return d, ok
 }
 
 // GetFlagState returns the state and value for a single flag.
@@ -334,7 +352,7 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, e
 			Archived:     archived,
 		}
 
-		if desc, ok := s.descs[flagID]; ok {
+		if desc, ok := s.getDesc(flagID); ok {
 			fd.DefaultValue = desc.Default
 			fd.FlagType = desc.FlagType
 			fd.SupportedValues = desc.SupportedValues
@@ -387,7 +405,7 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 		Archived:     archivedAt != nil,
 	}
 
-	if desc, ok := s.descs[flagID]; ok {
+	if desc, ok := s.getDesc(flagID); ok {
 		fd.DefaultValue = desc.Default
 		fd.FlagType = desc.FlagType
 		fd.SupportedValues = desc.SupportedValues

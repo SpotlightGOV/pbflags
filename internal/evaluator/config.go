@@ -19,16 +19,40 @@ func normalizeAddr(addr string) string {
 	return ":" + addr
 }
 
+// ServerMode indicates how the server handles flag definitions.
+type ServerMode int
+
+const (
+	// ModeClassic is the legacy mode: parse descriptors into memory, no DB
+	// definition loading. Preserved for backward compatibility when
+	// --database is provided without --descriptors (root mode without
+	// DB-centric definitions).
+	ModeClassic ServerMode = iota
+	// ModeMonolithic is a single-instance root evaluator that handles
+	// migrations, descriptor sync, and definition loading from DB.
+	// Inferred when both --descriptors and --database are present.
+	// Always runs migrations automatically.
+	ModeMonolithic
+	// ModeDistributed is a root evaluator that loads definitions from DB
+	// only. An external pbflags-sync handles migrations and sync.
+	// Requires explicit --distributed flag.
+	ModeDistributed
+	// ModeProxy connects to an upstream evaluator; no DB or descriptors.
+	ModeProxy
+)
+
 // Config is the evaluator configuration.
 type Config struct {
-	Descriptors string      `yaml:"descriptors"`
-	Server      string      `yaml:"server"`
-	Listen      string      `yaml:"listen"`
-	Admin       string      `yaml:"admin"`
-	Database    string      `yaml:"database"`
-	Cache       CacheConfig `yaml:"cache"`
-	EnvName     string      `yaml:"env_name"`
-	EnvColor    string      `yaml:"env_color"`
+	Descriptors            string        `yaml:"descriptors"`
+	Upstream               string        `yaml:"upstream"`
+	Listen                 string        `yaml:"listen"`
+	Admin                  string        `yaml:"admin"`
+	Database               string        `yaml:"database"`
+	Cache                  CacheConfig   `yaml:"cache"`
+	EnvName                string        `yaml:"env_name"`
+	EnvColor               string        `yaml:"env_color"`
+	Mode                   ServerMode    `yaml:"-"` // Resolved from CLI flags, not YAML.
+	DefinitionPollInterval time.Duration `yaml:"definition_poll_interval"`
 }
 
 // CacheConfig controls cache TTLs and sizes.
@@ -56,15 +80,35 @@ func DefaultConfig() Config {
 	}
 }
 
-// LoadConfig reads configuration from a YAML file, applying defaults for unset fields.
-// Environment variables override file values:
-//
-//	PBFLAGS_DESCRIPTORS → Descriptors
-//	PBFLAGS_SERVER      → Server
-//	PBFLAGS_LISTEN      → Listen
-//	PBFLAGS_ADMIN       → Admin
-//	PBFLAGS_DATABASE    → Database
+// LoadConfigWithMode reads configuration and applies the given mode.
+func LoadConfigWithMode(path string, mode ServerMode, defPollInterval time.Duration) (Config, error) {
+	cfg, err := loadConfigBase(path)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Mode = mode
+	if defPollInterval > 0 {
+		cfg.DefinitionPollInterval = defPollInterval
+	}
+	if err := validateConfig(&cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// LoadConfig reads config for legacy/classic mode invocations.
 func LoadConfig(path string) (Config, error) {
+	cfg, err := loadConfigBase(path)
+	if err != nil {
+		return Config{}, err
+	}
+	if err := validateConfig(&cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+func loadConfigBase(path string) (Config, error) {
 	cfg := DefaultConfig()
 
 	if path != "" {
@@ -80,8 +124,8 @@ func LoadConfig(path string) (Config, error) {
 	if v := os.Getenv("PBFLAGS_DESCRIPTORS"); v != "" {
 		cfg.Descriptors = v
 	}
-	if v := os.Getenv("PBFLAGS_SERVER"); v != "" {
-		cfg.Server = v
+	if v := os.Getenv("PBFLAGS_UPSTREAM"); v != "" {
+		cfg.Upstream = v
 	}
 	if v := os.Getenv("PBFLAGS_LISTEN"); v != "" {
 		cfg.Listen = v
@@ -99,17 +143,46 @@ func LoadConfig(path string) (Config, error) {
 		cfg.EnvColor = v
 	}
 
-	if cfg.Descriptors == "" {
-		return Config{}, fmt.Errorf("config: descriptors path is required")
-	}
-
-	if cfg.Admin != "" && cfg.Database == "" {
-		return Config{}, fmt.Errorf("config: database is required when admin is enabled")
-	}
-
-	if cfg.Database == "" && cfg.Server == "" {
-		return Config{}, fmt.Errorf("config: either database (root mode) or server (proxy mode) is required")
-	}
-
 	return cfg, nil
+}
+
+func validateConfig(cfg *Config) error {
+	switch cfg.Mode {
+	case ModeMonolithic:
+		if cfg.Descriptors == "" {
+			return fmt.Errorf("config: --descriptors is required when --database is set")
+		}
+		if cfg.Database == "" {
+			return fmt.Errorf("config: --database is required")
+		}
+		if cfg.Upstream != "" {
+			return fmt.Errorf("config: --upstream cannot be combined with --descriptors and --database")
+		}
+	case ModeDistributed:
+		if cfg.Database == "" {
+			return fmt.Errorf("config: --database is required in distributed mode")
+		}
+		if cfg.Descriptors != "" {
+			return fmt.Errorf("config: --descriptors is not valid in distributed mode; use pbflags-sync instead")
+		}
+		if cfg.Upstream != "" {
+			return fmt.Errorf("config: --upstream is not valid in distributed mode")
+		}
+	case ModeProxy:
+		if cfg.Upstream == "" {
+			return fmt.Errorf("config: --upstream is required in proxy mode")
+		}
+	default:
+		// Classic / legacy mode: infer from flags.
+		if cfg.Descriptors == "" {
+			return fmt.Errorf("config: descriptors path is required")
+		}
+		if cfg.Admin != "" && cfg.Database == "" {
+			return fmt.Errorf("config: database is required when admin is enabled")
+		}
+		if cfg.Database == "" && cfg.Upstream == "" {
+			return fmt.Errorf("config: either database (root mode) or upstream (proxy mode) is required")
+		}
+	}
+	return nil
 }

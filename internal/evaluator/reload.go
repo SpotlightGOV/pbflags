@@ -10,14 +10,21 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+// SyncAndReloadFunc is called by the DescriptorWatcher in monolithic mode.
+// It receives the parsed definitions, syncs them to the DB, then loads
+// definitions back from DB and returns them. If it returns an error, the
+// registry swap is skipped.
+type SyncAndReloadFunc func(ctx context.Context, defs []FlagDef) ([]FlagDef, error)
+
 // DescriptorWatcher monitors the descriptors file for changes and atomically
 // swaps the defaults registry when a valid new descriptor set is parsed.
 type DescriptorWatcher struct {
-	path         string
-	registry     *Registry
-	logger       *slog.Logger
-	pollInterval time.Duration
-	sighupCh     <-chan os.Signal
+	path            string
+	registry        *Registry
+	logger          *slog.Logger
+	pollInterval    time.Duration
+	sighupCh        <-chan os.Signal
+	syncAndReloadFn SyncAndReloadFunc // If set, sync→reload from DB before swap.
 
 	mu      sync.Mutex
 	lastMod time.Time
@@ -38,6 +45,13 @@ func NewDescriptorWatcher(
 		sighupCh:     sighupCh,
 		logger:       logger,
 	}
+}
+
+// SetSyncAndReload sets the sync callback for monolithic mode. When set,
+// descriptor file changes trigger: parse → sync to DB → reload from DB → swap.
+// If sync fails, the current registry is preserved.
+func (w *DescriptorWatcher) SetSyncAndReload(fn SyncAndReloadFunc) {
+	w.syncAndReloadFn = fn
 }
 
 // Run starts the watcher. Blocks until ctx is cancelled.
@@ -160,6 +174,16 @@ func (w *DescriptorWatcher) tryReload(trigger string) {
 		w.logger.Error("descriptor reload failed, continuing with current state",
 			"trigger", trigger, "error", err)
 		return
+	}
+
+	// In monolithic mode: sync to DB, then reload from DB.
+	if w.syncAndReloadFn != nil {
+		defs, err = w.syncAndReloadFn(context.Background(), defs)
+		if err != nil {
+			w.logger.Error("sync failed, keeping current registry",
+				"trigger", trigger, "error", err)
+			return
+		}
 	}
 
 	old := w.registry.Load()

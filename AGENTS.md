@@ -50,8 +50,44 @@ bd close <id>         # Complete work
 ## Services and binaries
 
 - **`pbflags-server`** — Feature flag evaluator (Connect RPC); optional combined mode serves the admin API and embedded web UI.
-- **`pbflags-sync`** — Syncs flag definitions from `descriptors.pb` into PostgreSQL.
+- **`pbflags-sync`** — Syncs flag definitions from `descriptors.pb` into PostgreSQL. Runs migrations automatically before syncing.
 - **`protoc-gen-pbflags`** — `protoc` / `buf` plugin for Go and Java client codegen.
+
+## Server modes
+
+The server has three deployment modes. Mode is inferred from flags:
+
+### Monolithic (single instance)
+
+```bash
+pbflags-server --descriptors=descriptors.pb --database=postgres://... --admin=:8080
+```
+
+Inferred when both `--descriptors` and `--database` are present. Automatically runs migrations, syncs definitions to DB, and loads from DB. Watches the descriptor file for changes (re-syncs on change). Also polls DB for definition updates.
+
+**Single-instance only.** Do not run multiple monolithic instances — this causes split-brain definition conflicts.
+
+### Distributed (multi-instance production)
+
+```bash
+# CI/CD pipeline (once per deploy):
+pbflags-sync --descriptors=descriptors.pb --database=postgres://...
+
+# Application instances (any number):
+pbflags-server --distributed --database=postgres://...
+```
+
+Requires explicit `--distributed` flag. No descriptor file needed at runtime. Server polls DB for definition changes. Migrations are handled by `pbflags-sync`.
+
+**Required when running more than one root evaluator.** External `pbflags-sync` is the single writer, preventing split-brain.
+
+### Proxy
+
+```bash
+pbflags-server --upstream=http://root-evaluator:9201
+```
+
+Connects to an upstream root evaluator. No database or descriptors needed. Unaffected by definition sync — proxies just forward requests.
 
 ## Prerequisites
 
