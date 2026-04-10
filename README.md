@@ -10,7 +10,7 @@ pbflags lets you define feature flags as protobuf messages and generates type-sa
 
 ## For AI agents
 
-If you are an AI agent integrating pbflags into a project, see [docs/agent-setup.md](docs/agent-setup.md) — a step-by-step guide designed for automated setup without parsing this README.
+If you are an AI agent integrating pbflags into a consumer project, start with [docs/agent-setup.md](docs/agent-setup.md). It is the shortest end-to-end setup path and avoids maintainer-only details from the rest of the docs.
 
 ## Prerequisites
 
@@ -65,6 +65,7 @@ Add pbflags to your `buf.yaml` and generate:
 go install github.com/SpotlightGOV/pbflags/cmd/protoc-gen-pbflags@latest
 buf dep update
 buf generate --template buf.gen.flags.yaml
+buf build proto -o descriptors.pb
 ```
 
 Example `buf.gen.flags.yaml` for Go:
@@ -101,8 +102,18 @@ docker compose -f docker/docker-compose.yml up
 ### 4. Use in your application
 
 ```go
-import "github.com/yourorg/yourrepo/gen/flags/layers"
+import (
+  "net/http"
 
+  "github.com/yourorg/yourrepo/gen/flags/layers"
+  "github.com/yourorg/yourrepo/gen/flags/notificationsflags"
+  "github.com/yourorg/yourrepo/gen/flags/v1/pbflagsv1connect"
+)
+
+evaluatorClient := pbflagsv1connect.NewFlagEvaluatorServiceClient(
+  http.DefaultClient,
+  "http://localhost:9201",
+)
 client := notificationsflags.NewNotificationsFlagsClient(evaluatorClient)
 
 emailEnabled := client.EmailEnabled(ctx, layers.User("user-123"))  // bool

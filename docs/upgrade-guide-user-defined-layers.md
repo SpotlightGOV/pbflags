@@ -3,7 +3,7 @@
 This guide covers migrating from the hardcoded `Layer` enum to user-defined
 layers. This is a breaking change — all steps are required.
 
-**Design doc:** `docs/design-docs/2026-04-09-user-defined-layers.md`
+**Design doc:** `design-docs/2026-04-09-user-defined-layers.md`
 
 ---
 

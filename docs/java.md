@@ -39,6 +39,12 @@ buf dep update
 buf generate --template buf.gen.flags.yaml
 ```
 
+Add the runtime dependency using the same release version as the pbflags binaries/plugin you are integrating:
+
+```groovy
+implementation("org.spotlightgov.pbflags:pbflags-java:<pbflags-version>")
+```
+
 ### Plugin options
 
 | Option | Required | Description |
@@ -55,16 +61,16 @@ For each feature message (e.g., `Notifications`), the codegen produces:
 
 ```java
 public interface NotificationsFlags {
-    // One accessor per flag, returning a typed Flag object.
-    Flag<Boolean> emailEnabled();
+    // Layer-scoped flags return LayerFlag<T, ID>; global flags return Flag<T>.
+    LayerFlag<Boolean, UserID> emailEnabled();
     Flag<String> digestFrequency();
 
     // Factory methods
-    static NotificationsFlags forEvaluator(FlagEvaluatorClient evaluator);
+    static NotificationsFlags forEvaluator(FlagEvaluator evaluator);
 }
 ```
 
-Flag accessors return `Flag<T>` objects with `.get()` and `.get(LayerID)` methods.
+Global accessors return `Flag<T>` or `ListFlag<T>`. Layer-scoped accessors return `LayerFlag<T, ID>` or `LayerListFlag<T, ID>`.
 
 ### Usage
 
@@ -78,19 +84,19 @@ String frequency = flags.digestFrequency().get();
 ### Evaluator client setup
 
 ```java
-// Simple: connect by target address
+// Simple local setup: the evaluator serves plaintext gRPC on :9201 by default.
 FlagEvaluatorClient client = new FlagEvaluatorClient("localhost:9201");
 
-// Advanced: custom channel (TLS, interceptors, in-process testing)
+// Advanced: custom channel (interceptors, in-process testing, or your own TLS setup)
 ManagedChannel channel = ManagedChannelBuilder.forTarget("localhost:9201")
-    .useTransportSecurity()
+    .usePlaintext()
     .build();
 FlagEvaluatorClient client = FlagEvaluatorClient.forChannel(channel);
 ```
 
 ### Typed layer IDs
 
-Each non-global layer produces a static inner class:
+Each non-global layer produces a top-level class in `<java_package>.layers`:
 
 ```java
 UserID.of("user-123")
@@ -110,7 +116,7 @@ NotificationsFlags.EMAIL_ENABLED_ID  // "notifications/1"
 Add the test dependency:
 
 ```groovy
-testImplementation("org.spotlightgov.pbflags:pbflags-java-testing:0.3.0")
+testImplementation("org.spotlightgov.pbflags:pbflags-java-testing:<pbflags-version>")
 ```
 
 ### JUnit 5 extension

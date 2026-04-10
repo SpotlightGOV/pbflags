@@ -21,12 +21,12 @@ The evaluator resolves flags using this precedence chain:
 
 1. **Global KILLED** -> compiled default (polled every ~30s)
 2. **Per-entity override ENABLED** -> override value
-3. **Per-entity override DEFAULT** -> compiled default
-4. **Global DEFAULT** -> compiled default
+3. **Per-entity override DEFAULT or KILLED** -> compiled default
+4. **Global DEFAULT or KILLED** -> compiled default
 5. **Global ENABLED** -> configured value
 6. **Fallback** -> compiled default (always safe)
 
-The key insight is that kills always win, overrides beat global state, and the compiled default is the ultimate safety net.
+The key insight is that the global kill switch always wins, overrides beat normal global state, and the compiled default is the ultimate safety net.
 
 ## Layers
 

@@ -54,6 +54,7 @@ Detailed docs are in the `docs/` directory. Key references for contributors:
 - [docs/contributing.md](docs/contributing.md) — Dev setup, testing, releasing, migration rules
 - [docs/deployment.md](docs/deployment.md) — Service topology and configuration
 - [docs/philosophy.md](docs/philosophy.md) — Design principles, layers, evaluation precedence
+- [docs/agent-setup.md](docs/agent-setup.md) — Consumer integration guide for AI agents; use this when wiring pbflags into another repo rather than changing pbflags itself
 
 ## Quick reference
 

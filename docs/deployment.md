@@ -35,6 +35,10 @@ For development, `pbflags-admin --standalone` runs all three roles in one proces
 The simplest way to run pbflags — one binary, one command:
 
 ```bash
+buf build proto -o descriptors.pb
+```
+
+```bash
 pbflags-admin --standalone \
   --descriptors=descriptors.pb \
   --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable \
@@ -95,7 +99,7 @@ pbflags-evaluator \
 - **Audit Log**: Filterable log of all state changes with actor attribution
 - **Override Management**: Add and remove per-entity overrides for layer-scoped flags
 
-The admin UI is available at `http://localhost:9200/` by default (configurable via `--listen` or `PBFLAGS_ADMIN`).
+The admin UI is available at `http://localhost:9200/` by default (configurable via `--listen` or `PBFLAGS_ADMIN`). The embedded evaluator listener is configured separately via `--evaluator-listen` or `PBFLAGS_LISTEN`.
 
 ### Security
 
@@ -107,15 +111,15 @@ The admin UI is available at `http://localhost:9200/` by default (configurable v
 
 Environment variables override CLI flags:
 
-| Variable | Description |
-|---|---|
-| `PBFLAGS_DATABASE` | PostgreSQL connection string |
-| `PBFLAGS_DESCRIPTORS` | Path to `descriptors.pb` (standalone and sync only) |
-| `PBFLAGS_UPSTREAM` | Upstream evaluator URL (evaluator proxy mode) |
-| `PBFLAGS_LISTEN` | Evaluator listen address (default: `localhost:9201`) |
-| `PBFLAGS_ADMIN` | Admin listen address (default: `:9200`) |
-| `PBFLAGS_ENV_NAME` | Environment label shown in admin UI |
-| `PBFLAGS_ENV_COLOR` | Accent color for admin UI environment banner |
+| Variable | Used by | Equivalent flag | Notes |
+|---|---|---|---|
+| `PBFLAGS_DATABASE` | admin, evaluator, sync | `--database` | PostgreSQL connection string |
+| `PBFLAGS_DESCRIPTORS` | admin standalone, sync | `--descriptors` | Path to `descriptors.pb` |
+| `PBFLAGS_UPSTREAM` | evaluator | `--upstream` | Upstream evaluator URL in proxy mode |
+| `PBFLAGS_ADMIN` | admin | `--listen` | Admin UI/API listen address, default `:9200` |
+| `PBFLAGS_LISTEN` | admin, evaluator | `--evaluator-listen` on admin, `--listen` on evaluator | Evaluator listen address; default is `:9201` in `pbflags-admin`, `localhost:9201` in `pbflags-evaluator` |
+| `PBFLAGS_ENV_NAME` | admin | `--env-name` | Environment label shown in admin UI |
+| `PBFLAGS_ENV_COLOR` | admin | `--env-color` | Accent color for admin UI environment banner |
 
 ## Proto Definitions (BSR)
 

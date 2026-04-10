@@ -11,12 +11,15 @@
 Browser-based E2E tests require Playwright browsers. Install them once:
 
 ```bash
-go run github.com/playwright-community/playwright-go/cmd/playwright install --with-deps
+go tool playwright install --with-deps
 ```
 
 ## Getting started
 
 ```bash
+# Install hooks and repo-local dev tooling
+make setup
+
 # Start the dev database
 make dev-db
 

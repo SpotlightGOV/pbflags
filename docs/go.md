@@ -61,7 +61,7 @@ type NotificationsFlags interface {
     DigestFrequency(ctx context.Context) string
 
     // Status returns the evaluator connection health.
-    Status() pbflagsv1.EvaluatorStatus
+    Status(ctx context.Context) pbflagsv1.EvaluatorStatus
 }
 ```
 
@@ -72,10 +72,24 @@ type NotificationsFlags interface {
 ### Client constructor
 
 ```go
+evaluatorClient := pbflagsv1connect.NewFlagEvaluatorServiceClient(
+    http.DefaultClient,
+    "http://localhost:9201",
+)
 client := notificationsflags.NewNotificationsFlagsClient(evaluatorClient)
 ```
 
 Connects to a `pbflagsv1connect.FlagEvaluatorServiceClient`. Returns compiled defaults on any evaluation error (never panics).
+
+Minimal imports for the constructor above:
+
+```go
+import (
+    "net/http"
+
+    "github.com/yourorg/yourrepo/gen/flags/v1/pbflagsv1connect"
+)
+```
 
 ### `Defaults()` — offline defaults
 
