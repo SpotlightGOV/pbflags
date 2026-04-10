@@ -75,23 +75,23 @@ Global accessors return `Flag<T>` or `ListFlag<T>`. Layer-scoped accessors retur
 ### Usage
 
 ```java
-NotificationsFlags flags = NotificationsFlags.forEvaluator(evaluator);
+NotificationsFlags notifications = NotificationsFlags.forEvaluator(evaluator);
 
-boolean emailEnabled = flags.emailEnabled().get(UserID.of("user-123"));
-String frequency = flags.digestFrequency().get();
+boolean emailEnabled = notifications.emailEnabled().get(UserID.of("user-123"));
+String frequency = notifications.digestFrequency().get();
 ```
 
-### Evaluator client setup
+### Evaluator setup
 
 ```java
 // Simple local setup: the evaluator serves plaintext gRPC on :9201 by default.
-FlagEvaluatorClient client = new FlagEvaluatorClient("localhost:9201");
+FlagEvaluatorClient evaluator = new FlagEvaluatorClient("localhost:9201");
 
 // Advanced: custom channel (interceptors, in-process testing, or your own TLS setup)
 ManagedChannel channel = ManagedChannelBuilder.forTarget("localhost:9201")
     .usePlaintext()
     .build();
-FlagEvaluatorClient client = FlagEvaluatorClient.forChannel(channel);
+FlagEvaluatorClient evaluator = FlagEvaluatorClient.forChannel(channel);
 ```
 
 ### Typed layer IDs
@@ -129,8 +129,8 @@ class MyTest {
   @Test
   void testOverride() {
     flags.set(NotificationsFlags.EMAIL_ENABLED_ID, false);
-    var nf = NotificationsFlags.forEvaluator(flags.evaluator());
-    assertFalse(nf.emailEnabled().get());
+    var notifications = NotificationsFlags.forEvaluator(flags.evaluator());
+    assertFalse(notifications.emailEnabled().get());
   }
 }
 ```

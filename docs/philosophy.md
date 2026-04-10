@@ -46,11 +46,11 @@ The codegen generates a **typed ID wrapper** for each non-global layer. These ty
 
 ```go
 // Can't pass an EntityID where a UserID is expected — compiler error.
-emailEnabled := client.EmailEnabled(ctx, layers.User("user-123"))
-lookbackDays := client.LookbackDays(ctx, layers.Entity("govt-body-456"))
+emailEnabled := notifications.EmailEnabled(ctx, layers.User("user-123"))
+lookbackDays := incidentConfig.LookbackDays(ctx, layers.Entity("govt-body-456"))
 
 // Zero value evaluates global state (no per-entity override applied).
-globalDefault := client.EmailEnabled(ctx, layers.UserID{})
+globalDefault := notifications.EmailEnabled(ctx, layers.UserID{})
 ```
 
 ### How layers flow through the system

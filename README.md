@@ -110,17 +110,17 @@ import (
   "github.com/yourorg/yourrepo/gen/flags/v1/pbflagsv1connect"
 )
 
-evaluatorClient := pbflagsv1connect.NewFlagEvaluatorServiceClient(
+evaluator := pbflagsv1connect.NewFlagEvaluatorServiceClient(
   http.DefaultClient,
   "http://localhost:9201",
 )
-client := notificationsflags.NewNotificationsFlagsClient(evaluatorClient)
+notifications := notificationsflags.NewNotificationsFlagsClient(evaluator)
 
-emailEnabled := client.EmailEnabled(ctx, layers.User("user-123"))  // bool
-frequency := client.DigestFrequency(ctx)                            // string
+emailEnabled := notifications.EmailEnabled(ctx, layers.User("user-123"))  // bool
+frequency := notifications.DigestFrequency(ctx)                            // string
 ```
 
-## Clients
+## Language Support
 
 | Language | Status | Package |
 |---|---|---|

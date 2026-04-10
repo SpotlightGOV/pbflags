@@ -100,14 +100,14 @@ your `layer: "..."` string matches an enum value name (after prefix stripping).
 
 **Before:**
 ```go
-emailEnabled := client.EmailEnabled(ctx, userID)         // userID is string
+emailEnabled := notifications.EmailEnabled(ctx, userID)         // userID is string
 ```
 
 **After:**
 ```go
 import "yourpkg/gen/flags/layers"
 
-emailEnabled := client.EmailEnabled(ctx, layers.User("user-123"))  // typed
+emailEnabled := notifications.EmailEnabled(ctx, layers.User("user-123"))  // typed
 ```
 
 The compiler will guide you — every call site passing a bare `string` for a
@@ -115,7 +115,7 @@ layer-scoped flag will fail to compile until updated.
 
 **Global evaluation** (no entity context): pass the zero value:
 ```go
-globalDefault := client.EmailEnabled(ctx, layers.UserID{})
+globalDefault := notifications.EmailEnabled(ctx, layers.UserID{})
 ```
 
 ## Step 5: Update Java call sites

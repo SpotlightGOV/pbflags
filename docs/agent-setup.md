@@ -158,16 +158,16 @@ import (
     "<MODULE>/gen/flags/v1/pbflagsv1connect"
 )
 
-evaluatorClient := pbflagsv1connect.NewFlagEvaluatorServiceClient(
+evaluator := pbflagsv1connect.NewFlagEvaluatorServiceClient(
     http.DefaultClient,
     "http://localhost:9201",
 )
-client := <feature>flags.New<Feature>FlagsClient(evaluatorClient)
-val := client.<FlagName>(context.Background(), layers.User("user-123"))
+<feature> := <feature>flags.New<Feature>FlagsClient(evaluator)
+val := <feature>.<FlagName>(context.Background(), layers.User("user-123"))
 
 // Without an evaluator (compiled defaults only):
-client := <feature>flags.Defaults()
-val := client.<FlagName>(context.Background(), layers.UserID{})
+<feature> := <feature>flags.Defaults()
+val := <feature>.<FlagName>(context.Background(), layers.UserID{})
 ```
 
 ### Java
@@ -177,9 +177,9 @@ import com.yourorg.flags.generated.<Feature>Flags;
 import com.yourorg.flags.generated.layers.UserID;
 import org.spotlightgov.pbflags.FlagEvaluatorClient;
 
-FlagEvaluatorClient evaluatorClient = new FlagEvaluatorClient("localhost:9201");
-<Feature>Flags flags = <Feature>Flags.forEvaluator(evaluatorClient);
-boolean val = flags.<flagName>().get(UserID.of("user-123"));
+FlagEvaluatorClient evaluator = new FlagEvaluatorClient("localhost:9201");
+<Feature>Flags <feature> = <Feature>Flags.forEvaluator(evaluator);
+boolean val = <feature>.<flagName>().get(UserID.of("user-123"));
 ```
 
 For Java consumers, add the runtime dependency using the same release version as the pbflags binaries/plugin you are integrating:

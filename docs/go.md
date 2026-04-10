@@ -69,19 +69,19 @@ type NotificationsFlags interface {
 - Global flags take no entity parameter.
 - Return types are native Go types: `bool`, `string`, `int64`, `float64`, or their slice variants for list flags.
 
-### Client constructor
+### Setup
 
 ```go
-evaluatorClient := pbflagsv1connect.NewFlagEvaluatorServiceClient(
+evaluator := pbflagsv1connect.NewFlagEvaluatorServiceClient(
     http.DefaultClient,
     "http://localhost:9201",
 )
-client := notificationsflags.NewNotificationsFlagsClient(evaluatorClient)
+notifications := notificationsflags.NewNotificationsFlagsClient(evaluator)
 ```
 
-Connects to a `pbflagsv1connect.FlagEvaluatorServiceClient`. Returns compiled defaults on any evaluation error (never panics).
+Returns compiled defaults on any evaluation error (never panics).
 
-Minimal imports for the constructor above:
+Minimal imports:
 
 ```go
 import (
