@@ -94,21 +94,30 @@ func syncInTx(ctx context.Context, tx pgx.Tx, defs []evaluator.FlagDef, logger *
 			}
 		}
 
+		var supportedBytes []byte
+		if d.SupportedValues != nil {
+			supportedBytes, err = proto.Marshal(d.SupportedValues)
+			if err != nil {
+				return Result{}, fmt.Errorf("marshal supported_values for %q: %w", d.FlagID, err)
+			}
+		}
+
 		layer := LayerDBString(d.Layer)
 		flagType := FlagTypeString(d.FlagType)
 
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO feature_flags.flags (flag_id, feature_id, field_number, display_name, flag_type, layer, description, default_value)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			`INSERT INTO feature_flags.flags (flag_id, feature_id, field_number, display_name, flag_type, layer, description, default_value, supported_values)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			 ON CONFLICT (flag_id) DO UPDATE SET
 			   display_name = EXCLUDED.display_name,
 			   flag_type = EXCLUDED.flag_type,
 			   layer = EXCLUDED.layer,
 			   description = EXCLUDED.description,
 			   default_value = EXCLUDED.default_value,
+			   supported_values = EXCLUDED.supported_values,
 			   archived_at = NULL,
 			   updated_at = now()`,
-			d.FlagID, d.FeatureID, d.FieldNum, d.Name, flagType, layer, "", defaultBytes,
+			d.FlagID, d.FeatureID, d.FieldNum, d.Name, flagType, layer, "", defaultBytes, supportedBytes,
 		); err != nil {
 			return Result{}, fmt.Errorf("upsert flag %q: %w", d.FlagID, err)
 		}

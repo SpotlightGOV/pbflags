@@ -8,12 +8,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/proto"
 
+	pbflagspb "github.com/SpotlightGOV/pbflags/gen/pbflags"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
 
 // LoadDefinitionsFromDB queries features and flags from the database within a
 // single read transaction and returns a []FlagDef slice compatible with what
-// ParseDescriptorFile returns. SupportedValues will be nil (not stored in DB).
+// ParseDescriptorFile returns.
 func LoadDefinitionsFromDB(ctx context.Context, pool *pgxpool.Pool) ([]FlagDef, error) {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -24,7 +25,7 @@ func LoadDefinitionsFromDB(ctx context.Context, pool *pgxpool.Pool) ([]FlagDef, 
 	rows, err := tx.Query(ctx, `
 		SELECT f.feature_id, f.display_name, f.description, f.owner,
 		       fl.flag_id, fl.field_number, fl.display_name, fl.flag_type,
-		       fl.layer, fl.description, fl.default_value
+		       fl.layer, fl.description, fl.default_value, fl.supported_values
 		FROM feature_flags.features f
 		JOIN feature_flags.flags fl ON fl.feature_id = f.feature_id
 		WHERE fl.archived_at IS NULL
@@ -48,12 +49,13 @@ func LoadDefinitionsFromDB(ctx context.Context, pool *pgxpool.Pool) ([]FlagDef, 
 			layerStr           string
 			flagDesc           string
 			defaultBytes       []byte
+			supportedBytes     []byte
 		)
 
 		if err := rows.Scan(
 			&featureID, &featureDisplayName, &featureDescription, &featureOwner,
 			&flagID, &fieldNumber, &displayName, &flagTypeStr,
-			&layerStr, &flagDesc, &defaultBytes,
+			&layerStr, &flagDesc, &defaultBytes, &supportedBytes,
 		); err != nil {
 			return nil, fmt.Errorf("scan flag row: %w", err)
 		}
@@ -69,6 +71,14 @@ func LoadDefinitionsFromDB(ctx context.Context, pool *pgxpool.Pool) ([]FlagDef, 
 			}
 		}
 
+		var supportedVals *pbflagspb.SupportedValues
+		if len(supportedBytes) > 0 {
+			supportedVals = &pbflagspb.SupportedValues{}
+			if err := proto.Unmarshal(supportedBytes, supportedVals); err != nil {
+				return nil, fmt.Errorf("unmarshal supported_values for %q: %w", flagID, err)
+			}
+		}
+
 		defs = append(defs, FlagDef{
 			FlagID:             flagID,
 			FeatureID:          featureID,
@@ -77,6 +87,7 @@ func LoadDefinitionsFromDB(ctx context.Context, pool *pgxpool.Pool) ([]FlagDef, 
 			FlagType:           flagType,
 			Layer:              layer,
 			Default:            defaultVal,
+			SupportedValues:    supportedVals,
 			FeatureDisplayName: featureDisplayName,
 			FeatureDescription: featureDescription,
 			FeatureOwner:       featureOwner,

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
+	pbflagspb "github.com/SpotlightGOV/pbflags/gen/pbflags"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
-	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/proto"
@@ -20,38 +20,13 @@ const maxAuditLogLimit = 1000
 
 // Store provides PostgreSQL persistence for flag state.
 type Store struct {
-	pool     *pgxpool.Pool
-	logger   *slog.Logger
-	descs    map[string]evaluator.FlagDef // static fallback (classic mode)
-	registry *evaluator.Registry          // live registry (monolithic/distributed mode)
+	pool   *pgxpool.Pool
+	logger *slog.Logger
 }
 
 // NewStore creates a Store backed by the given connection pool.
-// In classic mode, pass a static []FlagDef for metadata enrichment.
-// In monolithic/distributed mode, call SetRegistry instead.
-func NewStore(pool *pgxpool.Pool, logger *slog.Logger, descriptors ...[]evaluator.FlagDef) *Store {
-	descs := make(map[string]evaluator.FlagDef)
-	for _, defs := range descriptors {
-		for _, d := range defs {
-			descs[d.FlagID] = d
-		}
-	}
-	return &Store{pool: pool, logger: logger, descs: descs}
-}
-
-// SetRegistry sets the live registry for metadata enrichment. When set,
-// the store reads from registry.Load() instead of the static descs map,
-// so it stays current after definition reloads.
-func (s *Store) SetRegistry(reg *evaluator.Registry) {
-	s.registry = reg
-}
-
-func (s *Store) getDesc(flagID string) (evaluator.FlagDef, bool) {
-	if s.registry != nil {
-		return s.registry.Load().Get(flagID)
-	}
-	d, ok := s.descs[flagID]
-	return d, ok
+func NewStore(pool *pgxpool.Pool, logger *slog.Logger) *Store {
+	return &Store{pool: pool, logger: logger}
 }
 
 // GetFlagState returns the state and value for a single flag.
@@ -439,6 +414,7 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, e
 		SELECT f.feature_id, f.description, f.owner,
 		       fl.flag_id, fl.display_name, fl.description,
 		       fl.flag_type, fl.layer, fl.state, fl.value,
+		       fl.default_value, fl.supported_values,
 		       fl.archived_at IS NOT NULL as archived
 		FROM feature_flags.features f
 		JOIN feature_flags.flags fl ON fl.feature_id = f.feature_id
@@ -455,13 +431,14 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, e
 		var featureID, fDesc, fOwner string
 		var flagID, flagDisplayName, flagDesc string
 		var flagType, layer, state string
-		var valueBytes []byte
+		var valueBytes, defaultBytes, supportedBytes []byte
 		var archived bool
 
 		if err := rows.Scan(
 			&featureID, &fDesc, &fOwner,
 			&flagID, &flagDisplayName, &flagDesc,
 			&flagType, &layer, &state, &valueBytes,
+			&defaultBytes, &supportedBytes,
 			&archived,
 		); err != nil {
 			return nil, err
@@ -482,22 +459,26 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, e
 		if err != nil {
 			s.logger.Warn("failed to unmarshal flag value", "flag_id", flagID, "error", err)
 		}
-
-		fd := &pbflagsv1.FlagDetail{
-			FlagId:       flagID,
-			DisplayName:  flagDisplayName,
-			Description:  flagDesc,
-			FlagType:     parseFlagType(flagType),
-			Layer:        layer,
-			State:        parseState(state),
-			CurrentValue: val,
-			Archived:     archived,
+		defaultVal, err := unmarshalFlagValue(defaultBytes)
+		if err != nil {
+			s.logger.Warn("failed to unmarshal default value", "flag_id", flagID, "error", err)
+		}
+		supportedVals, err := unmarshalSupportedValues(supportedBytes)
+		if err != nil {
+			s.logger.Warn("failed to unmarshal supported_values", "flag_id", flagID, "error", err)
 		}
 
-		if desc, ok := s.getDesc(flagID); ok {
-			fd.DefaultValue = desc.Default
-			fd.FlagType = desc.FlagType
-			fd.SupportedValues = desc.SupportedValues
+		fd := &pbflagsv1.FlagDetail{
+			FlagId:          flagID,
+			DisplayName:     flagDisplayName,
+			Description:     flagDesc,
+			FlagType:        parseFlagType(flagType),
+			Layer:           layer,
+			State:           parseState(state),
+			CurrentValue:    val,
+			DefaultValue:    defaultVal,
+			SupportedValues: supportedVals,
+			Archived:        archived,
 		}
 
 		feat.Flags = append(feat.Flags, fd)
@@ -516,14 +497,16 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, e
 // GetFlag returns details for a single flag including overrides.
 func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDetail, error) {
 	var displayName, description, flagType, layer, state string
-	var valueBytes []byte
+	var valueBytes, defaultBytes, supportedBytes []byte
 	var archivedAt *time.Time
 
 	err := s.pool.QueryRow(ctx, `
-		SELECT display_name, description, flag_type, layer, state, value, archived_at
+		SELECT display_name, description, flag_type, layer, state, value,
+		       default_value, supported_values, archived_at
 		FROM feature_flags.flags
 		WHERE flag_id = $1`, flagID).Scan(
-		&displayName, &description, &flagType, &layer, &state, &valueBytes, &archivedAt)
+		&displayName, &description, &flagType, &layer, &state, &valueBytes,
+		&defaultBytes, &supportedBytes, &archivedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -535,22 +518,26 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 	if err != nil {
 		s.logger.Warn("failed to unmarshal flag value", "flag_id", flagID, "error", err)
 	}
-
-	fd := &pbflagsv1.FlagDetail{
-		FlagId:       flagID,
-		DisplayName:  displayName,
-		Description:  description,
-		FlagType:     parseFlagType(flagType),
-		Layer:        layer,
-		State:        parseState(state),
-		CurrentValue: val,
-		Archived:     archivedAt != nil,
+	defaultVal, err := unmarshalFlagValue(defaultBytes)
+	if err != nil {
+		s.logger.Warn("failed to unmarshal default value", "flag_id", flagID, "error", err)
+	}
+	supportedVals, err := unmarshalSupportedValues(supportedBytes)
+	if err != nil {
+		s.logger.Warn("failed to unmarshal supported_values", "flag_id", flagID, "error", err)
 	}
 
-	if desc, ok := s.getDesc(flagID); ok {
-		fd.DefaultValue = desc.Default
-		fd.FlagType = desc.FlagType
-		fd.SupportedValues = desc.SupportedValues
+	fd := &pbflagsv1.FlagDetail{
+		FlagId:          flagID,
+		DisplayName:     displayName,
+		Description:     description,
+		FlagType:        parseFlagType(flagType),
+		Layer:           layer,
+		State:           parseState(state),
+		CurrentValue:    val,
+		DefaultValue:    defaultVal,
+		SupportedValues: supportedVals,
+		Archived:        archivedAt != nil,
 	}
 
 	rows, err := s.pool.Query(ctx, `
@@ -688,6 +675,17 @@ func unmarshalFlagValue(b []byte) (*pbflagsv1.FlagValue, error) {
 		return nil, nil
 	}
 	v := &pbflagsv1.FlagValue{}
+	if err := proto.Unmarshal(b, v); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+func unmarshalSupportedValues(b []byte) (*pbflagspb.SupportedValues, error) {
+	if len(b) == 0 {
+		return nil, nil
+	}
+	v := &pbflagspb.SupportedValues{}
 	if err := proto.Unmarshal(b, v); err != nil {
 		return nil, err
 	}

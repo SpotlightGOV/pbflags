@@ -17,10 +17,13 @@ import (
 	"github.com/playwright-community/playwright-go"
 	"github.com/stretchr/testify/require"
 
+	"github.com/jackc/pgx/v5"
+
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/internal/admin"
 	"github.com/SpotlightGOV/pbflags/internal/admin/web"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
+	defsync "github.com/SpotlightGOV/pbflags/internal/sync"
 	"github.com/SpotlightGOV/pbflags/internal/testdb"
 )
 
@@ -75,6 +78,18 @@ func seedFlags(t *testing.T, pool *pgxpool.Pool, prefix string) {
 	require.NoError(t, err)
 }
 
+// syncDefs uses the sync package to write flag definitions to the database.
+func syncDefs(t *testing.T, pool *pgxpool.Pool, defs []evaluator.FlagDef) {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := pgx.ConnectConfig(ctx, pool.Config().ConnConfig)
+	require.NoError(t, err)
+	defer conn.Close(ctx)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	_, err = defsync.SyncDefinitions(ctx, conn, defs, logger)
+	require.NoError(t, err)
+}
+
 // setupEnv starts a PostgreSQL test container, a web admin server, and
 // a Playwright browser. The returned testEnv is cleaned up automatically.
 func setupEnv(t *testing.T) *testEnv {
@@ -83,14 +98,12 @@ func setupEnv(t *testing.T) *testEnv {
 	_, pool := testdb.Require(t)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	// Build a minimal flag set and store so the web handler can serve pages.
+	// Build a minimal flag set, sync to DB, then create a store.
 	prefix := "e2e_svc"
 	defs := testDefs(prefix)
-	defaults := evaluator.NewDefaults(defs)
-	reg := evaluator.NewRegistry(defaults)
+	syncDefs(t, pool, defs)
 
 	store := admin.NewStore(pool, logger)
-	store.SetRegistry(reg)
 
 	handler, err := web.NewHandler(store, logger, web.EnvConfig{Name: "e2e-test"})
 	require.NoError(t, err)

@@ -191,11 +191,9 @@ func run(cfg evaluator.Config, standalone bool, devAssetsDir string, logger *slo
 
 	// ── Definitions ─────────────────────────────────────────────────
 
-	var defs []evaluator.FlagDef
-
 	if standalone {
 		// Parse descriptors and sync to DB.
-		defs, err = evaluator.ParseDescriptorFile(cfg.Descriptors)
+		defs, err := evaluator.ParseDescriptorFile(cfg.Descriptors)
 		if err != nil {
 			return fmt.Errorf("parse descriptors: %w", err)
 		}
@@ -214,14 +212,6 @@ func run(cfg evaluator.Config, standalone bool, devAssetsDir string, logger *slo
 			"flags_upserted", result.FlagsUpserted,
 			"flags_archived", result.FlagsArchived)
 	}
-
-	// Load definitions from DB (both modes) for admin store metadata.
-	defs, err = evaluator.LoadDefinitionsFromDB(ctx, pool)
-	if err != nil {
-		return fmt.Errorf("load definitions: %w", err)
-	}
-	reg := evaluator.NewRegistry(evaluator.NewDefaults(defs))
-	logger.Info("definitions loaded", "flags", len(defs))
 
 	// ── Cache + Evaluator ───────────────────────────────────────────
 
@@ -273,8 +263,7 @@ func run(cfg evaluator.Config, standalone bool, devAssetsDir string, logger *slo
 	// ── Admin server ────────────────────────────────────────────────
 
 	adminLogger := logger.With("component", "admin")
-	store := admin.NewStore(pool, adminLogger, defs)
-	store.SetRegistry(reg)
+	store := admin.NewStore(pool, adminLogger)
 	adminService := admin.NewAdminService(store, adminLogger)
 
 	adminMux := http.NewServeMux()
