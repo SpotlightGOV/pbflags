@@ -2,8 +2,9 @@
 
 **Status**: Complete
 **Date**: 2026-03-18
-**Supersedes**: [2026-03-11-feature-flags.md](2026-03-11-feature-flags.md) (v1,
-in-process evaluation)
+**Last revised**: 2026-03-18
+**Supersedes**: [2026-03-11-feature-flags.md](2026-03-11-feature-flags.md) (v1, in-process evaluation)
+**Superseded by**: [2026-04-09-db-centric-flag-definitions.md](2026-04-09-db-centric-flag-definitions.md)
 
 ## Goal
 

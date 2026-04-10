@@ -1,9 +1,10 @@
 # Repeated-Valued (List) Flags
 
-**Issue:** pb-i32
 **Status:** Complete
-**Author:** bmt
 **Date:** 2026-04-09
+**Last revised:** 2026-04-09
+**Issue:** pb-i32
+**Author:** bmt
 
 ## Problem
 

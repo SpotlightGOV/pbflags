@@ -2,6 +2,8 @@
 
 **Status**: Complete
 **Date**: 2026-03-11
+**Last revised**: 2026-03-11
+**Superseded by**: [2026-03-18-feature-flags-v2.md](2026-03-18-feature-flags-v2.md)
 
 ## Goal
 
