@@ -127,6 +127,17 @@ The admin UI uses URLs where the flag id is `feature/field` (contains `/`). Wild
 
 When adding new routes, keep multi-segment ids in a trailing `{...}` segment only.
 
+## Database migrations
+
+Migrations live in `db/migrations/` and are applied by goose. `pbflags-sync` and `pbflags-admin --standalone` run them automatically on startup; `pbflags-admin` (normal) and `pbflags-evaluator` only check the schema version.
+
+**Backwards compatibility rule:** every migration must be compatible with the previous release's queries. During a production rollout, `pbflags-sync` applies the new schema first, then admin and evaluator instances are updated — so the old code runs against the new schema during the rollout window. Concretely:
+
+- Add columns as nullable or with defaults.
+- Add tables freely.
+- Rename or drop columns across two releases (add new, then remove old).
+- Never change column types in place.
+
 ## Common commands
 
 See the root **`Makefile`** and **`README.md`** for `make build`, `make generate`, and server startup examples.

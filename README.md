@@ -340,6 +340,22 @@ pbflags-evaluator \
 
 `pbflags-sync` runs migrations automatically before syncing definitions. Admin and evaluator instances poll the database for changes (default 60s, configurable via `--definition-poll-interval`).
 
+## Upgrading
+
+### Standalone
+
+Replace the binary (or image) and restart. Standalone mode runs migrations and syncs definitions on startup, so no manual steps are needed.
+
+### Production (multi-instance)
+
+Upgrade `pbflags-sync` first. It runs migrations before syncing, so the database schema is updated before any other component sees it:
+
+1. **Deploy the new `pbflags-sync`** in your CI/CD pipeline. This applies any pending migrations and syncs definitions.
+2. **Roll out `pbflags-admin`** instances. They check the schema version on startup and will work with the updated schema.
+3. **Roll out `pbflags-evaluator`** instances. They only read from the database, so they are safe to update last.
+
+This order matters because `pbflags-admin` and `pbflags-evaluator` do not run migrations — they verify the schema is at the expected version and fail fast if it is not. Always let `pbflags-sync` go first.
+
 ## Admin Web UI
 
 `pbflags-admin` serves an embedded web dashboard for flag management. The UI is built with server-rendered HTML and htmx.
@@ -701,6 +717,19 @@ To regenerate notes, delete the file and re-run `make release-notes`.
 | TypeScript | Planned | - |
 | Rust | Planned | - |
 | Node | Planned | - |
+
+## Contributing
+
+### Database migration compatibility
+
+Database migrations must be backwards-compatible with at least the previous release. Users upgrade `pbflags-sync` first (which applies migrations), then roll out `pbflags-admin` and `pbflags-evaluator` — meaning the old version of admin and evaluator will run against the new schema during the rollout window. If a migration breaks the previous version's queries, that rollout window becomes a downtime window.
+
+In practice this means:
+
+- **Add columns** as nullable or with defaults — old code ignores them.
+- **Add tables** freely — old code does not query them.
+- **Rename or remove columns** across two releases: first release adds the new column and writes to both; second release drops the old column.
+- **Never change column types in place.** Add a new column, migrate data, drop the old one in a subsequent release.
 
 ## License
 
