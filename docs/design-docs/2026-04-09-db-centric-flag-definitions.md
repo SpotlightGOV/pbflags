@@ -272,9 +272,36 @@ listener connection.
 ### Failure modes
 
 Sync can fail for three reasons: the descriptor can't be parsed, the
-database is unreachable, or the sync detects a type/layer conflict (an
-operator error that requires a two-deploy fix per the v1 design). Each
+database is unreachable, or the sync detects a type/layer conflict. Each
 failure type has different behavior depending on when it occurs.
+
+**Principle: the database is authoritative.** When a type/layer conflict
+is detected, the DB's definition wins. The sync skips the conflicting
+flag(s), logs a loud warning, and the server continues. The server never
+refuses to start or reload due to a type/layer mismatch.
+
+This is important for consistency: if the server accepts a state while
+running (keeps current registry on fsnotify conflict), it must also accept
+that same state on restart. A VM crash or maintenance reboot should not
+turn a running server into a server that refuses to start. The lint checks
+and CI pipeline are the enforcement gates for type/layer changes — the
+server is not a second enforcement layer.
+
+**Type/layer conflict handling (both startup and reload):**
+
+1. Sync encounters a flag where the descriptor's type or layer differs
+   from the DB's type or layer
+2. **Skip the conflicting upsert** — the DB row is unchanged
+3. **Log a warning** naming the flag, the mismatch (e.g.,
+   `flag "discovery/1": descriptor type STRING conflicts with DB type BOOL,
+   keeping DB definition`), and how to fix it (two-deploy process)
+4. **Build the registry from a merged view** — descriptor definitions for
+   flags that synced cleanly, DB definitions for flags that conflicted
+5. Server starts / reload proceeds normally
+
+This means the conflicting flag uses the DB's type, layer, and default
+value — consistent with what distributed instances, the admin UI, and
+override validation all see.
 
 **Monolithic mode — startup failures:**
 
@@ -282,7 +309,7 @@ failure type has different behavior depending on when it occurs.
 |---------|----------|-----------|
 | Descriptor parse fails | **Fail to start.** | Server can't build registry without definitions. Same as today. |
 | DB unreachable | **Start and serve.** Registry built from descriptor. Sync retries on poll interval. Admin UI shows stale definitions until DB recovers. | Evaluator has everything it needs from the descriptor. DB is only needed for overrides/kills, which degrade gracefully via cache. |
-| Type/layer conflict | **Fail to start.** | Operator error. The descriptor contains a breaking change (type or layer mutation) that conflicts with existing DB state. Must be fixed via two-deploy process: remove old field first, then add new field with new field number. |
+| Type/layer conflict | **Start and serve.** Skip conflicting upserts, merge registry (descriptor + DB for conflicts), log warnings. | DB is authoritative. See above. |
 
 **Monolithic mode — fsnotify reload failures:**
 
@@ -290,7 +317,7 @@ failure type has different behavior depending on when it occurs.
 |---------|----------|-----------|
 | Descriptor parse fails | Log error, **keep current registry.** | Same as today. Corrupted descriptor can't take down a running evaluator. |
 | DB unreachable | **Swap registry from new descriptor.** Log warning about sync failure, retry sync on next poll. | Evaluator should serve updated defaults. DB sync is a side effect — its failure shouldn't block the evaluator from using better data. |
-| Type/layer conflict | Log error, **keep current registry.** Do not swap. DB unchanged. | The new descriptor has a breaking change. Swapping the registry would put the evaluator and DB out of sync (evaluator sees new type, DB has old type, admin UI would set values of wrong type). |
+| Type/layer conflict | **Swap registry with merged view** (new descriptor + DB for conflicts). Log warnings. | Same merge behavior as startup. DB is authoritative for conflicting flags. |
 
 **Distributed mode — startup failures:**
 
@@ -299,8 +326,8 @@ failure type has different behavior depending on when it occurs.
 | DB unreachable | **Fail to start.** | No descriptor to fall back on. Server can't build registry. |
 
 Type/layer conflicts can't occur in distributed mode — `pbflags-sync`
-catches them and fails before the server ever starts. Parse failures can't
-occur because there's no descriptor to parse.
+catches them and fails the CI job before the server ever starts. Parse
+failures can't occur because there's no descriptor to parse.
 
 **Distributed mode — poll reload failures:**
 
@@ -312,6 +339,13 @@ occur because there's no descriptor to parse.
 unaffected by DB outages. Evaluation continues using cached state and
 compiled defaults. The definition poller backs off using the existing
 health tracker (2x, 4x, 8x capped).
+
+**Note on `pbflags-sync` (distributed mode):** `pbflags-sync` continues
+to **fail hard** on type/layer conflicts, blocking the CI deploy. This is
+the right behavior for the distributed workflow — the conflict is caught
+before any server instance sees the bad definitions. The "DB is
+authoritative" rule only applies to the server at runtime, not to the
+sync tool in CI.
 
 ### Comparison of deployment models
 
