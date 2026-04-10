@@ -8,20 +8,14 @@
 # Usage:
 #   next-tag.sh              # print the next tag
 #   next-tag.sh --major      # bump major instead of minor (main only)
-#   next-tag.sh --tag        # also create the git tag
-#   next-tag.sh --push       # create tag and push (implies --tag)
 
 set -euo pipefail
 
 MAJOR=false
-CREATE_TAG=false
-PUSH=false
 
 for arg in "$@"; do
   case "$arg" in
     --major) MAJOR=true ;;
-    --tag)   CREATE_TAG=true ;;
-    --push)  CREATE_TAG=true; PUSH=true ;;
     -h|--help)
       sed -n '2,/^$/s/^# //p' "$0"
       exit 0
@@ -31,34 +25,6 @@ for arg in "$@"; do
 done
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-
-# ---------------------------------------------------------------------------
-# Pre-flight checks (only when creating a tag)
-# ---------------------------------------------------------------------------
-if [ "$CREATE_TAG" = true ]; then
-  # Dirty working tree means uncommitted changes would not be in the release.
-  if [ -n "$(git status --porcelain)" ]; then
-    echo "ERROR: Working tree is dirty. Commit or stash changes before releasing." >&2
-    exit 1
-  fi
-
-  # Ensure local branch is in sync with remote. Unpushed commits would
-  # produce a tag that CI rejects ("not on main / release branch").
-  git fetch origin "$BRANCH" --quiet 2>/dev/null || true
-  LOCAL="$(git rev-parse HEAD)"
-  REMOTE="$(git rev-parse "origin/$BRANCH" 2>/dev/null || true)"
-  if [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ]; then
-    AHEAD="$(git rev-list "origin/$BRANCH..HEAD" --count)"
-    BEHIND="$(git rev-list "HEAD..origin/$BRANCH" --count)"
-    if [ "$AHEAD" -gt 0 ]; then
-      echo "ERROR: Local $BRANCH is $AHEAD commit(s) ahead of origin. Push first." >&2
-    fi
-    if [ "$BEHIND" -gt 0 ]; then
-      echo "ERROR: Local $BRANCH is $BEHIND commit(s) behind origin. Pull first." >&2
-    fi
-    exit 1
-  fi
-fi
 
 if [ "$BRANCH" = "main" ]; then
   # Find the latest tag by version to determine the next minor/major.
@@ -106,13 +72,3 @@ else
 fi
 
 echo "$NEXT_TAG"
-
-if [ "$CREATE_TAG" = true ]; then
-  git tag "$NEXT_TAG"
-  echo "Created tag $NEXT_TAG" >&2
-fi
-
-if [ "$PUSH" = true ]; then
-  git push origin "$NEXT_TAG"
-  echo "Pushed tag $NEXT_TAG" >&2
-fi

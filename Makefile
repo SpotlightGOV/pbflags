@@ -26,8 +26,9 @@ help:
 	@echo "  test-e2e        Run browser E2E tests via Playwright (HEADED=1 for visible browser)"
 	@echo ""
 	@echo "Release:"
-	@echo "  release         Tag and push a release (VERSION=, MAJOR=1, or auto)"
-	@echo "  release-notes   Generate release notes (VERSION= required)"
+	@echo "  release         Lint, test, test-e2e, then tag and push (VERSION=, MAJOR=1, or auto)"
+	@echo "                  Opens \$$EDITOR for release notes if none exist for the version"
+	@echo "  release-notes   Generate release notes, open in \$$EDITOR, and git-add (VERSION= or auto)"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  clean           Remove build artifacts"
@@ -89,31 +90,47 @@ install-codegen:
 dev-db:
 	docker compose -f docker/docker-compose.yml up -d db
 
-# Tag and push a release.
+# Full release pipeline: lint, test, test-e2e, then generate/review release
+# notes and tag.
 #   make release              — next minor from main, next patch from release branch
 #   make release MAJOR=1      — next major from main
 #   make release VERSION=v1.2.3 — explicit version
 release:
-ifdef VERSION
-	git tag $(VERSION)
-	git push origin $(VERSION)
-else ifdef MAJOR
-	.github/scripts/next-tag.sh --major --push
+ifndef VERSION
+	$(eval RELEASE_TAG := $(shell .github/scripts/next-tag.sh $(if $(MAJOR),--major)))
 else
-	.github/scripts/next-tag.sh --push
+	$(eval RELEASE_TAG := $(VERSION))
 endif
+	$(MAKE) lint
+	$(MAKE) test
+	$(MAKE) test-e2e
+	.github/scripts/release.sh $(RELEASE_TAG)
 
-# Pre-generate release notes for review before tagging.
-# Usage: make release-notes VERSION=v0.6.0
-# Notes are saved to docs/releasenotes/<VERSION>.md. Edit and commit before releasing.
-# Delete the file and re-run to regenerate.
+# Generate release notes, open in $EDITOR, and stage for commit.
+# Auto-detects version from branch (same as make release). Override with VERSION=.
+#   make release-notes                — auto-detect version
+#   make release-notes VERSION=v0.6.0 — explicit version
 release-notes:
 ifndef VERSION
-	$(error VERSION is required, e.g. make release-notes VERSION=v0.6.0)
+	$(eval RELEASE_TAG := $(shell .github/scripts/next-tag.sh $(if $(MAJOR),--major)))
+else
+	$(eval RELEASE_TAG := $(VERSION))
 endif
-	@mkdir -p docs/releasenotes
-	RELEASE_TAG=$(VERSION) OUTPUT_FILE=docs/releasenotes/$(VERSION).md \
-		.github/scripts/generate-release-notes.sh
+	@NOTES="docs/releasenotes/$(RELEASE_TAG).md"; \
+	if [ -f "$$NOTES" ]; then \
+		echo "Release notes already exist: $$NOTES"; \
+		echo "Delete the file and re-run to regenerate."; \
+		exit 1; \
+	fi; \
+	mkdir -p docs/releasenotes; \
+	RELEASE_TAG=$(RELEASE_TAG) OUTPUT_FILE=$$NOTES \
+		.github/scripts/generate-release-notes.sh; \
+	echo ""; \
+	echo "Opening release notes for review..."; \
+	$${EDITOR:-vi} "$$NOTES"; \
+	git add "$$NOTES"; \
+	echo "Release notes staged: $$NOTES"; \
+	echo "Commit when ready, or run 'make release' to finish the release."
 
 # Run the admin server locally with live asset reloading (standalone mode).
 # CSS/template changes take effect on browser refresh; Go changes need a restart.
