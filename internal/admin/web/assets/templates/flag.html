@@ -279,6 +279,62 @@
       {{end}}
     </div>
     <button type="submit" class="btn btn-primary btn-sm">Add Override</button>
+    <button type="button" class="btn btn-sm bulk-import-toggle" onclick="toggleBulkImport(this)">Bulk Import</button>
   </form>
+
+  <!-- Bulk import panel -->
+  <div class="bulk-import-panel" style="display:none"
+       data-flag-id="{{.Flag.FlagId}}" data-flag-type="{{.Flag.FlagType}}">
+    <div class="bulk-import-header">
+      <div class="bulk-import-tabs">
+        <button class="bulk-tab active" data-tab="paste" onclick="switchBulkTab(this, 'paste')">Paste</button>
+        <button class="bulk-tab" data-tab="upload" onclick="switchBulkTab(this, 'upload')">Upload CSV</button>
+      </div>
+      <button class="btn-icon bulk-import-close" onclick="toggleBulkImport(this)" title="Close">&times;</button>
+    </div>
+
+    <div class="bulk-tab-content" data-tab="paste">
+      <textarea class="bulk-textarea" placeholder="entity_id:value&#10;user-101:true&#10;user-202:false&#10;org-33:enabled"
+                oninput="updateBulkPreview(this)"></textarea>
+      <div class="bulk-format-hint">
+        One per line &mdash; <code>entity_id:value</code> or <code>entity_id,value</code>
+      </div>
+    </div>
+
+    <div class="bulk-tab-content" data-tab="upload" style="display:none">
+      <div class="bulk-dropzone" ondrop="handleBulkDrop(event)" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')">
+        <div class="bulk-dropzone-content">
+          <div class="bulk-dropzone-icon">&#8593;</div>
+          <div class="bulk-dropzone-label">Drop a CSV file here</div>
+          <div class="bulk-dropzone-or">or</div>
+          <label class="btn btn-sm bulk-file-label">
+            Choose File
+            <input type="file" accept=".csv,.tsv,.txt" class="bulk-file-input" onchange="handleBulkFile(this)">
+          </label>
+        </div>
+        <div class="bulk-file-name"></div>
+      </div>
+    </div>
+
+    <div class="bulk-preview">
+      <span class="bulk-preview-count">0 overrides</span>
+      <span class="bulk-preview-errors"></span>
+    </div>
+
+    <div class="bulk-progress" style="display:none">
+      <div class="bulk-progress-track">
+        <div class="bulk-progress-bar"></div>
+      </div>
+      <div class="bulk-progress-label">Importing&hellip;</div>
+    </div>
+
+    <div class="bulk-results" style="display:none"></div>
+
+    <div class="bulk-actions">
+      <button class="btn btn-primary btn-sm bulk-import-btn" onclick="executeBulkImport(this)" disabled>
+        Import Overrides
+      </button>
+    </div>
+  </div>
 </div>
 {{end}}

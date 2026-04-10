@@ -153,6 +153,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	// patterns like /api/flags/{flagID...}/state panic at registration.
 	inner.HandleFunc("POST /api/flags/state/{flagID...}", h.updateFlagState)
 	inner.HandleFunc("POST /api/flags/overrides/{flagID...}", h.setOverride)
+	inner.HandleFunc("POST /api/flags/overrides/bulk/{flagID...}", h.bulkImportOverrides)
 	inner.HandleFunc("DELETE /api/flags/overrides/entity/{entityID}/{flagID...}", h.removeOverride)
 
 	mux.Handle("/", h.csrfProtect(inner))
@@ -499,6 +500,85 @@ func (h *Handler) removeOverride(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.render(w, "overrides_section", map[string]any{"Flag": flag})
+}
+
+// bulkImportOverrides accepts a JSON payload of entity_id:value pairs and
+// upserts them as overrides for the given flag. Returns a JSON summary.
+func (h *Handler) bulkImportOverrides(w http.ResponseWriter, r *http.Request) {
+	flagID := r.PathValue("flagID")
+	if !validFlagID.MatchString(flagID) {
+		writeJSON(w, http.StatusBadRequest, bulkResult{Errors: []string{"invalid flag_id format"}})
+		return
+	}
+
+	var req struct {
+		Pairs    []bulkPair `json:"pairs"`
+		FlagType string     `json:"flag_type"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, bulkResult{Errors: []string{"invalid JSON: " + err.Error()}})
+		return
+	}
+	if len(req.Pairs) == 0 {
+		writeJSON(w, http.StatusBadRequest, bulkResult{Errors: []string{"no pairs provided"}})
+		return
+	}
+
+	var result bulkResult
+	for i, p := range req.Pairs {
+		if p.EntityID == "" {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("row %d: empty entity_id", i+1))
+			continue
+		}
+
+		var value *pbflagsv1.FlagValue
+		if p.Value != "" {
+			var err error
+			value, err = parseFlagValue(req.FlagType, p.Value)
+			if err != nil {
+				result.Failed++
+				result.Errors = append(result.Errors, fmt.Sprintf("row %d (%s): %v", i+1, p.EntityID, err))
+				continue
+			}
+		}
+
+		err := h.store.SetFlagOverride(r.Context(), flagID, p.EntityID, pbflagsv1.State_STATE_ENABLED, value, "admin-ui/bulk-import")
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("row %d (%s): %v", i+1, p.EntityID, err))
+			continue
+		}
+		result.Created++ // simplified: count all successes as created
+	}
+	result.Total = len(req.Pairs)
+
+	h.logger.Info("bulk override import",
+		"flag_id", flagID,
+		"total", result.Total,
+		"created", result.Created,
+		"failed", result.Failed,
+	)
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+type bulkPair struct {
+	EntityID string `json:"entity_id"`
+	Value    string `json:"value"`
+}
+
+type bulkResult struct {
+	Total   int      `json:"total"`
+	Created int      `json:"created"`
+	Failed  int      `json:"failed"`
+	Errors  []string `json:"errors,omitempty"`
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
 }
 
 // ---------------------------------------------------------------------------

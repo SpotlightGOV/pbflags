@@ -273,6 +273,219 @@
     }
     populateLayerFilter();
     document.body.addEventListener('htmx:afterSettle', populateLayerFilter);
+
+    // -----------------------------------------------------------------------
+    // Bulk import
+    // -----------------------------------------------------------------------
+
+    // Shared state for the bulk import panel.
+    var _bulkPairs = [];
+
+    function toggleBulkImport(btn) {
+      var panel = btn.closest('.detail-section').querySelector('.bulk-import-panel');
+      if (!panel) return;
+      var showing = panel.style.display !== 'none';
+      panel.style.display = showing ? 'none' : '';
+      if (!showing) {
+        // Reset state when opening.
+        _bulkPairs = [];
+        var ta = panel.querySelector('.bulk-textarea');
+        if (ta) ta.value = '';
+        var dz = panel.querySelector('.bulk-dropzone');
+        if (dz) { dz.classList.remove('has-file'); dz.querySelector('.bulk-file-name').textContent = ''; }
+        updateBulkUI(panel);
+        panel.querySelector('.bulk-results').style.display = 'none';
+        panel.querySelector('.bulk-progress').style.display = 'none';
+      }
+    }
+
+    function switchBulkTab(btn, tab) {
+      var panel = btn.closest('.bulk-import-panel');
+      panel.querySelectorAll('.bulk-tab').forEach(function(t) { t.classList.toggle('active', t.getAttribute('data-tab') === tab); });
+      panel.querySelectorAll('.bulk-tab-content').forEach(function(c) { c.style.display = c.getAttribute('data-tab') === tab ? '' : 'none'; });
+    }
+
+    function parseBulkText(raw) {
+      var lines = raw.split(/[\n\r]+/);
+      var pairs = [];
+      var errs = [];
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line || line.charAt(0) === '#') continue; // skip empty/comment lines
+        // Split on first : or , (support both delimiters).
+        var sep = line.indexOf(':');
+        if (sep === -1) sep = line.indexOf(',');
+        if (sep === -1) {
+          errs.push('line ' + (i + 1) + ': missing delimiter');
+          continue;
+        }
+        var eid = line.substring(0, sep).trim();
+        var val = line.substring(sep + 1).trim();
+        if (!eid) { errs.push('line ' + (i + 1) + ': empty entity_id'); continue; }
+        pairs.push({entity_id: eid, value: val});
+      }
+      return {pairs: pairs, errors: errs};
+    }
+
+    function parseCSV(text) {
+      var lines = text.split(/[\n\r]+/);
+      var pairs = [];
+      var errs = [];
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
+        // Detect header row.
+        if (i === 0 && /entity.?id/i.test(line)) continue;
+        var sep = line.indexOf(',');
+        if (sep === -1) sep = line.indexOf('\t');
+        if (sep === -1) {
+          errs.push('row ' + (i + 1) + ': missing delimiter');
+          continue;
+        }
+        var eid = line.substring(0, sep).trim().replace(/^["']|["']$/g, '');
+        var val = line.substring(sep + 1).trim().replace(/^["']|["']$/g, '');
+        // If there are more columns, ignore them.
+        var nextSep = val.indexOf(',');
+        if (nextSep !== -1) val = val.substring(0, nextSep).trim().replace(/^["']|["']$/g, '');
+        if (!eid) { errs.push('row ' + (i + 1) + ': empty entity_id'); continue; }
+        pairs.push({entity_id: eid, value: val});
+      }
+      return {pairs: pairs, errors: errs};
+    }
+
+    function updateBulkPreview(el) {
+      var panel = el.closest('.bulk-import-panel');
+      var ta = panel.querySelector('.bulk-textarea');
+      if (ta && panel.querySelector('.bulk-tab-content[data-tab="paste"]').style.display !== 'none') {
+        var parsed = parseBulkText(ta.value);
+        _bulkPairs = parsed.pairs;
+        updateBulkUI(panel, parsed.errors);
+      }
+    }
+
+    function updateBulkUI(panel, errs) {
+      var countEl = panel.querySelector('.bulk-preview-count');
+      var errEl = panel.querySelector('.bulk-preview-errors');
+      var btn = panel.querySelector('.bulk-import-btn');
+      var n = _bulkPairs.length;
+      countEl.textContent = n + ' override' + (n !== 1 ? 's' : '');
+      errEl.textContent = (errs && errs.length) ? errs.length + ' parse error' + (errs.length !== 1 ? 's' : '') : '';
+      btn.disabled = n === 0;
+    }
+
+    function handleBulkFile(input) {
+      if (!input.files || !input.files[0]) return;
+      readBulkFile(input.files[0], input.closest('.bulk-import-panel'));
+    }
+
+    function handleBulkDrop(e) {
+      e.preventDefault();
+      var dz = e.currentTarget;
+      dz.classList.remove('dragover');
+      var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (!file) return;
+      readBulkFile(file, dz.closest('.bulk-import-panel'));
+    }
+
+    function readBulkFile(file, panel) {
+      var dz = panel.querySelector('.bulk-dropzone');
+      var nameEl = dz.querySelector('.bulk-file-name');
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        var parsed = parseCSV(ev.target.result);
+        _bulkPairs = parsed.pairs;
+        dz.classList.add('has-file');
+        nameEl.textContent = file.name + ' (' + _bulkPairs.length + ' rows)';
+        updateBulkUI(panel, parsed.errors);
+      };
+      reader.readAsText(file);
+    }
+
+    function executeBulkImport(btn) {
+      if (!_bulkPairs.length) return;
+      var panel = btn.closest('.bulk-import-panel');
+      var flagId = panel.getAttribute('data-flag-id');
+      var flagType = panel.getAttribute('data-flag-type');
+
+      // Show progress, hide results.
+      var progressEl = panel.querySelector('.bulk-progress');
+      var barEl = panel.querySelector('.bulk-progress-bar');
+      var labelEl = panel.querySelector('.bulk-progress-label');
+      var resultsEl = panel.querySelector('.bulk-results');
+      progressEl.style.display = '';
+      resultsEl.style.display = 'none';
+      barEl.style.width = '10%';
+      btn.disabled = true;
+      labelEl.textContent = 'Importing ' + _bulkPairs.length + ' overrides\u2026';
+
+      // Animate progress bar during request.
+      var pct = 10;
+      var ticker = setInterval(function() {
+        pct = Math.min(pct + Math.random() * 15, 90);
+        barEl.style.width = pct + '%';
+      }, 300);
+
+      var csrfMatch = document.cookie.match(/(?:^|;\s*)pbflags_csrf=([^;]+)/);
+      var csrfToken = csrfMatch ? csrfMatch[1] : '';
+
+      fetch('/api/flags/overrides/bulk/' + flagId, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken
+        },
+        body: JSON.stringify({pairs: _bulkPairs, flag_type: flagType})
+      })
+      .then(function(resp) { return resp.json(); })
+      .then(function(data) {
+        clearInterval(ticker);
+        barEl.style.width = '100%';
+        setTimeout(function() {
+          progressEl.style.display = 'none';
+          showBulkResults(resultsEl, data);
+          btn.disabled = false;
+          // Refresh overrides table.
+          var section = document.getElementById('overrides-section');
+          if (section) {
+            htmx.ajax('GET', '/flags/' + flagId, {target: '#content', swap: 'innerHTML'});
+          }
+        }, 400);
+      })
+      .catch(function(err) {
+        clearInterval(ticker);
+        progressEl.style.display = 'none';
+        showToast('Bulk import failed: ' + err.message, true);
+        btn.disabled = false;
+      });
+    }
+
+    function showBulkResults(el, data) {
+      var html = '<div class="bulk-results-summary">';
+      html += '<div class="bulk-stat"><span class="bulk-stat-dot success"></span> ';
+      html += '<span class="bulk-stat-value">' + (data.created || 0) + '</span>';
+      html += '<span class="bulk-stat-label">imported</span></div>';
+      if (data.failed) {
+        html += '<div class="bulk-stat"><span class="bulk-stat-dot fail"></span> ';
+        html += '<span class="bulk-stat-value">' + data.failed + '</span>';
+        html += '<span class="bulk-stat-label">failed</span></div>';
+      }
+      html += '</div>';
+      if (data.errors && data.errors.length) {
+        html += '<div class="bulk-errors-list">';
+        data.errors.forEach(function(e) {
+          html += '<div class="bulk-error-line">' + escapeHtml(e) + '</div>';
+        });
+        html += '</div>';
+      }
+      el.innerHTML = html;
+      el.style.display = '';
+    }
+
+    function escapeHtml(str) {
+      var d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML;
+    }
   </script>
 </body>
 </html>
