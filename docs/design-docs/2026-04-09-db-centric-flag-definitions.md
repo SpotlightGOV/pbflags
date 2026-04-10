@@ -11,9 +11,10 @@
 > the evaluator is serving the correct defaults.
 >
 > This proposal makes the database the single source of truth for flag
-> definitions. `pbflags-sync` becomes the deploy-time command (like running
-> migrations), and the server loads definitions from the database — no
-> descriptor file needed at runtime.
+> definitions and supports two deployment models: a **monolithic deployment**
+> where the server handles everything (migrations, sync, reload), and a
+> **distributed deployment** where an external `pbflags-sync` job manages
+> definitions and the server only reads from the database.
 
 ---
 
@@ -57,39 +58,106 @@ system in an inconsistent state that is not immediately obvious.
 ## Proposal
 
 Make the database the single source of truth for flag definitions and
-runtime state. The server loads definitions from the database at startup,
-eliminating the requirement for `descriptors.pb` at runtime.
+runtime state. Support two deployment models that share the same DB-centric
+foundation:
 
-### New deploy workflow
+- **Monolithic deployment** — one server binary does everything
+- **Distributed deployment** — external sync job manages definitions,
+  server(s) read from DB
+
+Both models build the in-memory defaults registry from the database. The
+difference is who writes definitions to the database.
+
+## Deployment models
+
+### Monolithic deployment
+
+A single server process handles migrations, definition sync, evaluation, and
+the admin UI. Ideal for small teams, single-server setups, VMs, demos, and
+local development.
 
 ```
-1. Sync flag definitions   pbflags-sync --descriptors=descriptors.pb --database=postgres://...
-2. Start/restart server    pbflags-server --database=postgres://...
+pbflags-server --database=postgres://... --descriptors=descriptors.pb --admin=:8080
+```
+
+On startup:
+1. Run pending schema migrations
+2. Parse `descriptors.pb` and sync definitions to DB
+3. Load definitions from DB into in-memory defaults registry
+4. Start serving (evaluator + admin UI)
+
+On fsnotify (descriptor file changes):
+1. Re-parse `descriptors.pb` and re-sync to DB
+2. Reload definitions from DB, swap registry
+
+One binary, one flag file, one database. No CI pipeline, no separate sync
+job, no cron.
+
+**Multi-instance with monolithic mode:** When running multiple server
+instances with `--descriptors` (e.g., behind a load balancer), use
+`--no-migrate` and `--no-sync` on all but one instance to avoid redundant
+work at startup. The designated "leader" instance runs migrations and sync;
+the others just load definitions from DB.
+
+```
+# Leader instance — runs migrations and sync
+pbflags-server --database=postgres://... --descriptors=descriptors.pb --admin=:8080
+
+# Additional instances — read-only, skip migrate and sync
+pbflags-server --database=postgres://... --descriptors=descriptors.pb --no-migrate --no-sync
+```
+
+Note: `--no-migrate` and `--no-sync` only apply when `--descriptors` is
+provided. Without `--descriptors`, the server never writes to the database
+for definitions — it only reads.
+
+| Flag | Effect |
+|------|--------|
+| `--no-migrate` | Skip schema migrations at startup. Server fails if schema is missing. |
+| `--no-sync` | Skip definition sync at startup and on fsnotify. Server loads definitions from DB only. |
+| Both | Server behaves like distributed mode but still watches the descriptor file for... nothing. Equivalent to omitting `--descriptors`. |
+
+### Distributed deployment
+
+An external `pbflags-sync` job manages schema migrations and definition
+sync. The server only needs a database connection string. Ideal for
+multi-instance production deployments with CI/CD pipelines.
+
+```
+# In CI/CD (runs once per deploy):
+pbflags-sync --descriptors=descriptors.pb --database=postgres://...
+
+# Application deploy (any number of instances):
+pbflags-server --database=postgres://...
 ```
 
 `pbflags-sync` runs schema migrations automatically before syncing
-definitions — no separate `goose up` step. It already knows all migrations
-and they only change on new releases. Step 2 is the application deploy.
-The server needs only a database connection string.
+definitions. It embeds all goose migrations and applies pending ones
+in a transaction. This makes the deploy workflow a single command — no
+separate `goose up` step. Migrations only change on new pbflags releases,
+so running them on every sync is a fast no-op in the common case.
+
+The server loads definitions from the database at startup and polls for
+changes. No descriptor file is needed at runtime.
 
 ### What changes
 
-| Concern | Current | Proposed |
-|---------|---------|----------|
-| Server startup | Parse `descriptors.pb` → in-memory defaults | Query DB → in-memory defaults |
-| `--descriptors` flag | Required | Deprecated (backward compat only, removal planned) |
-| Definition source of truth | `descriptors.pb` file on disk | `feature_flags.features` + `feature_flags.flags` tables |
-| `pbflags-sync` | Separate deploy step, easy to forget | Single deploy command (runs migrations + syncs definitions) |
-| Admin UI flag list | Queries DB (already works) | No change |
-| Hot-reload | fsnotify on descriptor file | Poll DB or reload endpoint (see below) |
-| Descriptor file at runtime | Required on every evaluator instance | Not required |
+| Concern | Current | Monolithic | Distributed |
+|---------|---------|------------|-------------|
+| Server startup | Parse `descriptors.pb` → in-memory defaults | Migrate → sync → load DB → in-memory defaults | Load DB → in-memory defaults |
+| `--descriptors` flag | Required | Provided (enables sync + fsnotify) | Omitted (DB-only) |
+| Who runs migrations | Manual `goose up` | Server at startup | `pbflags-sync` |
+| Who syncs definitions | Manual `pbflags-sync` | Server at startup + fsnotify | `pbflags-sync` in CI/CD |
+| Definition reload | fsnotify on descriptor file | fsnotify + DB poll | DB poll + reload endpoint |
+| Descriptor file at runtime | Required | Required | Not required |
+| Best for | — | Single server, VM, demo | Multi-instance, CI/CD, production |
 
 ## Design
 
 ### Server startup: load defaults from DB
 
-On startup in root mode, if `--descriptors` is not provided, the server
-queries the database for all non-archived flag definitions:
+In both deployment models, the server ultimately loads definitions from the
+database to build its in-memory defaults registry:
 
 ```sql
 SELECT f.feature_id, f.display_name, f.description, f.owner,
@@ -104,18 +172,16 @@ ORDER BY f.feature_id, fl.field_number
 The result is mapped to `[]evaluator.FlagDef` — the same struct that
 `ParseDescriptorFile()` returns today. From there, `NewDefaults(defs)` and
 `NewRegistry(defaults)` work identically. The evaluator, admin API, and
-descriptor watcher see no difference.
+reload mechanism see no difference.
 
-If `--descriptors` IS provided, the current behavior is preserved: parse
-the file, build the registry from it. This is a **deprecated**
-backward-compatible path for existing deployments migrating to the
-DB-centric model. It will be removed in a future release (target: 2
-releases after the DB-centric mode ships). A deprecation warning is logged
-at startup when this flag is used.
+In monolithic mode, the server first runs migrations and syncs definitions
+from the descriptor to the database (unless `--no-migrate` / `--no-sync`),
+then loads from DB. In distributed mode, the server just loads from DB
+directly — `pbflags-sync` has already populated it.
 
-### `pbflags-sync` becomes the single deploy command
+### `pbflags-sync` as the CI/CD deploy command
 
-`pbflags-sync` already does the core work:
+`pbflags-sync` already does the core sync work:
 
 1. Parse `descriptors.pb`
 2. Upsert features and flags (idempotent `ON CONFLICT DO UPDATE`)
@@ -124,23 +190,18 @@ at startup when this flag is used.
 
 With this change, `pbflags-sync` also runs schema migrations automatically
 before syncing definitions. It embeds all goose migrations and applies
-pending ones in a transaction. This eliminates a separate `goose up` step
-and makes the deploy workflow a single command:
+pending ones in a transaction:
 
 ```
 pbflags-sync --descriptors=descriptors.pb --database=postgres://...
 ```
 
-Migrations only change on new pbflags releases, so running them on every
-sync is a fast no-op in the common case.
-
 ### Definition reload
 
-When flag definitions change in the database (via `pbflags-sync`), the
-server needs to refresh its in-memory defaults registry. Three mechanisms,
-in order of recommendation:
+When flag definitions change in the database, the server needs to refresh
+its in-memory defaults registry.
 
-**1. Poll `updated_at` (recommended default)**
+**1. DB poll (distributed mode, always active in root mode)**
 
 The server polls for definition changes on an interval (default 60s
 ± 20% jitter, configurable via `--definition-poll-interval`):
@@ -150,18 +211,28 @@ SELECT MAX(updated_at) FROM feature_flags.flags
 ```
 
 If the timestamp is newer than the last load, re-run the full definition
-query and swap the registry. This is simple, stateless, and works with
-any Postgres deployment. The poll is a single indexed query returning one
-row — negligible overhead.
+query and swap the registry. This is simple, stateless, and works with any
+Postgres deployment. The poll is a single indexed query returning one row —
+negligible overhead.
 
-**2. Admin reload endpoint**
+The poller uses the same health-based exponential backoff as the existing
+proxy mode health tracker — consecutive failures increase the poll interval
+(2x, 4x, 8x capped), and a single successful response resets the backoff.
+
+**2. fsnotify (monolithic mode, when `--descriptors` provided)**
+
+Same mechanism as today. Descriptor file changes trigger a re-parse, re-sync
+to DB, and registry swap. The DB poll also runs, so other instances (if any)
+pick up the change within the poll interval.
+
+**3. Admin reload endpoint**
 
 `POST /admin/reload-definitions` triggers an immediate refresh. Useful for:
 - CI/CD pipelines that run `pbflags-sync` then poke the server
 - Manual recovery
 - Environments where polling is undesirable
 
-**3. LISTEN/NOTIFY (optional, future)**
+**4. LISTEN/NOTIFY (future)**
 
 `pbflags-sync` could issue `NOTIFY flag_definitions_changed` after its
 transaction commits. The server subscribes with `LISTEN`. This gives
@@ -171,46 +242,34 @@ listener connection.
 
 ### Fallback and resilience
 
-**DB unreachable at startup:** If the server cannot load definitions from
-the database, it fails to start. This is the same behavior as today when
-`descriptors.pb` is missing or unparseable — the server cannot serve
-without knowing what flags exist.
+**DB unreachable at startup:** The server fails to start. This is the same
+behavior as today when `descriptors.pb` is missing or unparseable — the
+server cannot serve without knowing what flags exist.
 
 **DB unreachable after startup:** The in-memory defaults registry is
 unaffected. Evaluation continues using cached state and compiled defaults,
-same as today. The definition poller uses the same health-based exponential
-backoff as the existing proxy mode health tracker — consecutive failures
-increase the poll interval (2×, 4×, 8× capped), and a single successful
-response resets the backoff. This prevents a failing database from being
-overwhelmed by definition poll retries from multiple server instances.
+same as today. The definition poller backs off using the health tracker.
 
-**Descriptor mode (`--descriptors` provided):** Deprecated backward
-compatibility. The descriptor file is parsed, the registry is built from it,
-fsnotify hot-reload works. The database is still used for runtime state but
-NOT for definitions. This mode will be removed in a future release — see
-migration plan below.
+**Monolithic mode, descriptor parse failure:** Same as today — the server
+logs an error and continues serving with the current registry. The failed
+parse does not sync to the database, so other instances are unaffected.
 
-### Comparison to descriptor-centric model
+### Comparison of deployment models
 
-| Property | Descriptor-centric | DB-centric |
-|----------|--------------------|------------|
-| Cold-start without DB | Yes (descriptor provides defaults) | No (DB required) |
-| Cold-start without descriptor file | No | Yes |
-| Deploy steps | Deliver descriptor + run sync + start server | Run sync + start server |
-| Hot-reload latency | Instant (fsnotify) | Poll interval (default 60s) |
-| Admin UI shows new flags | Only after sync | Immediately after sync |
-| Operational complexity | File delivery infrastructure required | Standard DB deploy pipeline |
-| Definition source of truth | Descriptor file | Database |
-
-The DB-centric model trades cold-start-without-DB resilience (a rare
-scenario — if the DB is down at deploy time, nothing else works either) for
-a dramatically simpler operational model.
+| Property | Monolithic | Distributed |
+|----------|------------|-------------|
+| Deploy complexity | Minimal (one binary, one file) | Standard CI/CD pipeline |
+| Scaling | Single instance (or leader + followers) | Any number of instances |
+| Definition reload | Instant (fsnotify) + DB poll | DB poll (60s default) + reload endpoint |
+| Operational overhead | None — server handles everything | Run `pbflags-sync` in deploy pipeline |
+| Descriptor file at runtime | Required on server | Not required (only in CI) |
 
 ## What does NOT change
 
 - **Proto definitions** — flags are still defined in proto, compiled to
   `descriptors.pb`, and used by `pbflags-sync` and `protoc-gen-pbflags`
 - **`pbflags-sync` interface** — same binary, same flags, same behavior
+  (plus embedded migrations)
 - **Evaluation logic** — same precedence chain (kill set → override →
   global state → compiled default)
 - **Admin API** — already reads from DB; no changes needed for flag listing
@@ -223,21 +282,14 @@ a dramatically simpler operational model.
 
 | Phase | Work |
 |-------|------|
-| **1. Embed migrations in `pbflags-sync`** | Embed goose migrations in the sync binary. Run pending migrations automatically before syncing definitions. Single command replaces `goose up` + `pbflags-sync`. |
+| **1. Embed migrations** | Embed goose migrations in both `pbflags-sync` and `pbflags-server`. Run pending migrations automatically (skipped with `--no-migrate`). |
 | **2. DB definition loader** | New function `LoadDefinitionsFromDB(pool) ([]FlagDef, error)` that queries features+flags and returns the same `[]FlagDef` slice that `ParseDescriptorFile` returns. |
-| **3. Server startup** | When `--descriptors` is empty, call `LoadDefinitionsFromDB` instead of `ParseDescriptorFile`. Build registry identically. Log deprecation warning when `--descriptors` is used. |
-| **4. Definition poller** | Background goroutine that polls `MAX(updated_at)` with jitter (± 20%) and swaps the registry when definitions change. Reuses `Registry.Swap()` and the existing `HealthTracker` backoff logic. |
-| **5. Admin registry access** | Give the admin service a reference to the `Registry` (or a reload callback) instead of a static `[]FlagDef` slice. The admin's metadata enrichment reads from `registry.Load()` so it stays current after definition reloads. |
-| **6. Reload endpoint** | `POST /admin/reload-definitions` triggers an immediate definition refresh. |
-| **7. Documentation** | Update README, getting-started guide, and deploy examples to show the DB-centric workflow as the default. Document `--descriptors` as deprecated with a migration guide. |
-
-### `--descriptors` deprecation timeline
-
-| Release | Behavior |
-|---------|----------|
-| **v0.N** (this change) | DB-centric is the default. `--descriptors` still works, logs a deprecation warning at startup. |
-| **v0.N+1** | `--descriptors` logs a louder warning (repeated every 24h). |
-| **v0.N+2** | `--descriptors` removed. Server requires DB definitions. |
+| **3. Embed sync in server** | Extract sync logic from `pbflags-sync` into a shared package. Call it from the server on startup and fsnotify when `--descriptors` is provided (skipped with `--no-sync`). |
+| **4. Server startup modes** | When `--descriptors` is provided: migrate → sync → load from DB. When omitted: load from DB only. Both paths build the registry identically. |
+| **5. Definition poller** | Background goroutine that polls `MAX(updated_at)` with jitter (± 20%) and swaps the registry when definitions change. Reuses `Registry.Swap()` and the existing `HealthTracker` backoff logic. |
+| **6. Admin registry access** | Give the admin service a reference to the `Registry` (or a reload callback) instead of a static `[]FlagDef` slice. The admin's metadata enrichment reads from `registry.Load()` so it stays current after definition reloads. |
+| **7. Reload endpoint** | `POST /admin/reload-definitions` triggers an immediate definition refresh. |
+| **8. Documentation** | Update README, getting-started guide, and deploy examples. Document both deployment models with clear guidance on when to use each. |
 
 ## Open questions
 
