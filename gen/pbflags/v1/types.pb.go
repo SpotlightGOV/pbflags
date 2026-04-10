@@ -31,6 +31,10 @@ const (
 	FlagType_FLAG_TYPE_STRING      FlagType = 2
 	FlagType_FLAG_TYPE_INT64       FlagType = 3
 	FlagType_FLAG_TYPE_DOUBLE      FlagType = 4
+	FlagType_FLAG_TYPE_BOOL_LIST   FlagType = 5
+	FlagType_FLAG_TYPE_STRING_LIST FlagType = 6
+	FlagType_FLAG_TYPE_INT64_LIST  FlagType = 7
+	FlagType_FLAG_TYPE_DOUBLE_LIST FlagType = 8
 )
 
 // Enum value maps for FlagType.
@@ -41,6 +45,10 @@ var (
 		2: "FLAG_TYPE_STRING",
 		3: "FLAG_TYPE_INT64",
 		4: "FLAG_TYPE_DOUBLE",
+		5: "FLAG_TYPE_BOOL_LIST",
+		6: "FLAG_TYPE_STRING_LIST",
+		7: "FLAG_TYPE_INT64_LIST",
+		8: "FLAG_TYPE_DOUBLE_LIST",
 	}
 	FlagType_value = map[string]int32{
 		"FLAG_TYPE_UNSPECIFIED": 0,
@@ -48,6 +56,10 @@ var (
 		"FLAG_TYPE_STRING":      2,
 		"FLAG_TYPE_INT64":       3,
 		"FLAG_TYPE_DOUBLE":      4,
+		"FLAG_TYPE_BOOL_LIST":   5,
+		"FLAG_TYPE_STRING_LIST": 6,
+		"FLAG_TYPE_INT64_LIST":  7,
+		"FLAG_TYPE_DOUBLE_LIST": 8,
 	}
 )
 
@@ -131,6 +143,184 @@ func (State) EnumDescriptor() ([]byte, []int) {
 	return file_pbflags_v1_types_proto_rawDescGZIP(), []int{1}
 }
 
+// List wrapper messages. Each wraps a repeated scalar to allow inclusion
+// in the FlagValue oneof (proto3 does not allow repeated fields in oneofs).
+type BoolList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Values        []bool                 `protobuf:"varint,1,rep,packed,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BoolList) Reset() {
+	*x = BoolList{}
+	mi := &file_pbflags_v1_types_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BoolList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BoolList) ProtoMessage() {}
+
+func (x *BoolList) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_types_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BoolList.ProtoReflect.Descriptor instead.
+func (*BoolList) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_types_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *BoolList) GetValues() []bool {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
+type StringList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Values        []string               `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StringList) Reset() {
+	*x = StringList{}
+	mi := &file_pbflags_v1_types_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StringList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StringList) ProtoMessage() {}
+
+func (x *StringList) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_types_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StringList.ProtoReflect.Descriptor instead.
+func (*StringList) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_types_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *StringList) GetValues() []string {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
+type Int64List struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Values        []int64                `protobuf:"varint,1,rep,packed,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Int64List) Reset() {
+	*x = Int64List{}
+	mi := &file_pbflags_v1_types_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Int64List) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Int64List) ProtoMessage() {}
+
+func (x *Int64List) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_types_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Int64List.ProtoReflect.Descriptor instead.
+func (*Int64List) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_types_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Int64List) GetValues() []int64 {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
+type DoubleList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Values        []float64              `protobuf:"fixed64,1,rep,packed,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DoubleList) Reset() {
+	*x = DoubleList{}
+	mi := &file_pbflags_v1_types_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DoubleList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DoubleList) ProtoMessage() {}
+
+func (x *DoubleList) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_types_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DoubleList.ProtoReflect.Descriptor instead.
+func (*DoubleList) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_types_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *DoubleList) GetValues() []float64 {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
 // FlagValue is the typed value container used end-to-end: from definition
 // through admin server through evaluator to client. No string encoding anywhere.
 // The admin server stores these as serialized protobuf bytes (opaque).
@@ -142,6 +332,10 @@ type FlagValue struct {
 	//	*FlagValue_StringValue
 	//	*FlagValue_Int64Value
 	//	*FlagValue_DoubleValue
+	//	*FlagValue_BoolListValue
+	//	*FlagValue_StringListValue
+	//	*FlagValue_Int64ListValue
+	//	*FlagValue_DoubleListValue
 	Value         isFlagValue_Value `protobuf_oneof:"value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -149,7 +343,7 @@ type FlagValue struct {
 
 func (x *FlagValue) Reset() {
 	*x = FlagValue{}
-	mi := &file_pbflags_v1_types_proto_msgTypes[0]
+	mi := &file_pbflags_v1_types_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -161,7 +355,7 @@ func (x *FlagValue) String() string {
 func (*FlagValue) ProtoMessage() {}
 
 func (x *FlagValue) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_types_proto_msgTypes[0]
+	mi := &file_pbflags_v1_types_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -174,7 +368,7 @@ func (x *FlagValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlagValue.ProtoReflect.Descriptor instead.
 func (*FlagValue) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_types_proto_rawDescGZIP(), []int{0}
+	return file_pbflags_v1_types_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *FlagValue) GetValue() isFlagValue_Value {
@@ -220,6 +414,42 @@ func (x *FlagValue) GetDoubleValue() float64 {
 	return 0
 }
 
+func (x *FlagValue) GetBoolListValue() *BoolList {
+	if x != nil {
+		if x, ok := x.Value.(*FlagValue_BoolListValue); ok {
+			return x.BoolListValue
+		}
+	}
+	return nil
+}
+
+func (x *FlagValue) GetStringListValue() *StringList {
+	if x != nil {
+		if x, ok := x.Value.(*FlagValue_StringListValue); ok {
+			return x.StringListValue
+		}
+	}
+	return nil
+}
+
+func (x *FlagValue) GetInt64ListValue() *Int64List {
+	if x != nil {
+		if x, ok := x.Value.(*FlagValue_Int64ListValue); ok {
+			return x.Int64ListValue
+		}
+	}
+	return nil
+}
+
+func (x *FlagValue) GetDoubleListValue() *DoubleList {
+	if x != nil {
+		if x, ok := x.Value.(*FlagValue_DoubleListValue); ok {
+			return x.DoubleListValue
+		}
+	}
+	return nil
+}
+
 type isFlagValue_Value interface {
 	isFlagValue_Value()
 }
@@ -240,6 +470,23 @@ type FlagValue_DoubleValue struct {
 	DoubleValue float64 `protobuf:"fixed64,4,opt,name=double_value,json=doubleValue,proto3,oneof"`
 }
 
+type FlagValue_BoolListValue struct {
+	// List variants — field numbers 5-8 mirror scalar numbers 1-4.
+	BoolListValue *BoolList `protobuf:"bytes,5,opt,name=bool_list_value,json=boolListValue,proto3,oneof"`
+}
+
+type FlagValue_StringListValue struct {
+	StringListValue *StringList `protobuf:"bytes,6,opt,name=string_list_value,json=stringListValue,proto3,oneof"`
+}
+
+type FlagValue_Int64ListValue struct {
+	Int64ListValue *Int64List `protobuf:"bytes,7,opt,name=int64_list_value,json=int64ListValue,proto3,oneof"`
+}
+
+type FlagValue_DoubleListValue struct {
+	DoubleListValue *DoubleList `protobuf:"bytes,8,opt,name=double_list_value,json=doubleListValue,proto3,oneof"`
+}
+
 func (*FlagValue_BoolValue) isFlagValue_Value() {}
 
 func (*FlagValue_StringValue) isFlagValue_Value() {}
@@ -248,26 +495,52 @@ func (*FlagValue_Int64Value) isFlagValue_Value() {}
 
 func (*FlagValue_DoubleValue) isFlagValue_Value() {}
 
+func (*FlagValue_BoolListValue) isFlagValue_Value() {}
+
+func (*FlagValue_StringListValue) isFlagValue_Value() {}
+
+func (*FlagValue_Int64ListValue) isFlagValue_Value() {}
+
+func (*FlagValue_DoubleListValue) isFlagValue_Value() {}
+
 var File_pbflags_v1_types_proto protoreflect.FileDescriptor
 
 const file_pbflags_v1_types_proto_rawDesc = "" +
 	"\n" +
 	"\x16pbflags/v1/types.proto\x12\n" +
-	"pbflags.v1\"\xa2\x01\n" +
+	"pbflags.v1\"\"\n" +
+	"\bBoolList\x12\x16\n" +
+	"\x06values\x18\x01 \x03(\bR\x06values\"$\n" +
+	"\n" +
+	"StringList\x12\x16\n" +
+	"\x06values\x18\x01 \x03(\tR\x06values\"#\n" +
+	"\tInt64List\x12\x16\n" +
+	"\x06values\x18\x01 \x03(\x03R\x06values\"$\n" +
+	"\n" +
+	"DoubleList\x12\x16\n" +
+	"\x06values\x18\x01 \x03(\x01R\x06values\"\xb1\x03\n" +
 	"\tFlagValue\x12\x1f\n" +
 	"\n" +
 	"bool_value\x18\x01 \x01(\bH\x00R\tboolValue\x12#\n" +
 	"\fstring_value\x18\x02 \x01(\tH\x00R\vstringValue\x12!\n" +
 	"\vint64_value\x18\x03 \x01(\x03H\x00R\n" +
 	"int64Value\x12#\n" +
-	"\fdouble_value\x18\x04 \x01(\x01H\x00R\vdoubleValueB\a\n" +
-	"\x05value*z\n" +
+	"\fdouble_value\x18\x04 \x01(\x01H\x00R\vdoubleValue\x12>\n" +
+	"\x0fbool_list_value\x18\x05 \x01(\v2\x14.pbflags.v1.BoolListH\x00R\rboolListValue\x12D\n" +
+	"\x11string_list_value\x18\x06 \x01(\v2\x16.pbflags.v1.StringListH\x00R\x0fstringListValue\x12A\n" +
+	"\x10int64_list_value\x18\a \x01(\v2\x15.pbflags.v1.Int64ListH\x00R\x0eint64ListValue\x12D\n" +
+	"\x11double_list_value\x18\b \x01(\v2\x16.pbflags.v1.DoubleListH\x00R\x0fdoubleListValueB\a\n" +
+	"\x05value*\xe3\x01\n" +
 	"\bFlagType\x12\x19\n" +
 	"\x15FLAG_TYPE_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eFLAG_TYPE_BOOL\x10\x01\x12\x14\n" +
 	"\x10FLAG_TYPE_STRING\x10\x02\x12\x13\n" +
 	"\x0fFLAG_TYPE_INT64\x10\x03\x12\x14\n" +
-	"\x10FLAG_TYPE_DOUBLE\x10\x04*V\n" +
+	"\x10FLAG_TYPE_DOUBLE\x10\x04\x12\x17\n" +
+	"\x13FLAG_TYPE_BOOL_LIST\x10\x05\x12\x19\n" +
+	"\x15FLAG_TYPE_STRING_LIST\x10\x06\x12\x18\n" +
+	"\x14FLAG_TYPE_INT64_LIST\x10\a\x12\x19\n" +
+	"\x15FLAG_TYPE_DOUBLE_LIST\x10\b*V\n" +
 	"\x05State\x12\x15\n" +
 	"\x11STATE_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rSTATE_ENABLED\x10\x01\x12\x11\n" +
@@ -288,18 +561,26 @@ func file_pbflags_v1_types_proto_rawDescGZIP() []byte {
 }
 
 var file_pbflags_v1_types_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_pbflags_v1_types_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_pbflags_v1_types_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_pbflags_v1_types_proto_goTypes = []any{
-	(FlagType)(0),     // 0: pbflags.v1.FlagType
-	(State)(0),        // 1: pbflags.v1.State
-	(*FlagValue)(nil), // 2: pbflags.v1.FlagValue
+	(FlagType)(0),      // 0: pbflags.v1.FlagType
+	(State)(0),         // 1: pbflags.v1.State
+	(*BoolList)(nil),   // 2: pbflags.v1.BoolList
+	(*StringList)(nil), // 3: pbflags.v1.StringList
+	(*Int64List)(nil),  // 4: pbflags.v1.Int64List
+	(*DoubleList)(nil), // 5: pbflags.v1.DoubleList
+	(*FlagValue)(nil),  // 6: pbflags.v1.FlagValue
 }
 var file_pbflags_v1_types_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	2, // 0: pbflags.v1.FlagValue.bool_list_value:type_name -> pbflags.v1.BoolList
+	3, // 1: pbflags.v1.FlagValue.string_list_value:type_name -> pbflags.v1.StringList
+	4, // 2: pbflags.v1.FlagValue.int64_list_value:type_name -> pbflags.v1.Int64List
+	5, // 3: pbflags.v1.FlagValue.double_list_value:type_name -> pbflags.v1.DoubleList
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_pbflags_v1_types_proto_init() }
@@ -307,11 +588,15 @@ func file_pbflags_v1_types_proto_init() {
 	if File_pbflags_v1_types_proto != nil {
 		return
 	}
-	file_pbflags_v1_types_proto_msgTypes[0].OneofWrappers = []any{
+	file_pbflags_v1_types_proto_msgTypes[4].OneofWrappers = []any{
 		(*FlagValue_BoolValue)(nil),
 		(*FlagValue_StringValue)(nil),
 		(*FlagValue_Int64Value)(nil),
 		(*FlagValue_DoubleValue)(nil),
+		(*FlagValue_BoolListValue)(nil),
+		(*FlagValue_StringListValue)(nil),
+		(*FlagValue_Int64ListValue)(nil),
+		(*FlagValue_DoubleListValue)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -319,7 +604,7 @@ func file_pbflags_v1_types_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pbflags_v1_types_proto_rawDesc), len(file_pbflags_v1_types_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   1,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

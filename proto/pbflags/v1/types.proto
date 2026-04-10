@@ -5,6 +5,21 @@ option go_package = "github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1";
 option java_multiple_files = true;
 option java_package = "org.spotlightgov.pbflags.v1.proto";
 
+// List wrapper messages. Each wraps a repeated scalar to allow inclusion
+// in the FlagValue oneof (proto3 does not allow repeated fields in oneofs).
+message BoolList {
+  repeated bool values = 1;
+}
+message StringList {
+  repeated string values = 1;
+}
+message Int64List {
+  repeated int64 values = 1;
+}
+message DoubleList {
+  repeated double values = 1;
+}
+
 // FlagValue is the typed value container used end-to-end: from definition
 // through admin server through evaluator to client. No string encoding anywhere.
 // The admin server stores these as serialized protobuf bytes (opaque).
@@ -14,6 +29,11 @@ message FlagValue {
     string string_value = 2;
     int64 int64_value = 3;
     double double_value = 4;
+    // List variants — field numbers 5-8 mirror scalar numbers 1-4.
+    BoolList bool_list_value = 5;
+    StringList string_list_value = 6;
+    Int64List int64_list_value = 7;
+    DoubleList double_list_value = 8;
   }
 }
 
@@ -25,6 +45,10 @@ enum FlagType {
   FLAG_TYPE_STRING = 2;
   FLAG_TYPE_INT64 = 3;
   FLAG_TYPE_DOUBLE = 4;
+  FLAG_TYPE_BOOL_LIST = 5;
+  FLAG_TYPE_STRING_LIST = 6;
+  FLAG_TYPE_INT64_LIST = 7;
+  FLAG_TYPE_DOUBLE_LIST = 8;
 }
 
 // State is the runtime state of a flag or override.

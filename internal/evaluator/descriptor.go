@@ -231,7 +231,7 @@ func extractFlagDef(
 		return nil, nil
 	}
 
-	flagType := kindToFlagType(field.Kind())
+	flagType := fieldToFlagType(field)
 	if flagType == pbflagsv1.FlagType_FLAG_TYPE_UNSPECIFIED {
 		return nil, nil
 	}
@@ -269,27 +269,75 @@ func parseFlagDefault(msg protoreflect.Message, flagType pbflagsv1.FlagType) *pb
 
 	var fv *pbflagsv1.FlagValue
 	msg.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
-		wrapper := v.Message()
-		valField := wrapper.Descriptor().Fields().ByNumber(1)
-		if valField == nil {
-			return true
-		}
-		wv := wrapper.Get(valField)
-
 		switch fd.Number() {
-		case 1: // BoolValue
-			fv = &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: wv.Bool()}}
-		case 2: // StringValue
-			fv = &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: wv.String()}}
-		case 3: // Int64Value
-			fv = &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64Value{Int64Value: wv.Int()}}
-		case 4: // DoubleValue
-			fv = &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleValue{DoubleValue: wv.Float()}}
+		case 1, 2, 3, 4: // Scalar wrapper types (BoolValue, StringValue, Int64Value, DoubleValue)
+			wrapper := v.Message()
+			valField := wrapper.Descriptor().Fields().ByNumber(1)
+			if valField == nil {
+				return true
+			}
+			wv := wrapper.Get(valField)
+			switch fd.Number() {
+			case 1:
+				fv = &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: wv.Bool()}}
+			case 2:
+				fv = &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: wv.String()}}
+			case 3:
+				fv = &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64Value{Int64Value: wv.Int()}}
+			case 4:
+				fv = &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleValue{DoubleValue: wv.Float()}}
+			}
+		case 5, 6, 7, 8: // List types (BoolList, StringList, Int64List, DoubleList)
+			listMsg := v.Message()
+			valField := listMsg.Descriptor().Fields().ByNumber(1)
+			if valField == nil {
+				return true
+			}
+			fv = parseListDefault(fd.Number(), listMsg, valField)
 		}
 		return false
 	})
 
 	return fv
+}
+
+func parseListDefault(fieldNum protoreflect.FieldNumber, listMsg protoreflect.Message, valField protoreflect.FieldDescriptor) *pbflagsv1.FlagValue {
+	list := listMsg.Get(valField).List()
+	switch fieldNum {
+	case 5: // BoolList
+		vals := make([]bool, list.Len())
+		for i := 0; i < list.Len(); i++ {
+			vals[i] = list.Get(i).Bool()
+		}
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolListValue{
+			BoolListValue: &pbflagsv1.BoolList{Values: vals},
+		}}
+	case 6: // StringList
+		vals := make([]string, list.Len())
+		for i := 0; i < list.Len(); i++ {
+			vals[i] = list.Get(i).String()
+		}
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringListValue{
+			StringListValue: &pbflagsv1.StringList{Values: vals},
+		}}
+	case 7: // Int64List
+		vals := make([]int64, list.Len())
+		for i := 0; i < list.Len(); i++ {
+			vals[i] = list.Get(i).Int()
+		}
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64ListValue{
+			Int64ListValue: &pbflagsv1.Int64List{Values: vals},
+		}}
+	case 8: // DoubleList
+		vals := make([]float64, list.Len())
+		for i := 0; i < list.Len(); i++ {
+			vals[i] = list.Get(i).Float()
+		}
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleListValue{
+			DoubleListValue: &pbflagsv1.DoubleList{Values: vals},
+		}}
+	}
+	return nil
 }
 
 func parseSupportedValues(msg protoreflect.Message, flagType pbflagsv1.FlagType) *pbflagspb.SupportedValues {
@@ -324,8 +372,22 @@ func parseSupportedValues(msg protoreflect.Message, flagType pbflagsv1.FlagType)
 	return sv
 }
 
-func kindToFlagType(k protoreflect.Kind) pbflagsv1.FlagType {
-	switch k {
+func fieldToFlagType(fd protoreflect.FieldDescriptor) pbflagsv1.FlagType {
+	if fd.IsList() {
+		switch fd.Kind() {
+		case protoreflect.BoolKind:
+			return pbflagsv1.FlagType_FLAG_TYPE_BOOL_LIST
+		case protoreflect.StringKind:
+			return pbflagsv1.FlagType_FLAG_TYPE_STRING_LIST
+		case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+			return pbflagsv1.FlagType_FLAG_TYPE_INT64_LIST
+		case protoreflect.DoubleKind:
+			return pbflagsv1.FlagType_FLAG_TYPE_DOUBLE_LIST
+		default:
+			return pbflagsv1.FlagType_FLAG_TYPE_UNSPECIFIED
+		}
+	}
+	switch fd.Kind() {
 	case protoreflect.BoolKind:
 		return pbflagsv1.FlagType_FLAG_TYPE_BOOL
 	case protoreflect.StringKind:

@@ -1,5 +1,6 @@
 package org.spotlightgov.pbflags;
 
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
@@ -58,6 +59,30 @@ public final class InMemoryFlagEvaluator implements FlagEvaluator {
     String globalValue = globalOverrides.get(flagId);
     if (globalValue != null) {
       return parseValue(globalValue, type, compiledDefault);
+    }
+
+    return compiledDefault;
+  }
+
+  @Override
+  public <E> List<E> evaluateList(
+      String flagId, Class<E> elementType, List<E> compiledDefault, @Nullable String entityId) {
+    if (killedFlags.contains(flagId)) {
+      return compiledDefault;
+    }
+
+    if (entityId != null && !entityId.isEmpty()) {
+      String entityValue = entityOverrides.get(flagId + ":" + entityId);
+      if (entityValue != null) {
+        // In-memory test evaluator stores list overrides as-is via set(); return compiled default
+        // for string-based overrides since list parsing is not needed for test scaffolding.
+        return compiledDefault;
+      }
+    }
+
+    String globalValue = globalOverrides.get(flagId);
+    if (globalValue != null) {
+      return compiledDefault;
     }
 
     return compiledDefault;

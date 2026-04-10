@@ -1,5 +1,6 @@
 package org.spotlightgov.pbflags;
 
+import java.util.List;
 import javax.annotation.Nullable;
 
 /**
@@ -91,6 +92,80 @@ public interface FlagEvaluator {
       @Override
       public T get(ID id) {
         return evaluate(flagId, type, compiledDefault, idToString.apply(id));
+      }
+    };
+  }
+
+  /**
+   * Evaluate a list-valued flag globally (no entity context).
+   *
+   * @param flagId the flag identifier
+   * @param elementType the expected element type (e.g., String.class)
+   * @param compiledDefault the compiled default from the proto definition
+   * @return the resolved list, never null
+   */
+  default <E> List<E> evaluateList(
+      String flagId, Class<E> elementType, List<E> compiledDefault) {
+    return evaluateList(flagId, elementType, compiledDefault, null);
+  }
+
+  /**
+   * Evaluate a list-valued flag with optional entity context.
+   *
+   * @param flagId the flag identifier
+   * @param elementType the expected element type
+   * @param compiledDefault the compiled default from the proto definition
+   * @param entityId the entity context for layer-based flags, or null for global-only
+   * @return the resolved list, never null
+   */
+  <E> List<E> evaluateList(
+      String flagId, Class<E> elementType, List<E> compiledDefault, @Nullable String entityId);
+
+  /**
+   * Creates a {@link ListFlag} instance for a list-valued flag.
+   *
+   * <p>The returned object is lightweight and stateless — it delegates to this evaluator on each
+   * {@code get()} call. Safe to cache as a singleton.
+   */
+  default <E> ListFlag<E> listFlag(
+      String flagId, Class<E> elementType, List<E> compiledDefault) {
+    return new ListFlag<>() {
+      @Override
+      public List<E> get() {
+        return evaluateList(flagId, elementType, compiledDefault, null);
+      }
+
+      @Override
+      public List<E> get(String entityId) {
+        return evaluateList(flagId, elementType, compiledDefault, entityId);
+      }
+    };
+  }
+
+  /**
+   * Creates a {@link LayerListFlag} instance for a layer-scoped list-valued flag.
+   *
+   * @param <E> the list element type
+   * @param <ID> the typed layer ID type
+   * @param flagId the flag identifier
+   * @param elementType the expected element type
+   * @param compiledDefault the compiled default from the proto definition
+   * @param idToString converts the typed ID to a raw string entity identifier
+   */
+  default <E, ID> LayerListFlag<E, ID> layerListFlag(
+      String flagId,
+      Class<E> elementType,
+      List<E> compiledDefault,
+      java.util.function.Function<ID, String> idToString) {
+    return new LayerListFlag<>() {
+      @Override
+      public List<E> get() {
+        return evaluateList(flagId, elementType, compiledDefault, null);
+      }
+
+      @Override
+      public List<E> get(ID id) {
+        return evaluateList(flagId, elementType, compiledDefault, idToString.apply(id));
       }
     };
   }

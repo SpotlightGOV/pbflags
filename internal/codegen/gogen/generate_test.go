@@ -162,7 +162,7 @@ func TestGoTypeInfoNilSafeGetters(t *testing.T) {
 		{protoreflect.DoubleKind, "float64", "GetDoubleValue", "FlagValue_DoubleValue"},
 	}
 	for _, tt := range kinds {
-		goType, getter, oneofTy := goTypeInfo(tt.kind)
+		goType, getter, oneofTy := goTypeInfo(tt.kind, false)
 		if goType != tt.wantType {
 			t.Errorf("goTypeInfo(%v) type = %q, want %q", tt.kind, goType, tt.wantType)
 		}

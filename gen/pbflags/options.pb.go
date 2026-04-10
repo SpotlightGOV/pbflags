@@ -164,6 +164,185 @@ func (x *FlagOptions) GetLayer() string {
 	return ""
 }
 
+// List wrapper messages for FlagDefault. These are structurally identical to
+// the v1.BoolList/StringList/etc. messages but defined here to avoid an import
+// cycle (v1/admin.proto already imports this package).
+type FlagDefaultBoolList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Values        []bool                 `protobuf:"varint,1,rep,packed,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FlagDefaultBoolList) Reset() {
+	*x = FlagDefaultBoolList{}
+	mi := &file_pbflags_options_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FlagDefaultBoolList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FlagDefaultBoolList) ProtoMessage() {}
+
+func (x *FlagDefaultBoolList) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_options_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FlagDefaultBoolList.ProtoReflect.Descriptor instead.
+func (*FlagDefaultBoolList) Descriptor() ([]byte, []int) {
+	return file_pbflags_options_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *FlagDefaultBoolList) GetValues() []bool {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
+type FlagDefaultStringList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Values        []string               `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FlagDefaultStringList) Reset() {
+	*x = FlagDefaultStringList{}
+	mi := &file_pbflags_options_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FlagDefaultStringList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FlagDefaultStringList) ProtoMessage() {}
+
+func (x *FlagDefaultStringList) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_options_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FlagDefaultStringList.ProtoReflect.Descriptor instead.
+func (*FlagDefaultStringList) Descriptor() ([]byte, []int) {
+	return file_pbflags_options_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *FlagDefaultStringList) GetValues() []string {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
+type FlagDefaultInt64List struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Values        []int64                `protobuf:"varint,1,rep,packed,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FlagDefaultInt64List) Reset() {
+	*x = FlagDefaultInt64List{}
+	mi := &file_pbflags_options_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FlagDefaultInt64List) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FlagDefaultInt64List) ProtoMessage() {}
+
+func (x *FlagDefaultInt64List) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_options_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FlagDefaultInt64List.ProtoReflect.Descriptor instead.
+func (*FlagDefaultInt64List) Descriptor() ([]byte, []int) {
+	return file_pbflags_options_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *FlagDefaultInt64List) GetValues() []int64 {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
+type FlagDefaultDoubleList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Values        []float64              `protobuf:"fixed64,1,rep,packed,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FlagDefaultDoubleList) Reset() {
+	*x = FlagDefaultDoubleList{}
+	mi := &file_pbflags_options_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FlagDefaultDoubleList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FlagDefaultDoubleList) ProtoMessage() {}
+
+func (x *FlagDefaultDoubleList) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_options_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FlagDefaultDoubleList.ProtoReflect.Descriptor instead.
+func (*FlagDefaultDoubleList) Descriptor() ([]byte, []int) {
+	return file_pbflags_options_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *FlagDefaultDoubleList) GetValues() []float64 {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
 // Uses wrapper types to distinguish "default is false/0" from "no default set."
 // In proto3, bare bool false and int64 0 are default values and won't serialize
 // in a oneof, making them indistinguishable from "not set."
@@ -175,6 +354,10 @@ type FlagDefault struct {
 	//	*FlagDefault_StringValue
 	//	*FlagDefault_Int64Value
 	//	*FlagDefault_DoubleValue
+	//	*FlagDefault_BoolListValue
+	//	*FlagDefault_StringListValue
+	//	*FlagDefault_Int64ListValue
+	//	*FlagDefault_DoubleListValue
 	Value         isFlagDefault_Value `protobuf_oneof:"value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -182,7 +365,7 @@ type FlagDefault struct {
 
 func (x *FlagDefault) Reset() {
 	*x = FlagDefault{}
-	mi := &file_pbflags_options_proto_msgTypes[2]
+	mi := &file_pbflags_options_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -194,7 +377,7 @@ func (x *FlagDefault) String() string {
 func (*FlagDefault) ProtoMessage() {}
 
 func (x *FlagDefault) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_options_proto_msgTypes[2]
+	mi := &file_pbflags_options_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -207,7 +390,7 @@ func (x *FlagDefault) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlagDefault.ProtoReflect.Descriptor instead.
 func (*FlagDefault) Descriptor() ([]byte, []int) {
-	return file_pbflags_options_proto_rawDescGZIP(), []int{2}
+	return file_pbflags_options_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *FlagDefault) GetValue() isFlagDefault_Value {
@@ -253,6 +436,42 @@ func (x *FlagDefault) GetDoubleValue() *wrapperspb.DoubleValue {
 	return nil
 }
 
+func (x *FlagDefault) GetBoolListValue() *FlagDefaultBoolList {
+	if x != nil {
+		if x, ok := x.Value.(*FlagDefault_BoolListValue); ok {
+			return x.BoolListValue
+		}
+	}
+	return nil
+}
+
+func (x *FlagDefault) GetStringListValue() *FlagDefaultStringList {
+	if x != nil {
+		if x, ok := x.Value.(*FlagDefault_StringListValue); ok {
+			return x.StringListValue
+		}
+	}
+	return nil
+}
+
+func (x *FlagDefault) GetInt64ListValue() *FlagDefaultInt64List {
+	if x != nil {
+		if x, ok := x.Value.(*FlagDefault_Int64ListValue); ok {
+			return x.Int64ListValue
+		}
+	}
+	return nil
+}
+
+func (x *FlagDefault) GetDoubleListValue() *FlagDefaultDoubleList {
+	if x != nil {
+		if x, ok := x.Value.(*FlagDefault_DoubleListValue); ok {
+			return x.DoubleListValue
+		}
+	}
+	return nil
+}
+
 type isFlagDefault_Value interface {
 	isFlagDefault_Value()
 }
@@ -273,6 +492,25 @@ type FlagDefault_DoubleValue struct {
 	DoubleValue *wrapperspb.DoubleValue `protobuf:"bytes,4,opt,name=double_value,json=doubleValue,proto3,oneof"`
 }
 
+type FlagDefault_BoolListValue struct {
+	// List defaults — use types from this package to avoid import cycle
+	// (v1/admin.proto imports pbflags/options.proto, so options.proto
+	// cannot import v1/types.proto).
+	BoolListValue *FlagDefaultBoolList `protobuf:"bytes,5,opt,name=bool_list_value,json=boolListValue,proto3,oneof"`
+}
+
+type FlagDefault_StringListValue struct {
+	StringListValue *FlagDefaultStringList `protobuf:"bytes,6,opt,name=string_list_value,json=stringListValue,proto3,oneof"`
+}
+
+type FlagDefault_Int64ListValue struct {
+	Int64ListValue *FlagDefaultInt64List `protobuf:"bytes,7,opt,name=int64_list_value,json=int64ListValue,proto3,oneof"`
+}
+
+type FlagDefault_DoubleListValue struct {
+	DoubleListValue *FlagDefaultDoubleList `protobuf:"bytes,8,opt,name=double_list_value,json=doubleListValue,proto3,oneof"`
+}
+
 func (*FlagDefault_BoolValue) isFlagDefault_Value() {}
 
 func (*FlagDefault_StringValue) isFlagDefault_Value() {}
@@ -280,6 +518,14 @@ func (*FlagDefault_StringValue) isFlagDefault_Value() {}
 func (*FlagDefault_Int64Value) isFlagDefault_Value() {}
 
 func (*FlagDefault_DoubleValue) isFlagDefault_Value() {}
+
+func (*FlagDefault_BoolListValue) isFlagDefault_Value() {}
+
+func (*FlagDefault_StringListValue) isFlagDefault_Value() {}
+
+func (*FlagDefault_Int64ListValue) isFlagDefault_Value() {}
+
+func (*FlagDefault_DoubleListValue) isFlagDefault_Value() {}
 
 type SupportedValues struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -294,7 +540,7 @@ type SupportedValues struct {
 
 func (x *SupportedValues) Reset() {
 	*x = SupportedValues{}
-	mi := &file_pbflags_options_proto_msgTypes[3]
+	mi := &file_pbflags_options_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -306,7 +552,7 @@ func (x *SupportedValues) String() string {
 func (*SupportedValues) ProtoMessage() {}
 
 func (x *SupportedValues) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_options_proto_msgTypes[3]
+	mi := &file_pbflags_options_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -319,7 +565,7 @@ func (x *SupportedValues) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SupportedValues.ProtoReflect.Descriptor instead.
 func (*SupportedValues) Descriptor() ([]byte, []int) {
-	return file_pbflags_options_proto_rawDescGZIP(), []int{3}
+	return file_pbflags_options_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *SupportedValues) GetStringValues() []string {
@@ -401,14 +647,26 @@ const file_pbflags_options_proto_rawDesc = "" +
 	"\vdescription\x18\x01 \x01(\tR\vdescription\x12.\n" +
 	"\adefault\x18\x02 \x01(\v2\x14.pbflags.FlagDefaultR\adefault\x12C\n" +
 	"\x10supported_values\x18\x04 \x01(\v2\x18.pbflags.SupportedValuesR\x0fsupportedValues\x12\x14\n" +
-	"\x05layer\x18\x05 \x01(\tR\x05layerJ\x04\b\x03\x10\x04\"\x99\x02\n" +
+	"\x05layer\x18\x05 \x01(\tR\x05layerJ\x04\b\x03\x10\x04\"-\n" +
+	"\x13FlagDefaultBoolList\x12\x16\n" +
+	"\x06values\x18\x01 \x03(\bR\x06values\"/\n" +
+	"\x15FlagDefaultStringList\x12\x16\n" +
+	"\x06values\x18\x01 \x03(\tR\x06values\".\n" +
+	"\x14FlagDefaultInt64List\x12\x16\n" +
+	"\x06values\x18\x01 \x03(\x03R\x06values\"/\n" +
+	"\x15FlagDefaultDoubleList\x12\x16\n" +
+	"\x06values\x18\x01 \x03(\x01R\x06values\"\xc8\x04\n" +
 	"\vFlagDefault\x12;\n" +
 	"\n" +
 	"bool_value\x18\x01 \x01(\v2\x1a.google.protobuf.BoolValueH\x00R\tboolValue\x12A\n" +
 	"\fstring_value\x18\x02 \x01(\v2\x1c.google.protobuf.StringValueH\x00R\vstringValue\x12>\n" +
 	"\vint64_value\x18\x03 \x01(\v2\x1b.google.protobuf.Int64ValueH\x00R\n" +
 	"int64Value\x12A\n" +
-	"\fdouble_value\x18\x04 \x01(\v2\x1c.google.protobuf.DoubleValueH\x00R\vdoubleValueB\a\n" +
+	"\fdouble_value\x18\x04 \x01(\v2\x1c.google.protobuf.DoubleValueH\x00R\vdoubleValue\x12F\n" +
+	"\x0fbool_list_value\x18\x05 \x01(\v2\x1c.pbflags.FlagDefaultBoolListH\x00R\rboolListValue\x12L\n" +
+	"\x11string_list_value\x18\x06 \x01(\v2\x1e.pbflags.FlagDefaultStringListH\x00R\x0fstringListValue\x12I\n" +
+	"\x10int64_list_value\x18\a \x01(\v2\x1d.pbflags.FlagDefaultInt64ListH\x00R\x0eint64ListValue\x12L\n" +
+	"\x11double_list_value\x18\b \x01(\v2\x1e.pbflags.FlagDefaultDoubleListH\x00R\x0fdoubleListValueB\a\n" +
 	"\x05value\"~\n" +
 	"\x0fSupportedValues\x12#\n" +
 	"\rstring_values\x18\x01 \x03(\tR\fstringValues\x12!\n" +
@@ -431,37 +689,45 @@ func file_pbflags_options_proto_rawDescGZIP() []byte {
 	return file_pbflags_options_proto_rawDescData
 }
 
-var file_pbflags_options_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_pbflags_options_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_pbflags_options_proto_goTypes = []any{
 	(*FeatureOptions)(nil),              // 0: pbflags.FeatureOptions
 	(*FlagOptions)(nil),                 // 1: pbflags.FlagOptions
-	(*FlagDefault)(nil),                 // 2: pbflags.FlagDefault
-	(*SupportedValues)(nil),             // 3: pbflags.SupportedValues
-	(*wrapperspb.BoolValue)(nil),        // 4: google.protobuf.BoolValue
-	(*wrapperspb.StringValue)(nil),      // 5: google.protobuf.StringValue
-	(*wrapperspb.Int64Value)(nil),       // 6: google.protobuf.Int64Value
-	(*wrapperspb.DoubleValue)(nil),      // 7: google.protobuf.DoubleValue
-	(*descriptorpb.MessageOptions)(nil), // 8: google.protobuf.MessageOptions
-	(*descriptorpb.FieldOptions)(nil),   // 9: google.protobuf.FieldOptions
-	(*descriptorpb.EnumOptions)(nil),    // 10: google.protobuf.EnumOptions
+	(*FlagDefaultBoolList)(nil),         // 2: pbflags.FlagDefaultBoolList
+	(*FlagDefaultStringList)(nil),       // 3: pbflags.FlagDefaultStringList
+	(*FlagDefaultInt64List)(nil),        // 4: pbflags.FlagDefaultInt64List
+	(*FlagDefaultDoubleList)(nil),       // 5: pbflags.FlagDefaultDoubleList
+	(*FlagDefault)(nil),                 // 6: pbflags.FlagDefault
+	(*SupportedValues)(nil),             // 7: pbflags.SupportedValues
+	(*wrapperspb.BoolValue)(nil),        // 8: google.protobuf.BoolValue
+	(*wrapperspb.StringValue)(nil),      // 9: google.protobuf.StringValue
+	(*wrapperspb.Int64Value)(nil),       // 10: google.protobuf.Int64Value
+	(*wrapperspb.DoubleValue)(nil),      // 11: google.protobuf.DoubleValue
+	(*descriptorpb.MessageOptions)(nil), // 12: google.protobuf.MessageOptions
+	(*descriptorpb.FieldOptions)(nil),   // 13: google.protobuf.FieldOptions
+	(*descriptorpb.EnumOptions)(nil),    // 14: google.protobuf.EnumOptions
 }
 var file_pbflags_options_proto_depIdxs = []int32{
-	2,  // 0: pbflags.FlagOptions.default:type_name -> pbflags.FlagDefault
-	3,  // 1: pbflags.FlagOptions.supported_values:type_name -> pbflags.SupportedValues
-	4,  // 2: pbflags.FlagDefault.bool_value:type_name -> google.protobuf.BoolValue
-	5,  // 3: pbflags.FlagDefault.string_value:type_name -> google.protobuf.StringValue
-	6,  // 4: pbflags.FlagDefault.int64_value:type_name -> google.protobuf.Int64Value
-	7,  // 5: pbflags.FlagDefault.double_value:type_name -> google.protobuf.DoubleValue
-	8,  // 6: pbflags.feature:extendee -> google.protobuf.MessageOptions
-	9,  // 7: pbflags.flag:extendee -> google.protobuf.FieldOptions
-	10, // 8: pbflags.layers:extendee -> google.protobuf.EnumOptions
-	0,  // 9: pbflags.feature:type_name -> pbflags.FeatureOptions
-	1,  // 10: pbflags.flag:type_name -> pbflags.FlagOptions
-	11, // [11:11] is the sub-list for method output_type
-	11, // [11:11] is the sub-list for method input_type
-	9,  // [9:11] is the sub-list for extension type_name
-	6,  // [6:9] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	6,  // 0: pbflags.FlagOptions.default:type_name -> pbflags.FlagDefault
+	7,  // 1: pbflags.FlagOptions.supported_values:type_name -> pbflags.SupportedValues
+	8,  // 2: pbflags.FlagDefault.bool_value:type_name -> google.protobuf.BoolValue
+	9,  // 3: pbflags.FlagDefault.string_value:type_name -> google.protobuf.StringValue
+	10, // 4: pbflags.FlagDefault.int64_value:type_name -> google.protobuf.Int64Value
+	11, // 5: pbflags.FlagDefault.double_value:type_name -> google.protobuf.DoubleValue
+	2,  // 6: pbflags.FlagDefault.bool_list_value:type_name -> pbflags.FlagDefaultBoolList
+	3,  // 7: pbflags.FlagDefault.string_list_value:type_name -> pbflags.FlagDefaultStringList
+	4,  // 8: pbflags.FlagDefault.int64_list_value:type_name -> pbflags.FlagDefaultInt64List
+	5,  // 9: pbflags.FlagDefault.double_list_value:type_name -> pbflags.FlagDefaultDoubleList
+	12, // 10: pbflags.feature:extendee -> google.protobuf.MessageOptions
+	13, // 11: pbflags.flag:extendee -> google.protobuf.FieldOptions
+	14, // 12: pbflags.layers:extendee -> google.protobuf.EnumOptions
+	0,  // 13: pbflags.feature:type_name -> pbflags.FeatureOptions
+	1,  // 14: pbflags.flag:type_name -> pbflags.FlagOptions
+	15, // [15:15] is the sub-list for method output_type
+	15, // [15:15] is the sub-list for method input_type
+	13, // [13:15] is the sub-list for extension type_name
+	10, // [10:13] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_pbflags_options_proto_init() }
@@ -469,11 +735,15 @@ func file_pbflags_options_proto_init() {
 	if File_pbflags_options_proto != nil {
 		return
 	}
-	file_pbflags_options_proto_msgTypes[2].OneofWrappers = []any{
+	file_pbflags_options_proto_msgTypes[6].OneofWrappers = []any{
 		(*FlagDefault_BoolValue)(nil),
 		(*FlagDefault_StringValue)(nil),
 		(*FlagDefault_Int64Value)(nil),
 		(*FlagDefault_DoubleValue)(nil),
+		(*FlagDefault_BoolListValue)(nil),
+		(*FlagDefault_StringListValue)(nil),
+		(*FlagDefault_Int64ListValue)(nil),
+		(*FlagDefault_DoubleListValue)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -481,7 +751,7 @@ func file_pbflags_options_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pbflags_options_proto_rawDesc), len(file_pbflags_options_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   8,
 			NumExtensions: 3,
 			NumServices:   0,
 		},

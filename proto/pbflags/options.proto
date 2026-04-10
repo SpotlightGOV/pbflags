@@ -40,6 +40,22 @@ message FlagOptions {
   string layer = 5;
 }
 
+// List wrapper messages for FlagDefault. These are structurally identical to
+// the v1.BoolList/StringList/etc. messages but defined here to avoid an import
+// cycle (v1/admin.proto already imports this package).
+message FlagDefaultBoolList {
+  repeated bool values = 1;
+}
+message FlagDefaultStringList {
+  repeated string values = 1;
+}
+message FlagDefaultInt64List {
+  repeated int64 values = 1;
+}
+message FlagDefaultDoubleList {
+  repeated double values = 1;
+}
+
 // Uses wrapper types to distinguish "default is false/0" from "no default set."
 // In proto3, bare bool false and int64 0 are default values and won't serialize
 // in a oneof, making them indistinguishable from "not set."
@@ -49,6 +65,13 @@ message FlagDefault {
     google.protobuf.StringValue string_value = 2;
     google.protobuf.Int64Value int64_value = 3;
     google.protobuf.DoubleValue double_value = 4;
+    // List defaults — use types from this package to avoid import cycle
+    // (v1/admin.proto imports pbflags/options.proto, so options.proto
+    // cannot import v1/types.proto).
+    FlagDefaultBoolList bool_list_value = 5;
+    FlagDefaultStringList string_list_value = 6;
+    FlagDefaultInt64List int64_list_value = 7;
+    FlagDefaultDoubleList double_list_value = 8;
   }
 }
 

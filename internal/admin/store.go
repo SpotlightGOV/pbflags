@@ -158,13 +158,18 @@ func (s *Store) UpdateFlagState(ctx context.Context, flagID string, state pbflag
 
 	var oldState string
 	var oldValueBytes []byte
+	var flagTypeStr string
 	err = tx.QueryRow(ctx, `
-		SELECT state, value FROM feature_flags.flags WHERE flag_id = $1`, flagID).Scan(&oldState, &oldValueBytes)
+		SELECT state, value, flag_type FROM feature_flags.flags WHERE flag_id = $1`, flagID).Scan(&oldState, &oldValueBytes, &flagTypeStr)
 	if err == pgx.ErrNoRows {
 		return fmt.Errorf("flag %s not found", flagID)
 	}
 	if err != nil {
 		return fmt.Errorf("read old state: %w", err)
+	}
+
+	if err := validateFlagValueType(value, parseFlagType(flagTypeStr)); err != nil {
+		return fmt.Errorf("flag %s: %w", flagID, err)
 	}
 
 	valueBytes, err := marshalFlagValue(value)
@@ -200,14 +205,17 @@ func (s *Store) SetFlagOverride(ctx context.Context, flagID, entityID string, st
 	}
 	defer tx.Rollback(ctx)
 
-	var layerStr string
+	var layerStr, flagTypeStr string
 	err = tx.QueryRow(ctx, `
-		SELECT layer FROM feature_flags.flags WHERE flag_id = $1`, flagID).Scan(&layerStr)
+		SELECT layer, flag_type FROM feature_flags.flags WHERE flag_id = $1`, flagID).Scan(&layerStr, &flagTypeStr)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("flag %s not found", flagID)
 	}
 	if err != nil {
 		return fmt.Errorf("read flag layer: %w", err)
+	}
+	if err := validateFlagValueType(value, parseFlagType(flagTypeStr)); err != nil {
+		return fmt.Errorf("flag %s: %w", flagID, err)
 	}
 	if isGlobalLayer(layerStr) {
 		return fmt.Errorf("flag %s has GLOBAL layer and does not support per-entity overrides", flagID)
@@ -562,6 +570,14 @@ func parseFlagType(s string) pbflagsv1.FlagType {
 		return pbflagsv1.FlagType_FLAG_TYPE_INT64
 	case "DOUBLE":
 		return pbflagsv1.FlagType_FLAG_TYPE_DOUBLE
+	case "BOOL_LIST":
+		return pbflagsv1.FlagType_FLAG_TYPE_BOOL_LIST
+	case "STRING_LIST":
+		return pbflagsv1.FlagType_FLAG_TYPE_STRING_LIST
+	case "INT64_LIST":
+		return pbflagsv1.FlagType_FLAG_TYPE_INT64_LIST
+	case "DOUBLE_LIST":
+		return pbflagsv1.FlagType_FLAG_TYPE_DOUBLE_LIST
 	default:
 		return pbflagsv1.FlagType_FLAG_TYPE_UNSPECIFIED
 	}
@@ -595,4 +611,38 @@ func parseState(s string) pbflagsv1.State {
 
 func isGlobalLayer(s string) bool {
 	return s == "" || strings.EqualFold(s, "GLOBAL")
+}
+
+// validateFlagValueType checks that a FlagValue's oneof variant matches the
+// declared FlagType. Returns nil if the value is nil or the types match.
+func validateFlagValueType(value *pbflagsv1.FlagValue, flagType pbflagsv1.FlagType) error {
+	if value == nil || value.Value == nil {
+		return nil
+	}
+	expected := flagType
+	var actual pbflagsv1.FlagType
+	switch value.Value.(type) {
+	case *pbflagsv1.FlagValue_BoolValue:
+		actual = pbflagsv1.FlagType_FLAG_TYPE_BOOL
+	case *pbflagsv1.FlagValue_StringValue:
+		actual = pbflagsv1.FlagType_FLAG_TYPE_STRING
+	case *pbflagsv1.FlagValue_Int64Value:
+		actual = pbflagsv1.FlagType_FLAG_TYPE_INT64
+	case *pbflagsv1.FlagValue_DoubleValue:
+		actual = pbflagsv1.FlagType_FLAG_TYPE_DOUBLE
+	case *pbflagsv1.FlagValue_BoolListValue:
+		actual = pbflagsv1.FlagType_FLAG_TYPE_BOOL_LIST
+	case *pbflagsv1.FlagValue_StringListValue:
+		actual = pbflagsv1.FlagType_FLAG_TYPE_STRING_LIST
+	case *pbflagsv1.FlagValue_Int64ListValue:
+		actual = pbflagsv1.FlagType_FLAG_TYPE_INT64_LIST
+	case *pbflagsv1.FlagValue_DoubleListValue:
+		actual = pbflagsv1.FlagType_FLAG_TYPE_DOUBLE_LIST
+	default:
+		return fmt.Errorf("unknown FlagValue variant")
+	}
+	if actual != expected {
+		return fmt.Errorf("value type %s does not match flag type %s", actual, expected)
+	}
+	return nil
 }

@@ -54,6 +54,7 @@ type flagInfo struct {
 	oneofType   string
 	defaultVal  string
 	hasDefault  bool
+	isList      bool   // true for repeated (list-valued) flags
 	layerName   string // empty = global; otherwise the lowercase layer name (e.g., "user", "entity")
 }
 
@@ -117,15 +118,36 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p(")")
 	p()
 
-	p("// Compiled defaults from proto annotations.")
-	p("const (")
+	// Scalar defaults as constants.
+	hasScalarDefaults := false
 	for _, fl := range flags {
-		if fl.hasDefault {
-			p("	", fl.goName, "Default = ", fl.defaultVal)
+		if fl.hasDefault && !fl.isList {
+			hasScalarDefaults = true
+			break
 		}
 	}
-	p(")")
-	p()
+	if hasScalarDefaults {
+		p("// Compiled defaults from proto annotations.")
+		p("const (")
+		for _, fl := range flags {
+			if fl.hasDefault && !fl.isList {
+				p("	", fl.goName, "Default = ", fl.defaultVal)
+			}
+		}
+		p(")")
+		p()
+	}
+
+	// List defaults as functions (slices can't be constants).
+	for _, fl := range flags {
+		if fl.hasDefault && fl.isList {
+			p("// ", fl.goName, "Default returns the compiled default for ", fl.goName, ".")
+			p("func ", fl.goName, "Default() ", fl.goType, " {")
+			p("	return ", fl.defaultVal)
+			p("}")
+			p()
+		}
+	}
 
 	p("// ", pascalFeat, "Flags provides type-safe access to ", feat.id, " feature flags.")
 	p("type ", pascalFeat, "Flags interface {")
@@ -167,24 +189,17 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 			p("		FlagId: ", fl.goName, "ID,")
 			p("	}))")
 		}
-		if fl.hasDefault {
-			p("	if err != nil {")
-			p("		return ", fl.goName, "Default")
-			p("	}")
-			p("	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.", fl.oneofType, "); !ok {")
-			p("		return ", fl.goName, "Default")
-			p("	}")
+		p("	if err != nil {")
+		emitReturnDefault(p, fl)
+		p("	}")
+		p("	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.", fl.oneofType, "); !ok {")
+		emitReturnDefault(p, fl)
+		p("	}")
+		if fl.isList {
+			p("	return resp.Msg.GetValue().", fl.getterName, "().GetValues()")
 		} else {
-			p("	if err != nil {")
-			p("		var zero ", fl.goType)
-			p("		return zero")
-			p("	}")
-			p("	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.", fl.oneofType, "); !ok {")
-			p("		var zero ", fl.goType)
-			p("		return zero")
-			p("	}")
+			p("	return resp.Msg.GetValue().", fl.getterName, "()")
 		}
-		p("	return resp.Msg.GetValue().", fl.getterName, "()")
 		p("}")
 		p()
 	}
@@ -218,12 +233,7 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 		} else {
 			p("func (", defaultType, ") ", fl.goName, "(_ context.Context) ", fl.goType, " {")
 		}
-		if fl.hasDefault {
-			p("	return ", fl.goName, "Default")
-		} else {
-			p("	var zero ", fl.goType)
-			p("	return zero")
-		}
+		emitReturnDefault(p, fl)
 		p("}")
 		p()
 	}
@@ -408,7 +418,8 @@ func extractFlagFromField(field *protogen.Field, layers *layerutil.LayerDef) (*f
 	}
 
 	goName := toPascalCase(string(field.Desc.Name()))
-	goType, getterName, oneofType := goTypeInfo(field.Desc.Kind())
+	isList := field.Desc.IsList()
+	goType, getterName, oneofType := goTypeInfo(field.Desc.Kind(), isList)
 
 	return &flagInfo{
 		goName:      goName,
@@ -418,6 +429,7 @@ func extractFlagFromField(field *protogen.Field, layers *layerutil.LayerDef) (*f
 		oneofType:   oneofType,
 		defaultVal:  defaultVal,
 		hasDefault:  hasDefault,
+		isList:      isList,
 		layerName:   resolvedLayerName,
 	}, nil
 }
@@ -427,6 +439,11 @@ func extractDefaultReflect(defMsg protoreflect.Message) (string, bool) {
 	var ok bool
 
 	defMsg.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
+		switch fd.Name() {
+		case "bool_list_value", "string_list_value", "int64_list_value", "double_list_value":
+			val, ok = extractListDefaultReflect(fd.Name(), v.Message())
+			return false
+		}
 		wrapperMsg := v.Message()
 		wrapperMsg.Range(func(wfd protoreflect.FieldDescriptor, wv protoreflect.Value) bool {
 			if wfd.Name() != "value" {
@@ -456,6 +473,42 @@ func extractDefaultReflect(defMsg protoreflect.Message) (string, bool) {
 	})
 
 	return val, ok
+}
+
+func extractListDefaultReflect(fieldName protoreflect.Name, listMsg protoreflect.Message) (string, bool) {
+	valField := listMsg.Descriptor().Fields().ByNumber(1) // repeated values = 1
+	if valField == nil {
+		return "", false
+	}
+	list := listMsg.Get(valField).List()
+	var items []string
+	for i := 0; i < list.Len(); i++ {
+		switch fieldName {
+		case "bool_list_value":
+			if list.Get(i).Bool() {
+				items = append(items, "true")
+			} else {
+				items = append(items, "false")
+			}
+		case "string_list_value":
+			items = append(items, fmt.Sprintf("%q", list.Get(i).String()))
+		case "int64_list_value":
+			items = append(items, fmt.Sprintf("int64(%d)", list.Get(i).Int()))
+		case "double_list_value":
+			items = append(items, fmt.Sprintf("float64(%v)", list.Get(i).Float()))
+		}
+	}
+	switch fieldName {
+	case "bool_list_value":
+		return "[]bool{" + strings.Join(items, ", ") + "}", true
+	case "string_list_value":
+		return "[]string{" + strings.Join(items, ", ") + "}", true
+	case "int64_list_value":
+		return "[]int64{" + strings.Join(items, ", ") + "}", true
+	case "double_list_value":
+		return "[]float64{" + strings.Join(items, ", ") + "}", true
+	}
+	return "", false
 }
 
 func parseFlagFromUnknown(b []byte, fieldKind protoreflect.Kind) (found bool, layerStr string, defaultVal string, hasDefault bool) {
@@ -543,6 +596,14 @@ func parseFlagDefault(b []byte, fieldKind protoreflect.Kind) (string, bool) {
 				return parseInt64Wrapper(data)
 			case 4:
 				return parseDoubleWrapper(data)
+			case 5:
+				return parseBoolListMessage(data)
+			case 6:
+				return parseStringListMessage(data)
+			case 7:
+				return parseInt64ListMessage(data)
+			case 8:
+				return parseDoubleListMessage(data)
 			}
 			continue
 		}
@@ -553,6 +614,114 @@ func parseFlagDefault(b []byte, fieldKind protoreflect.Kind) (string, bool) {
 		b = b[n:]
 	}
 	return "", false
+}
+
+func parseBoolListMessage(b []byte) (string, bool) {
+	var items []string
+	for len(b) > 0 {
+		num, typ, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			break
+		}
+		b = b[n:]
+		if num == 1 && typ == protowire.VarintType {
+			v, n := protowire.ConsumeVarint(b)
+			if n < 0 {
+				break
+			}
+			b = b[n:]
+			if v != 0 {
+				items = append(items, "true")
+			} else {
+				items = append(items, "false")
+			}
+			continue
+		}
+		n = skipField(b, typ)
+		if n < 0 {
+			break
+		}
+		b = b[n:]
+	}
+	return "[]bool{" + strings.Join(items, ", ") + "}", true
+}
+
+func parseStringListMessage(b []byte) (string, bool) {
+	var items []string
+	for len(b) > 0 {
+		num, typ, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			break
+		}
+		b = b[n:]
+		if num == 1 && typ == protowire.BytesType {
+			data, n := protowire.ConsumeBytes(b)
+			if n < 0 {
+				break
+			}
+			b = b[n:]
+			items = append(items, fmt.Sprintf("%q", string(data)))
+			continue
+		}
+		n = skipField(b, typ)
+		if n < 0 {
+			break
+		}
+		b = b[n:]
+	}
+	return "[]string{" + strings.Join(items, ", ") + "}", true
+}
+
+func parseInt64ListMessage(b []byte) (string, bool) {
+	var items []string
+	for len(b) > 0 {
+		num, typ, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			break
+		}
+		b = b[n:]
+		if num == 1 && typ == protowire.VarintType {
+			v, n := protowire.ConsumeVarint(b)
+			if n < 0 {
+				break
+			}
+			b = b[n:]
+			items = append(items, fmt.Sprintf("int64(%d)", int64(v)))
+			continue
+		}
+		n = skipField(b, typ)
+		if n < 0 {
+			break
+		}
+		b = b[n:]
+	}
+	return "[]int64{" + strings.Join(items, ", ") + "}", true
+}
+
+func parseDoubleListMessage(b []byte) (string, bool) {
+	var items []string
+	for len(b) > 0 {
+		num, typ, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			break
+		}
+		b = b[n:]
+		if num == 1 && typ == protowire.Fixed64Type {
+			v, n := protowire.ConsumeFixed64(b)
+			if n < 0 {
+				break
+			}
+			b = b[n:]
+			items = append(items, fmt.Sprintf("float64(%v)", math.Float64frombits(v)))
+			continue
+		}
+		n = skipField(b, typ)
+		if n < 0 {
+			break
+		}
+		b = b[n:]
+	}
+	return "[]float64{" + strings.Join(items, ", ") + "}", true
 }
 
 func parseBoolWrapper(b []byte) (string, bool) {
@@ -672,7 +841,37 @@ func skipField(b []byte, typ protowire.Type) int {
 	}
 }
 
-func goTypeInfo(kind protoreflect.Kind) (goType, getterName, oneofType string) {
+// emitReturnDefault emits a return statement for a flag's default value.
+func emitReturnDefault(p func(...interface{}), fl flagInfo) {
+	if fl.hasDefault {
+		if fl.isList {
+			p("	return ", fl.goName, "Default()")
+		} else {
+			p("	return ", fl.goName, "Default")
+		}
+	} else if fl.isList {
+		p("	return nil")
+	} else {
+		p("	var zero ", fl.goType)
+		p("	return zero")
+	}
+}
+
+func goTypeInfo(kind protoreflect.Kind, isList bool) (goType, getterName, oneofType string) {
+	if isList {
+		switch kind {
+		case protoreflect.BoolKind:
+			return "[]bool", "GetBoolListValue", "FlagValue_BoolListValue"
+		case protoreflect.StringKind:
+			return "[]string", "GetStringListValue", "FlagValue_StringListValue"
+		case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+			return "[]int64", "GetInt64ListValue", "FlagValue_Int64ListValue"
+		case protoreflect.DoubleKind:
+			return "[]float64", "GetDoubleListValue", "FlagValue_DoubleListValue"
+		default:
+			return "[]interface{}", "GetBoolListValue", "FlagValue_BoolListValue"
+		}
+	}
 	switch kind {
 	case protoreflect.BoolKind:
 		return "bool", "GetBoolValue", "FlagValue_BoolValue"

@@ -10,6 +10,7 @@ import org.spotlightgov.pbflags.v1.proto.HealthResponse;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.StatusRuntimeException;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
 import org.slf4j.Logger;
@@ -112,6 +113,32 @@ public final class FlagEvaluatorClient implements FlagEvaluator {
     }
   }
 
+  @Override
+  public <E> List<E> evaluateList(
+      String flagId, Class<E> elementType, List<E> compiledDefault, @Nullable String entityId) {
+    try {
+      EvaluateRequest.Builder req = EvaluateRequest.newBuilder().setFlagId(flagId);
+      if (entityId != null && !entityId.isEmpty()) {
+        req.setEntityId(entityId);
+      }
+
+      EvaluateResponse resp =
+          stub.withDeadlineAfter(EVALUATE_DEADLINE_MS, TimeUnit.MILLISECONDS).evaluate(req.build());
+
+      if (!resp.hasValue()) {
+        return compiledDefault;
+      }
+
+      return extractListValue(resp.getValue(), elementType, compiledDefault);
+    } catch (StatusRuntimeException e) {
+      logger.error("Evaluator call failed for list flag {}: {}", flagId, e.getStatus(), e);
+      return compiledDefault;
+    } catch (Exception e) {
+      logger.error("Evaluator call failed for list flag {}", flagId, e);
+      return compiledDefault;
+    }
+  }
+
   @SuppressWarnings("unchecked")
   private static <T> T extractValue(FlagValue value, Class<T> type, T fallback) {
     try {
@@ -142,6 +169,29 @@ public final class FlagEvaluatorClient implements FlagEvaluator {
       }
     } catch (Exception e) {
       logger.error("Failed to extract flag value as {}", type.getSimpleName(), e);
+    }
+    return fallback;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static <E> List<E> extractListValue(
+      FlagValue value, Class<E> elementType, List<E> fallback) {
+    try {
+      if (elementType == Boolean.class
+          && value.getValueCase() == FlagValue.ValueCase.BOOL_LIST_VALUE) {
+        return (List<E>) List.copyOf(value.getBoolListValue().getValuesList());
+      } else if (elementType == String.class
+          && value.getValueCase() == FlagValue.ValueCase.STRING_LIST_VALUE) {
+        return (List<E>) List.copyOf(value.getStringListValue().getValuesList());
+      } else if (elementType == Long.class
+          && value.getValueCase() == FlagValue.ValueCase.INT64_LIST_VALUE) {
+        return (List<E>) List.copyOf(value.getInt64ListValue().getValuesList());
+      } else if (elementType == Double.class
+          && value.getValueCase() == FlagValue.ValueCase.DOUBLE_LIST_VALUE) {
+        return (List<E>) List.copyOf(value.getDoubleListValue().getValuesList());
+      }
+    } catch (Exception e) {
+      logger.error("Failed to extract list flag value as List<{}>", elementType.getSimpleName(), e);
     }
     return fallback;
   }
