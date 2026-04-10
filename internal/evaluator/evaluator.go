@@ -71,7 +71,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, flagID, entityID string) (valu
 		}
 	}
 
-	// 3. Global state (on-demand, 5m TTL).
+	// 3. Global state (on-demand, 10m TTL).
 	return e.resolveGlobal(ctx, flagID, known, defaultValue)
 }
 

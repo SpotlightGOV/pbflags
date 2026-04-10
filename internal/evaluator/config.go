@@ -37,8 +37,8 @@ func DefaultConfig() Config {
 		Listen: "localhost:9201",
 		Cache: CacheConfig{
 			KillTTL:         30 * time.Second,
-			FlagTTL:         5 * time.Minute,
-			OverrideTTL:     5 * time.Minute,
+			FlagTTL:         10 * time.Minute,
+			OverrideTTL:     10 * time.Minute,
 			OverrideMaxSize: 10_000,
 			JitterPercent:   20,
 			FetchTimeout:    500 * time.Millisecond,

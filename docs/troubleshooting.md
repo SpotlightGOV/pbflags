@@ -43,8 +43,8 @@ If the evaluator returns compiled defaults for every flag, check:
 Flag state changes made through the admin UI are written to the database immediately. Evaluator instances pick them up through their cache TTLs:
 
 - **Kill set**: ~30 second polling interval
-- **Flag state**: 5 minute cache TTL (on-demand fetch on miss)
-- **Overrides**: 5 minute cache TTL (on-demand fetch on miss)
+- **Flag state**: 10 minute cache TTL (on-demand fetch on miss)
+- **Overrides**: 10 minute cache TTL (on-demand fetch on miss)
 
 For emergency shutoffs, use the kill switch — it has the shortest propagation delay.
 

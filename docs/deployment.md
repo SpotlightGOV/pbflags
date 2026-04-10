@@ -20,9 +20,9 @@ For development, `pbflags-admin --standalone` runs all three roles in one proces
 │ (Go/Java)   │     │  (flag resolution) │     │  (readonly) │
 └─────────────┘     └────────────────────┘     └────────────┘
   Generated            Three-tier cache:       ┌────────────┐
-  type-safe            - Kill set (30s)    ┌──▶│ PostgreSQL │
-  client               - Global state (5m)│   │   (R/W)    │
-                       - Overrides (5m LRU)│   └────────────┘
+  type-safe            - Kill set (30s)     ┌──▶│ PostgreSQL │
+  client               - Global state (10m)│   │   (R/W)    │
+                       - Overrides (10m LRU)│   └────────────┘
                                            │
 ┌─────────────┐     ┌────────────────────┐─┘
 │  Operator   │────▶│  pbflags-admin     │
@@ -70,7 +70,7 @@ This starts PostgreSQL + `pbflags-admin --standalone`.
 In production, the three roles run as separate processes with explicit DB permissions:
 
 ```bash
-# 1. CI/CD pipeline (once per deploy — DDL + R/W):
+# 1. CI/CD pipeline (once per change to flag definitions — DDL + R/W):
 pbflags-sync \
   --descriptors=descriptors.pb \
   --database=postgres://admin:pass@db:5432/flags
