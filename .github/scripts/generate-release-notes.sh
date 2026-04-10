@@ -67,14 +67,17 @@ else
 fi
 
 if [ -z "${PREVIOUS_TAG:-}" ]; then
-  # Use version-sorted tags to find the previous release. git describe walks
-  # commit ancestry, which misses tags on side branches (e.g. a release-notes-
-  # only commit that diverged from main).
-  PREVIOUS_TAG="$(git tag --sort=-v:refname | grep -A1 "^${RELEASE_TAG}\$" | tail -1 || true)"
-  # If grep matched the last tag (no line after it), PREVIOUS_TAG equals
-  # RELEASE_TAG — treat that as "no previous tag".
-  if [ "$PREVIOUS_TAG" = "$RELEASE_TAG" ]; then
-    PREVIOUS_TAG=""
+  if git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
+    # Tag exists — find the next-oldest tag by version sort.
+    PREVIOUS_TAG="$(git tag --sort=-v:refname | grep -A1 "^${RELEASE_TAG}\$" | tail -1 || true)"
+    # If grep matched the last tag (no line after it), PREVIOUS_TAG equals
+    # RELEASE_TAG — treat that as "no previous tag".
+    if [ "$PREVIOUS_TAG" = "$RELEASE_TAG" ]; then
+      PREVIOUS_TAG=""
+    fi
+  else
+    # Tag doesn't exist yet (pre-generating notes) — use the latest tag.
+    PREVIOUS_TAG="$(git tag --sort=-v:refname | head -1 || true)"
   fi
 fi
 
