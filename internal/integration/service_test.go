@@ -26,14 +26,8 @@ import (
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
 	"github.com/SpotlightGOV/pbflags/internal/admin"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
+	"github.com/SpotlightGOV/pbflags/internal/testdb"
 )
-
-func testDSN() string {
-	if dsn := os.Getenv("PBFLAGS_TEST_DSN"); dsn != "" {
-		return dsn
-	}
-	return "postgres://admin:admin@localhost:5433/pbflags?sslmode=disable"
-}
 
 type serviceTestEnv struct {
 	pool            *pgxpool.Pool
@@ -64,14 +58,6 @@ func int64Val(v int64) *pbflagsv1.FlagValue {
 func doubleVal(v float64) *pbflagsv1.FlagValue {
 	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleValue{DoubleValue: v}}
 }
-
-const schemaDDL = `
-CREATE SCHEMA IF NOT EXISTS feature_flags;
-CREATE TABLE IF NOT EXISTS feature_flags.features (feature_id VARCHAR(255) PRIMARY KEY NOT NULL, display_name VARCHAR(255) NOT NULL DEFAULT '', description VARCHAR(1024) NOT NULL DEFAULT '', owner VARCHAR(255) NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
-CREATE TABLE IF NOT EXISTS feature_flags.flags (flag_id VARCHAR(512) PRIMARY KEY NOT NULL, feature_id VARCHAR(255) NOT NULL REFERENCES feature_flags.features(feature_id), field_number INT NOT NULL, display_name VARCHAR(255) NOT NULL DEFAULT '', flag_type VARCHAR(20) NOT NULL, layer VARCHAR(50) NOT NULL DEFAULT 'GLOBAL', description VARCHAR(1024) NOT NULL DEFAULT '', default_value BYTEA, state VARCHAR(20) NOT NULL DEFAULT 'DEFAULT', value BYTEA, archived_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), CONSTRAINT valid_state CHECK (state IN ('ENABLED', 'DEFAULT', 'KILLED')));
-CREATE TABLE IF NOT EXISTS feature_flags.flag_overrides (flag_id VARCHAR(512) NOT NULL REFERENCES feature_flags.flags(flag_id) ON DELETE CASCADE, entity_id VARCHAR(255) NOT NULL, state VARCHAR(20) NOT NULL DEFAULT 'ENABLED', value BYTEA, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (flag_id, entity_id), CONSTRAINT valid_override_state CHECK (state IN ('ENABLED', 'DEFAULT', 'KILLED')));
-CREATE TABLE IF NOT EXISTS feature_flags.flag_audit_log (id BIGSERIAL PRIMARY KEY, flag_id VARCHAR(512) NOT NULL, action VARCHAR(50) NOT NULL, old_value BYTEA, new_value BYTEA, actor VARCHAR(255) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
-`
 
 func seedAllFlags(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
@@ -108,19 +94,7 @@ func setupServiceEnv(t *testing.T) *serviceTestEnv {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	pool, err := pgxpool.New(ctx, testDSN())
-	if err != nil {
-		t.Skipf("PostgreSQL not available: %v", err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		t.Skipf("PostgreSQL not reachable: %v", err)
-	}
-
-	_, err = pool.Exec(ctx, schemaDDL)
-	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `TRUNCATE feature_flags.flag_audit_log, feature_flags.flag_overrides, feature_flags.flags, feature_flags.features CASCADE`)
-	require.NoError(t, err)
+	_, pool := testdb.Require(t)
 
 	defs := notificationsDefs()
 	defaults := evaluator.NewDefaults(defs)
@@ -169,7 +143,6 @@ func setupServiceEnv(t *testing.T) *serviceTestEnv {
 		evalSrv.Close()
 		adminSrv.Close()
 		cache.Close()
-		pool.Close()
 	})
 
 	return &serviceTestEnv{

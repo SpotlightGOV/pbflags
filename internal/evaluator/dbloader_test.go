@@ -4,49 +4,24 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/SpotlightGOV/pbflags/db"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 	defsync "github.com/SpotlightGOV/pbflags/internal/sync"
+	"github.com/SpotlightGOV/pbflags/internal/testdb"
 )
-
-func dbTestDSN() string {
-	if dsn := os.Getenv("PBFLAGS_TEST_DSN"); dsn != "" {
-		return dsn
-	}
-	return "postgres://admin:admin@localhost:5433/pbflags?sslmode=disable"
-}
 
 // TestDBLoaderEquivalence syncs a set of definitions to the DB and verifies
 // that LoadDefinitionsFromDB returns equivalent FlagDefs.
 func TestDBLoaderEquivalence(t *testing.T) {
-	dsn := dbTestDSN()
+	dsn, pool := testdb.Require(t)
 	ctx := context.Background()
-
-	require.NoError(t, db.Migrate(ctx, dsn))
-
-	pool, err := pgxpool.New(ctx, dsn)
-	require.NoError(t, err)
-	defer pool.Close()
-
-	// Clean up from prior runs.
-	_, err = pool.Exec(ctx, `DELETE FROM feature_flags.flag_overrides`)
-	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `DELETE FROM feature_flags.flag_audit_log`)
-	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `DELETE FROM feature_flags.flags`)
-	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `DELETE FROM feature_flags.features`)
-	require.NoError(t, err)
 
 	// Source definitions — covers all four types and both layers.
 	srcDefs := []evaluator.FlagDef{
@@ -124,14 +99,8 @@ func TestDBLoaderEquivalence(t *testing.T) {
 
 // BenchmarkLoadDefinitionsFromDB benchmarks batched DB loading with 5K+ flags.
 func BenchmarkLoadDefinitionsFromDB(b *testing.B) {
-	dsn := dbTestDSN()
+	dsn, pool := testdb.Require(b)
 	ctx := context.Background()
-
-	require.NoError(b, db.Migrate(ctx, dsn))
-
-	pool, err := pgxpool.New(ctx, dsn)
-	require.NoError(b, err)
-	defer pool.Close()
 
 	// Seed 5000 flags across 50 features.
 	const numFeatures = 50

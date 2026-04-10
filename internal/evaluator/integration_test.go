@@ -16,14 +16,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
+	"github.com/SpotlightGOV/pbflags/internal/testdb"
 )
-
-func testDSN() string {
-	if dsn := os.Getenv("PBFLAGS_TEST_DSN"); dsn != "" {
-		return dsn
-	}
-	return "postgres://admin:admin@localhost:5433/pbflags?sslmode=disable"
-}
 
 // testEnv holds all components for an integration test.
 type testEnv struct {
@@ -38,23 +32,7 @@ type testEnv struct {
 func setupIntegration(t *testing.T, defs []FlagDef) *testEnv {
 	t.Helper()
 
-	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, testDSN())
-	if err != nil {
-		t.Skipf("PostgreSQL not available: %v", err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		t.Skipf("PostgreSQL not reachable: %v", err)
-	}
-
-	// Ensure schema exists and truncate.
-	_, err = pool.Exec(ctx, schemaDDL)
-	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `
-		TRUNCATE feature_flags.flag_audit_log, feature_flags.flag_overrides,
-		         feature_flags.flags, feature_flags.features CASCADE`)
-	require.NoError(t, err)
+	_, pool := testdb.Require(t)
 
 	cache, err := NewCacheStore(CacheStoreConfig{
 		FlagTTL:         100 * time.Millisecond,
@@ -76,7 +54,6 @@ func setupIntegration(t *testing.T, defs []FlagDef) *testEnv {
 
 	t.Cleanup(func() {
 		cache.Close()
-		pool.Close()
 	})
 
 	return &testEnv{
@@ -88,53 +65,6 @@ func setupIntegration(t *testing.T, defs []FlagDef) *testEnv {
 		tracker:   tracker,
 	}
 }
-
-const schemaDDL = `
-CREATE SCHEMA IF NOT EXISTS feature_flags;
-CREATE TABLE IF NOT EXISTS feature_flags.features (
-	feature_id   VARCHAR(255) PRIMARY KEY NOT NULL,
-	display_name VARCHAR(255) NOT NULL DEFAULT '',
-	description  VARCHAR(1024) NOT NULL DEFAULT '',
-	owner        VARCHAR(255) NOT NULL DEFAULT '',
-	created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-	updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE TABLE IF NOT EXISTS feature_flags.flags (
-	flag_id              VARCHAR(512) PRIMARY KEY NOT NULL,
-	feature_id           VARCHAR(255) NOT NULL REFERENCES feature_flags.features(feature_id),
-	field_number         INT NOT NULL,
-	display_name         VARCHAR(255) NOT NULL DEFAULT '',
-	flag_type            VARCHAR(20) NOT NULL,
-	layer                VARCHAR(50) NOT NULL DEFAULT 'GLOBAL',
-	description          VARCHAR(1024) NOT NULL DEFAULT '',
-	default_value        BYTEA,
-	state                VARCHAR(20) NOT NULL DEFAULT 'DEFAULT',
-	value                BYTEA,
-	archived_at          TIMESTAMPTZ,
-	created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
-	updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
-	CONSTRAINT valid_state CHECK (state IN ('ENABLED', 'DEFAULT', 'KILLED'))
-);
-CREATE TABLE IF NOT EXISTS feature_flags.flag_overrides (
-	flag_id    VARCHAR(512) NOT NULL REFERENCES feature_flags.flags(flag_id) ON DELETE CASCADE,
-	entity_id  VARCHAR(255) NOT NULL,
-	state      VARCHAR(20) NOT NULL DEFAULT 'ENABLED',
-	value      BYTEA,
-	created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-	updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-	PRIMARY KEY (flag_id, entity_id),
-	CONSTRAINT valid_override_state CHECK (state IN ('ENABLED', 'DEFAULT', 'KILLED'))
-);
-CREATE TABLE IF NOT EXISTS feature_flags.flag_audit_log (
-	id         BIGSERIAL PRIMARY KEY,
-	flag_id    VARCHAR(512) NOT NULL,
-	action     VARCHAR(50) NOT NULL,
-	old_value  BYTEA,
-	new_value  BYTEA,
-	actor      VARCHAR(255) NOT NULL,
-	created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-`
 
 func seedFlag(t *testing.T, pool *pgxpool.Pool, featureID, flagID, flagType, layer string, fieldNum int, value *pbflagsv1.FlagValue) {
 	t.Helper()

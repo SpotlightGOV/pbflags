@@ -16,101 +16,20 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
+	"github.com/SpotlightGOV/pbflags/internal/testdb"
 )
 
-// testDSN returns the PostgreSQL DSN for integration tests.
-// Set PBFLAGS_TEST_DSN to override.
-func testDSN() string {
-	if dsn := os.Getenv("PBFLAGS_TEST_DSN"); dsn != "" {
-		return dsn
-	}
-	return "postgres://admin:admin@localhost:5433/pbflags?sslmode=disable"
-}
-
-// setupTestStore creates the feature_flags schema, truncates all tables,
-// and returns a ready-to-use Store. Tests use the real schema because
-// store.go uses schema-qualified table names (feature_flags.*).
+// setupTestStore returns a ready-to-use Store backed by a testcontainers
+// PostgreSQL instance with goose migrations already applied.
 func setupTestStore(t *testing.T) (*Store, *pgxpool.Pool) {
 	t.Helper()
 
-	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, testDSN())
-	if err != nil {
-		t.Skipf("PostgreSQL not available: %v", err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		t.Skipf("PostgreSQL not reachable: %v", err)
-	}
-
-	// Ensure schema and tables exist (idempotent).
-	_, err = pool.Exec(ctx, schema)
-	require.NoError(t, err)
-
-	// Truncate in dependency order for test isolation.
-	_, err = pool.Exec(ctx, `
-		TRUNCATE feature_flags.flag_audit_log, feature_flags.flag_overrides,
-		         feature_flags.flags, feature_flags.features CASCADE`)
-	require.NoError(t, err)
-
-	t.Cleanup(func() { pool.Close() })
+	_, pool := testdb.Require(t)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	store := NewStore(pool, logger)
 	return store, pool
 }
-
-// schema DDL — matches db/migrations/001_schema.sql.
-const schema = `
-CREATE SCHEMA IF NOT EXISTS feature_flags;
-
-CREATE TABLE IF NOT EXISTS feature_flags.features (
-	feature_id   VARCHAR(255) PRIMARY KEY NOT NULL,
-	display_name VARCHAR(255) NOT NULL DEFAULT '',
-	description  VARCHAR(1024) NOT NULL DEFAULT '',
-	owner        VARCHAR(255) NOT NULL DEFAULT '',
-	created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-	updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS feature_flags.flags (
-	flag_id              VARCHAR(512) PRIMARY KEY NOT NULL,
-	feature_id           VARCHAR(255) NOT NULL REFERENCES feature_flags.features(feature_id),
-	field_number         INT NOT NULL,
-	display_name         VARCHAR(255) NOT NULL DEFAULT '',
-	flag_type            VARCHAR(20) NOT NULL,
-	layer                VARCHAR(50) NOT NULL DEFAULT 'GLOBAL',
-	description          VARCHAR(1024) NOT NULL DEFAULT '',
-	default_value        BYTEA,
-	state                VARCHAR(20) NOT NULL DEFAULT 'DEFAULT',
-	value                BYTEA,
-	archived_at          TIMESTAMPTZ,
-	created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
-	updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
-	CONSTRAINT valid_state CHECK (state IN ('ENABLED', 'DEFAULT', 'KILLED'))
-);
-
-CREATE TABLE IF NOT EXISTS feature_flags.flag_overrides (
-	flag_id    VARCHAR(512) NOT NULL REFERENCES feature_flags.flags(flag_id) ON DELETE CASCADE,
-	entity_id  VARCHAR(255) NOT NULL,
-	state      VARCHAR(20) NOT NULL DEFAULT 'ENABLED',
-	value      BYTEA,
-	created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-	updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-	PRIMARY KEY (flag_id, entity_id),
-	CONSTRAINT valid_override_state CHECK (state IN ('ENABLED', 'DEFAULT', 'KILLED'))
-);
-
-CREATE TABLE IF NOT EXISTS feature_flags.flag_audit_log (
-	id         BIGSERIAL PRIMARY KEY,
-	flag_id    VARCHAR(512) NOT NULL,
-	action     VARCHAR(50) NOT NULL,
-	old_value  BYTEA,
-	new_value  BYTEA,
-	actor      VARCHAR(255) NOT NULL,
-	created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-`
 
 var fieldCounter atomic.Int32
 
