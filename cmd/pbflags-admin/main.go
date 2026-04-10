@@ -63,7 +63,6 @@ func main() {
 	evaluatorListen := flag.String("evaluator-listen", "", "Evaluator listen address (default :9201, empty to disable)")
 	standalone := flag.Bool("standalone", false, "Run all roles in one process (admin + evaluator + sync + migrations)")
 	descriptors := flag.String("descriptors", "", "Path to descriptors.pb (requires --standalone)")
-	defPollInterval := flag.Duration("definition-poll-interval", 0, "How often to poll DB for definition changes (default 60s)")
 	killTTL := flag.Duration("cache-kill-ttl", 0, "Kill set cache TTL (default 30s)")
 	flagTTL := flag.Duration("cache-flag-ttl", 0, "Global flag state cache TTL (default 10m)")
 	overrideTTL := flag.Duration("cache-override-ttl", 0, "Per-entity override cache TTL (default 10m)")
@@ -88,10 +87,6 @@ func main() {
 		slog.Error("load config", "error", err)
 		os.Exit(1)
 	}
-	if *defPollInterval > 0 {
-		cfg.DefinitionPollInterval = *defPollInterval
-	}
-
 	// Admin listen defaults to :9200.
 	if cfg.Admin == "" {
 		cfg.Admin = ":9200"
@@ -220,13 +215,13 @@ func run(cfg evaluator.Config, standalone bool, devAssetsDir string, logger *slo
 			"flags_archived", result.FlagsArchived)
 	}
 
-	// Load definitions from DB (both modes).
+	// Load definitions from DB (both modes) for admin store metadata.
 	defs, err = evaluator.LoadDefinitionsFromDB(ctx, pool)
 	if err != nil {
 		return fmt.Errorf("load definitions: %w", err)
 	}
 	reg := evaluator.NewRegistry(evaluator.NewDefaults(defs))
-	logger.Info("defaults registry loaded", "flags", len(defs))
+	logger.Info("definitions loaded", "flags", len(defs))
 
 	// ── Cache + Evaluator ───────────────────────────────────────────
 
@@ -244,7 +239,7 @@ func run(cfg evaluator.Config, standalone bool, devAssetsDir string, logger *slo
 	dbFetcher := evaluator.NewDBFetcher(pool, tracker,
 		logger.With("component", "db-fetcher"), metrics, tracer)
 
-	eval := evaluator.NewEvaluator(reg, cache, dbFetcher, logger, metrics, tracer)
+	eval := evaluator.NewEvaluator(cache, dbFetcher, logger, metrics, tracer)
 
 	// ── Background goroutines ───────────────────────────────────────
 
@@ -253,32 +248,24 @@ func run(cfg evaluator.Config, standalone bool, devAssetsDir string, logger *slo
 		logger.With("component", "kill-poller"), metrics)
 	go killPoller.Run(ctx)
 
-	defPoller := evaluator.NewDefinitionPoller(evaluator.DefinitionPollerConfig{
-		Pool:         pool,
-		Registry:     reg,
-		Logger:       logger.With("component", "def-poller"),
-		BaseInterval: cfg.DefinitionPollInterval,
-	})
-	go defPoller.Run(ctx)
-
 	if standalone {
 		sighupCh := make(chan os.Signal, 1)
 		signal.Notify(sighupCh, syscall.SIGHUP)
 
-		watcher := evaluator.NewDescriptorWatcher(cfg.Descriptors, reg,
+		watcher := evaluator.NewDescriptorWatcher(cfg.Descriptors,
 			30*time.Second, sighupCh,
 			logger.With("component", "reload"))
-		watcher.SetSyncAndReload(func(syncCtx context.Context, parsedDefs []evaluator.FlagDef) ([]evaluator.FlagDef, error) {
+		watcher.SetSyncAndReload(func(syncCtx context.Context, parsedDefs []evaluator.FlagDef) error {
 			syncConn, err := pgx.Connect(syncCtx, cfg.Database)
 			if err != nil {
-				return nil, fmt.Errorf("connect for sync: %w", err)
+				return fmt.Errorf("connect for sync: %w", err)
 			}
 			defer syncConn.Close(syncCtx)
 
 			if _, err := defsync.SyncDefinitions(syncCtx, syncConn, parsedDefs, logger); err != nil {
-				return nil, fmt.Errorf("sync definitions: %w", err)
+				return fmt.Errorf("sync definitions: %w", err)
 			}
-			return evaluator.LoadDefinitionsFromDB(syncCtx, pool)
+			return nil
 		})
 		go watcher.Run(ctx)
 	}
@@ -329,7 +316,7 @@ func run(cfg evaluator.Config, standalone bool, devAssetsDir string, logger *slo
 
 	// ── Evaluator server ────────────────────────────────────────────
 
-	svc := evaluator.NewService(eval, reg, tracker, cache, dbFetcher)
+	svc := evaluator.NewService(eval, tracker, cache, dbFetcher)
 
 	prometheus.MustRegister(prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{

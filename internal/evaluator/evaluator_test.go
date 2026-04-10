@@ -52,13 +52,8 @@ func waitCaches(cs *CacheStore) {
 	cs.overrideCache.Wait()
 }
 
-func newTestRegistry() *Registry {
-	return NewRegistry(&Defaults{flags: make(map[string]FlagDef)})
-}
-
 func TestResolveGlobal_StaleCache(t *testing.T) {
 	cache := newTestCache(t)
-	reg := newTestRegistry()
 
 	serverValue := &pbflagsv1.FlagValue{
 		Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true},
@@ -71,7 +66,7 @@ func TestResolveGlobal_StaleCache(t *testing.T) {
 			Value:  serverValue,
 		},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "test-flag", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src, "expected GLOBAL source")
@@ -90,12 +85,11 @@ func TestResolveGlobal_StaleCache(t *testing.T) {
 
 func TestResolveGlobal_NoStaleCache_FallsToDefault(t *testing.T) {
 	cache := newTestCache(t)
-	reg := newTestRegistry()
 
 	fetcher := &stubFetcher{
 		flagErr: errors.New("server unreachable"),
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "test-flag", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "expected DEFAULT source with no stale cache")
@@ -104,7 +98,6 @@ func TestResolveGlobal_NoStaleCache_FallsToDefault(t *testing.T) {
 
 func TestResolveOverride_StaleCache(t *testing.T) {
 	cache := newTestCache(t)
-	reg := newTestRegistry()
 
 	overrideValue := &pbflagsv1.FlagValue{
 		Value: &pbflagsv1.FlagValue_StringValue{StringValue: "custom"},
@@ -121,13 +114,7 @@ func TestResolveOverride_StaleCache(t *testing.T) {
 		},
 	}
 
-	reg.Swap(&Defaults{
-		flags: map[string]FlagDef{
-			"test-flag": {FlagID: "test-flag", Layer: "user"},
-		},
-	})
-
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 
 	val, src := eval.Evaluate(context.Background(), "test-flag", "entity-1")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, src, "expected OVERRIDE source")

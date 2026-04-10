@@ -11,20 +11,18 @@ import (
 )
 
 // SyncAndReloadFunc is called by the DescriptorWatcher in monolithic mode.
-// It receives the parsed definitions, syncs them to the DB, then loads
-// definitions back from DB and returns them. If it returns an error, the
-// registry swap is skipped.
-type SyncAndReloadFunc func(ctx context.Context, defs []FlagDef) ([]FlagDef, error)
+// It receives the parsed definitions and syncs them to the DB. If it returns
+// an error, the sync is considered failed.
+type SyncAndReloadFunc func(ctx context.Context, defs []FlagDef) error
 
-// DescriptorWatcher monitors the descriptors file for changes and atomically
-// swaps the defaults registry when a valid new descriptor set is parsed.
+// DescriptorWatcher monitors the descriptors file for changes and syncs
+// definitions to the DB in standalone mode.
 type DescriptorWatcher struct {
 	path            string
-	registry        *Registry
 	logger          *slog.Logger
 	pollInterval    time.Duration
 	sighupCh        <-chan os.Signal
-	syncAndReloadFn SyncAndReloadFunc // If set, sync→reload from DB before swap.
+	syncAndReloadFn SyncAndReloadFunc // If set, sync to DB on file change.
 
 	mu      sync.Mutex
 	lastMod time.Time
@@ -33,14 +31,12 @@ type DescriptorWatcher struct {
 // NewDescriptorWatcher creates a descriptor file watcher.
 func NewDescriptorWatcher(
 	path string,
-	reg *Registry,
 	pollInterval time.Duration,
 	sighupCh <-chan os.Signal,
 	logger *slog.Logger,
 ) *DescriptorWatcher {
 	return &DescriptorWatcher{
 		path:         path,
-		registry:     reg,
 		pollInterval: pollInterval,
 		sighupCh:     sighupCh,
 		logger:       logger,
@@ -48,8 +44,7 @@ func NewDescriptorWatcher(
 }
 
 // SetSyncAndReload sets the sync callback for monolithic mode. When set,
-// descriptor file changes trigger: parse → sync to DB → reload from DB → swap.
-// If sync fails, the current registry is preserved.
+// descriptor file changes trigger: parse → sync to DB.
 func (w *DescriptorWatcher) SetSyncAndReload(fn SyncAndReloadFunc) {
 	w.syncAndReloadFn = fn
 }
@@ -176,19 +171,14 @@ func (w *DescriptorWatcher) tryReload(trigger string) {
 		return
 	}
 
-	// In monolithic mode: sync to DB, then reload from DB.
+	// In monolithic mode: sync to DB.
 	if w.syncAndReloadFn != nil {
-		defs, err = w.syncAndReloadFn(context.Background(), defs)
-		if err != nil {
-			w.logger.Error("sync failed, keeping current registry",
+		if err := w.syncAndReloadFn(context.Background(), defs); err != nil {
+			w.logger.Error("sync failed",
 				"trigger", trigger, "error", err)
 			return
 		}
 	}
-
-	old := w.registry.Load()
-	next := NewDefaults(defs)
-	w.registry.Swap(next)
 
 	if info, err := os.Stat(w.path); err == nil {
 		w.mu.Lock()
@@ -196,32 +186,7 @@ func (w *DescriptorWatcher) tryReload(trigger string) {
 		w.mu.Unlock()
 	}
 
-	added, removed := diffFlagIDs(old, next)
 	w.logger.Info("descriptors reloaded",
 		"trigger", trigger,
-		"total_flags", next.Len(),
-		"added", len(added),
-		"removed", len(removed))
-}
-
-func diffFlagIDs(old, next *Defaults) (added, removed []string) {
-	oldSet := make(map[string]struct{})
-	for _, id := range old.FlagIDs() {
-		oldSet[id] = struct{}{}
-	}
-	newSet := make(map[string]struct{})
-	for _, id := range next.FlagIDs() {
-		newSet[id] = struct{}{}
-	}
-	for id := range newSet {
-		if _, ok := oldSet[id]; !ok {
-			added = append(added, id)
-		}
-	}
-	for id := range oldSet {
-		if _, ok := newSet[id]; !ok {
-			removed = append(removed, id)
-		}
-	}
-	return
+		"total_flags", len(defs))
 }

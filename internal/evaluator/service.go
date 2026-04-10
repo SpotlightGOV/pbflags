@@ -19,17 +19,15 @@ type StateServer interface {
 // Service implements the FlagEvaluatorService Connect handler.
 type Service struct {
 	evaluator *Evaluator
-	registry  *Registry
 	tracker   *HealthTracker
 	cache     *CacheStore
 	state     StateServer
 }
 
 // NewService creates the evaluator Connect service.
-func NewService(eval *Evaluator, reg *Registry, tracker *HealthTracker, cache *CacheStore, state StateServer) *Service {
+func NewService(eval *Evaluator, tracker *HealthTracker, cache *CacheStore, state StateServer) *Service {
 	return &Service{
 		evaluator: eval,
-		registry:  reg,
 		tracker:   tracker,
 		cache:     cache,
 		state:     state,
@@ -51,7 +49,7 @@ func (s *Service) Evaluate(ctx context.Context, req *connect.Request[pbflagsv1.E
 func (s *Service) BulkEvaluate(ctx context.Context, req *connect.Request[pbflagsv1.BulkEvaluateRequest]) (*connect.Response[pbflagsv1.BulkEvaluateResponse], error) {
 	flagIDs := req.Msg.FlagIds
 	if len(flagIDs) == 0 {
-		flagIDs = s.registry.Load().FlagIDs()
+		return connect.NewResponse(&pbflagsv1.BulkEvaluateResponse{}), nil
 	}
 
 	evaluations := make([]*pbflagsv1.EvaluateResponse, 0, len(flagIDs))

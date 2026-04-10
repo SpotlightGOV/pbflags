@@ -24,12 +24,11 @@ type testEnv struct {
 	pool      *pgxpool.Pool
 	evaluator *Evaluator
 	cache     *CacheStore
-	registry  *Registry
 	fetcher   *DBFetcher
 	tracker   *HealthTracker
 }
 
-func setupIntegration(t *testing.T, defs []FlagDef) *testEnv {
+func setupIntegration(t *testing.T) *testEnv {
 	t.Helper()
 
 	_, pool := testdb.Require(t)
@@ -48,9 +47,7 @@ func setupIntegration(t *testing.T, defs []FlagDef) *testEnv {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	fetcher := NewDBFetcher(pool, tracker, logger, noopM, noopT)
 
-	defaults := NewDefaults(defs)
-	registry := NewRegistry(defaults)
-	eval := NewEvaluator(registry, cache, fetcher, logger, noopM, noopT)
+	eval := NewEvaluator(cache, fetcher, logger, noopM, noopT)
 
 	t.Cleanup(func() {
 		cache.Close()
@@ -60,7 +57,6 @@ func setupIntegration(t *testing.T, defs []FlagDef) *testEnv {
 		pool:      pool,
 		evaluator: eval,
 		cache:     cache,
-		registry:  registry,
 		fetcher:   fetcher,
 		tracker:   tracker,
 	}
@@ -104,53 +100,10 @@ func stringVal(v string) *pbflagsv1.FlagValue {
 	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: v}}
 }
 
-// notificationsDefs returns flag definitions matching the example notifications proto.
-func notificationsDefs() []FlagDef {
-	return []FlagDef{
-		{
-			FlagID:    "eval_notif/1",
-			FeatureID: "eval_notif",
-			FieldNum:  1,
-			Name:      "email_enabled",
-			FlagType:  pbflagsv1.FlagType_FLAG_TYPE_BOOL,
-			Layer:     "user",
-			Default:   boolVal(true),
-		},
-		{
-			FlagID:    "eval_notif/2",
-			FeatureID: "eval_notif",
-			FieldNum:  2,
-			Name:      "digest_frequency",
-			FlagType:  pbflagsv1.FlagType_FLAG_TYPE_STRING,
-			Layer:     "",
-			Default:   stringVal("daily"),
-		},
-		{
-			FlagID:    "eval_notif/3",
-			FeatureID: "eval_notif",
-			FieldNum:  3,
-			Name:      "max_retries",
-			FlagType:  pbflagsv1.FlagType_FLAG_TYPE_INT64,
-			Layer:     "",
-			Default:   int64Val(3),
-		},
-		{
-			FlagID:    "eval_notif/4",
-			FeatureID: "eval_notif",
-			FieldNum:  4,
-			Name:      "score_threshold",
-			FlagType:  pbflagsv1.FlagType_FLAG_TYPE_DOUBLE,
-			Layer:     "",
-			Default:   doubleVal(0.75),
-		},
-	}
-}
-
 // TestEvaluationLifecycle tests the full flag evaluation lifecycle:
 // DEFAULT → ENABLED (with value) → KILLED → back to DEFAULT.
 func TestEvaluationLifecycle(t *testing.T) {
-	defs := notificationsDefs()
-	env := setupIntegration(t, defs)
+	env := setupIntegration(t)
 	ctx := context.Background()
 
 	// Seed the flags.
@@ -159,13 +112,13 @@ func TestEvaluationLifecycle(t *testing.T) {
 	seedFlag(t, env.pool, "eval_notif", "eval_notif/3", "INT64", "GLOBAL", 3, nil)
 	seedFlag(t, env.pool, "eval_notif", "eval_notif/4", "DOUBLE", "GLOBAL", 4, nil)
 
-	// Phase 1: DEFAULT state — compiled defaults should be returned.
+	// Phase 1: DEFAULT state — evaluator returns nil (client has compiled defaults).
 	val, src := env.evaluator.Evaluate(ctx, "eval_notif/1", "user-1")
-	require.True(t, val.GetBoolValue())
+	require.Nil(t, val)
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
 
 	val, src = env.evaluator.Evaluate(ctx, "eval_notif/2", "")
-	require.Equal(t, "daily", val.GetStringValue())
+	require.Nil(t, val)
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
 
 	// Phase 2: ENABLED with server-side value.
@@ -177,7 +130,7 @@ func TestEvaluationLifecycle(t *testing.T) {
 	require.False(t, val.GetBoolValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src)
 
-	// Phase 3: KILLED — should return compiled default.
+	// Phase 3: KILLED — should return nil (client has compiled defaults).
 	env.cache.FlushAll()
 	env.cache.WaitAll()
 	setFlagState(t, env.pool, "eval_notif/1", "KILLED", nil)
@@ -188,7 +141,7 @@ func TestEvaluationLifecycle(t *testing.T) {
 	env.cache.SetKillSet(ks)
 
 	val, src = env.evaluator.Evaluate(ctx, "eval_notif/1", "user-1")
-	require.True(t, val.GetBoolValue()) // compiled default
+	require.Nil(t, val) // nil — client uses compiled default
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED, src)
 
 	// Phase 4: Unkill — back to DEFAULT.
@@ -200,21 +153,20 @@ func TestEvaluationLifecycle(t *testing.T) {
 	env.cache.WaitAll()
 
 	val, src = env.evaluator.Evaluate(ctx, "eval_notif/1", "user-1")
-	require.True(t, val.GetBoolValue()) // compiled default
+	require.Nil(t, val) // nil — client uses compiled default
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
 }
 
 // TestOverrideLifecycle tests per-entity overrides.
 func TestOverrideLifecycle(t *testing.T) {
-	defs := notificationsDefs()
-	env := setupIntegration(t, defs)
+	env := setupIntegration(t)
 	ctx := context.Background()
 
 	seedFlag(t, env.pool, "eval_notif", "eval_notif/1", "BOOL", "USER", 1, nil)
 
-	// No override — returns global/default.
+	// No override — returns nil with DEFAULT source.
 	val, src := env.evaluator.Evaluate(ctx, "eval_notif/1", "user-1")
-	require.True(t, val.GetBoolValue())
+	require.Nil(t, val)
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
 
 	// Set an override.
@@ -233,9 +185,9 @@ func TestOverrideLifecycle(t *testing.T) {
 	require.False(t, val.GetBoolValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, src)
 
-	// Different entity has no override.
+	// Different entity has no override — returns nil with DEFAULT.
 	val, src = env.evaluator.Evaluate(ctx, "eval_notif/1", "user-2")
-	require.True(t, val.GetBoolValue())
+	require.Nil(t, val)
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
 
 	// Remove override.
@@ -245,7 +197,7 @@ func TestOverrideLifecycle(t *testing.T) {
 	env.cache.WaitAll()
 
 	val, src = env.evaluator.Evaluate(ctx, "eval_notif/1", "user-1")
-	require.True(t, val.GetBoolValue()) // back to default
+	require.Nil(t, val) // back to nil — client uses compiled default
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
 }
 
@@ -271,8 +223,7 @@ func (f *failableFetcher) FetchOverrides(ctx context.Context, entityID string, f
 
 // TestDegradationLifecycle tests SERVING → DEGRADED → SERVING transitions.
 func TestDegradationLifecycle(t *testing.T) {
-	defs := notificationsDefs()
-	env := setupIntegration(t, defs)
+	env := setupIntegration(t)
 	ctx := context.Background()
 
 	seedFlag(t, env.pool, "eval_notif", "eval_notif/1", "BOOL", "USER", 1, nil)
@@ -281,7 +232,7 @@ func TestDegradationLifecycle(t *testing.T) {
 	// Wrap the fetcher to simulate failures.
 	ff := &failableFetcher{real: env.fetcher}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	eval := NewEvaluator(env.registry, env.cache, ff, logger, NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(env.cache, ff, logger, NewNoopMetrics(), noopTracer())
 
 	// Healthy fetch to populate stale map.
 	val, src := eval.Evaluate(ctx, "eval_notif/1", "user-1")
@@ -318,8 +269,7 @@ func TestDegradationLifecycle(t *testing.T) {
 
 // TestStaleCacheDuringOutage verifies stale cache persists through outages.
 func TestStaleCacheDuringOutage(t *testing.T) {
-	defs := notificationsDefs()
-	env := setupIntegration(t, defs)
+	env := setupIntegration(t)
 	ctx := context.Background()
 
 	seedFlag(t, env.pool, "eval_notif", "eval_notif/2", "STRING", "GLOBAL", 2, nil)
@@ -327,7 +277,7 @@ func TestStaleCacheDuringOutage(t *testing.T) {
 
 	ff := &failableFetcher{real: env.fetcher}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	eval := NewEvaluator(env.registry, env.cache, ff, logger, NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(env.cache, ff, logger, NewNoopMetrics(), noopTracer())
 
 	// Populate stale map with a successful fetch.
 	val, src := eval.Evaluate(ctx, "eval_notif/2", "")
@@ -369,8 +319,7 @@ func TestStaleCacheDuringOutage(t *testing.T) {
 
 // TestArchivedFlagRetrieval verifies archived flags return their last value.
 func TestArchivedFlagRetrieval(t *testing.T) {
-	defs := notificationsDefs()
-	env := setupIntegration(t, defs)
+	env := setupIntegration(t)
 	ctx := context.Background()
 
 	seedFlag(t, env.pool, "eval_notif", "eval_notif/3", "INT64", "GLOBAL", 3, nil)
@@ -395,8 +344,7 @@ func TestArchivedFlagRetrieval(t *testing.T) {
 
 // TestAllFlagTypes verifies all four flag types evaluate correctly.
 func TestAllFlagTypes(t *testing.T) {
-	defs := notificationsDefs()
-	env := setupIntegration(t, defs)
+	env := setupIntegration(t)
 	ctx := context.Background()
 
 	seedFlag(t, env.pool, "eval_notif", "eval_notif/1", "BOOL", "USER", 1, nil)
@@ -451,8 +399,7 @@ func setOverride(t *testing.T, pool *pgxpool.Pool, flagID, entityID, state strin
 
 // TestGlobalKillOverridesEntityOverride verifies global kill takes precedence over overrides.
 func TestGlobalKillOverridesEntityOverride(t *testing.T) {
-	defs := notificationsDefs()
-	env := setupIntegration(t, defs)
+	env := setupIntegration(t)
 	ctx := context.Background()
 
 	seedAllFlags(t, env.pool)
@@ -476,14 +423,13 @@ func TestGlobalKillOverridesEntityOverride(t *testing.T) {
 
 	// Global kill should override the entity override.
 	val, src = env.evaluator.Evaluate(ctx, "eval_notif/1", "user-99")
-	require.True(t, val.GetBoolValue()) // compiled default
+	require.Nil(t, val) // nil — client uses compiled default
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED, src)
 }
 
 // TestUnknownFlagEval verifies unknown flags return nil value with DEFAULT source.
 func TestUnknownFlagEval(t *testing.T) {
-	defs := notificationsDefs()
-	env := setupIntegration(t, defs)
+	env := setupIntegration(t)
 	seedAllFlags(t, env.pool)
 
 	val, src := env.evaluator.Evaluate(context.Background(), "nonexistent/1", "")
@@ -493,8 +439,7 @@ func TestUnknownFlagEval(t *testing.T) {
 
 // TestConcurrentEval verifies concurrent evaluations are safe (no panics, no data races).
 func TestConcurrentEval(t *testing.T) {
-	defs := notificationsDefs()
-	env := setupIntegration(t, defs)
+	env := setupIntegration(t)
 	ctx := context.Background()
 
 	seedAllFlags(t, env.pool)
@@ -519,15 +464,14 @@ func TestConcurrentEval(t *testing.T) {
 
 // TestOverrideStaleCacheDuringOutage verifies stale override is served when fetcher fails.
 func TestOverrideStaleCacheDuringOutage(t *testing.T) {
-	defs := notificationsDefs()
-	env := setupIntegration(t, defs)
+	env := setupIntegration(t)
 	ctx := context.Background()
 
 	seedAllFlags(t, env.pool)
 
 	ff := &failableFetcher{real: env.fetcher}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	eval := NewEvaluator(env.registry, env.cache, ff, logger, NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(env.cache, ff, logger, NewNoopMetrics(), noopTracer())
 
 	// Set override and prime the cache.
 	setOverride(t, env.pool, "eval_notif/1", "user-stale", "ENABLED", boolVal(false))
@@ -548,10 +492,9 @@ func TestOverrideStaleCacheDuringOutage(t *testing.T) {
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED, src)
 }
 
-// TestNilDefaultValue verifies a flag not in the registry returns nil value safely.
+// TestNilDefaultValue verifies a flag not in the DB returns nil value safely.
 func TestNilDefaultValue(t *testing.T) {
-	defs := notificationsDefs()
-	env := setupIntegration(t, defs)
+	env := setupIntegration(t)
 	ctx := context.Background()
 
 	// Insert a flag with no corresponding registry entry.

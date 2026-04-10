@@ -51,7 +51,6 @@ func main() {
 	database := flag.String("database", "", "PostgreSQL connection string (readonly)")
 	upstream := flag.String("upstream", "", "Upstream evaluator URL (proxy mode)")
 	listen := flag.String("listen", "", "Evaluator listen address (default localhost:9201)")
-	defPollInterval := flag.Duration("definition-poll-interval", 0, "How often to poll DB for definition changes (default 60s)")
 	killTTL := flag.Duration("cache-kill-ttl", 0, "Kill set cache TTL (default 30s)")
 	flagTTL := flag.Duration("cache-flag-ttl", 0, "Global flag state cache TTL (default 10m)")
 	overrideTTL := flag.Duration("cache-override-ttl", 0, "Per-entity override cache TTL (default 10m)")
@@ -69,9 +68,6 @@ func main() {
 	if err != nil {
 		slog.Error("load config", "error", err)
 		os.Exit(1)
-	}
-	if *defPollInterval > 0 {
-		cfg.DefinitionPollInterval = *defPollInterval
 	}
 
 	hasDB := cfg.Database != ""
@@ -124,23 +120,21 @@ func run(cfg evaluator.Config, logger *slog.Logger) error {
 	tracker := evaluator.NewHealthTracker(metrics)
 	tracer := otel.Tracer("pbflags/evaluator")
 
-	// ── Registry + Fetcher ──────────────────────────────────────────
+	// ── Fetcher ────────────────────────────────────────────────────
 
 	var (
-		reg         *evaluator.Registry
-		pool        *pgxpool.Pool
 		fetcher     evaluator.Fetcher
 		killFetcher evaluator.KillFetcher
 		state       evaluator.StateServer
 	)
 
 	if cfg.Database != "" {
-		// DB-backed evaluator: check schema, load definitions, poll for changes.
+		// DB-backed evaluator: check schema, fetch state from PostgreSQL.
 		if err := db.CheckSchemaVersion(ctx, cfg.Database); err != nil {
 			return fmt.Errorf("schema check: %w", err)
 		}
 
-		pool, err = pgxpool.New(ctx, cfg.Database)
+		pool, err := pgxpool.New(ctx, cfg.Database)
 		if err != nil {
 			return fmt.Errorf("create database pool: %w", err)
 		}
@@ -151,21 +145,12 @@ func run(cfg evaluator.Config, logger *slog.Logger) error {
 		}
 		logger.Info("database connected")
 
-		defs, err := evaluator.LoadDefinitionsFromDB(ctx, pool)
-		if err != nil {
-			return fmt.Errorf("load definitions: %w", err)
-		}
-		reg = evaluator.NewRegistry(evaluator.NewDefaults(defs))
-		logger.Info("defaults registry loaded", "flags", len(defs))
-
 		dbFetcher := evaluator.NewDBFetcher(pool, tracker, logger.With("component", "db-fetcher"), metrics, tracer)
 		fetcher = dbFetcher
 		killFetcher = dbFetcher
 		state = dbFetcher
 	} else {
 		// Upstream proxy: forward all RPCs to upstream evaluator.
-		reg = evaluator.NewRegistry(evaluator.NewDefaults(nil))
-
 		otelInt, err := otelconnect.NewInterceptor()
 		if err != nil {
 			return fmt.Errorf("create otel interceptor: %w", err)
@@ -192,7 +177,7 @@ func run(cfg evaluator.Config, logger *slog.Logger) error {
 	}
 	defer cache.Close()
 
-	eval := evaluator.NewEvaluator(reg, cache, fetcher, logger, metrics, tracer)
+	eval := evaluator.NewEvaluator(cache, fetcher, logger, metrics, tracer)
 
 	// ── Background goroutines ───────────────────────────────────────
 
@@ -201,19 +186,9 @@ func run(cfg evaluator.Config, logger *slog.Logger) error {
 		logger.With("component", "kill-poller"), metrics)
 	go killPoller.Run(ctx)
 
-	if pool != nil {
-		defPoller := evaluator.NewDefinitionPoller(evaluator.DefinitionPollerConfig{
-			Pool:         pool,
-			Registry:     reg,
-			Logger:       logger.With("component", "def-poller"),
-			BaseInterval: cfg.DefinitionPollInterval,
-		})
-		go defPoller.Run(ctx)
-	}
-
 	// ── HTTP server ─────────────────────────────────────────────────
 
-	svc := evaluator.NewService(eval, reg, tracker, cache, state)
+	svc := evaluator.NewService(eval, tracker, cache, state)
 
 	prometheus.MustRegister(prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{

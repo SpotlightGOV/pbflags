@@ -164,63 +164,27 @@ func TestParseDescriptorFile_IsGlobalLayer(t *testing.T) {
 	require.True(t, digest.IsGlobalLayer(), "digest_frequency (GLOBAL layer) should be global")
 }
 
-func TestDiffFlagIDs(t *testing.T) {
-	old := NewDefaults([]FlagDef{
-		{FlagID: "f/1"},
-		{FlagID: "f/2"},
-		{FlagID: "f/3"},
-	})
-	next := NewDefaults([]FlagDef{
-		{FlagID: "f/2"},
-		{FlagID: "f/4"},
-	})
-
-	added, removed := diffFlagIDs(old, next)
-
-	addedSet := make(map[string]struct{})
-	for _, id := range added {
-		addedSet[id] = struct{}{}
-	}
-	removedSet := make(map[string]struct{})
-	for _, id := range removed {
-		removedSet[id] = struct{}{}
-	}
-
-	assert.Contains(t, addedSet, "f/4", "expected f/4 in added set")
-	assert.Contains(t, removedSet, "f/1", "expected f/1 in removed set")
-	assert.Contains(t, removedSet, "f/3", "expected f/3 in removed set")
-	assert.Len(t, added, 1, "added count")
-	assert.Len(t, removed, 2, "removed count")
-}
-
 func TestDescriptorWatcher_ReloadValid(t *testing.T) {
 	path := testdataPath("descriptors.pb")
-	reg := NewRegistry(&Defaults{flags: make(map[string]FlagDef)})
-	watcher := NewDescriptorWatcher(path, reg, 0, nil, slog.Default())
+	watcher := NewDescriptorWatcher(path, 0, nil, slog.Default())
 
-	require.Equal(t, 0, reg.Load().Len(), "expected 0 flags before reload")
+	// No sync callback — just verify tryReload does not panic.
 	watcher.tryReload("test")
-	require.NotEqual(t, 0, reg.Load().Len(), "expected flags after reload")
 }
 
 func TestDescriptorWatcher_ReloadCorrupt(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "bad.pb")
 	require.NoError(t, os.WriteFile(tmpFile, []byte("corrupt data"), 0644))
 
-	existing := NewDefaults([]FlagDef{
-		{FlagID: "f/1", Default: boolVal(true)},
-	})
-	reg := NewRegistry(existing)
-	watcher := NewDescriptorWatcher(tmpFile, reg, 0, nil, slog.Default())
+	watcher := NewDescriptorWatcher(tmpFile, 0, nil, slog.Default())
 
+	// Should log error but not panic.
 	watcher.tryReload("test")
-	require.Equal(t, 1, reg.Load().Len(), "expected 1 flag after corrupt reload")
 }
 
 func TestDescriptorWatcher_ReloadMissingFile(t *testing.T) {
-	reg := NewRegistry(NewDefaults([]FlagDef{{FlagID: "f/1"}}))
-	watcher := NewDescriptorWatcher("/nonexistent/path.pb", reg, 0, nil, slog.Default())
+	watcher := NewDescriptorWatcher("/nonexistent/path.pb", 0, nil, slog.Default())
 
+	// Should log error but not panic.
 	watcher.tryReload("test")
-	require.Equal(t, 1, reg.Load().Len(), "expected 1 flag after missing file reload")
 }

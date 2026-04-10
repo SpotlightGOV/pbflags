@@ -24,15 +24,14 @@ func parseDurationEnv(key string) (time.Duration, bool) {
 
 // Config is the shared evaluator/admin configuration.
 type Config struct {
-	Descriptors            string        `yaml:"descriptors"`
-	Upstream               string        `yaml:"upstream"`
-	Listen                 string        `yaml:"listen"`
-	Admin                  string        `yaml:"admin"`
-	Database               string        `yaml:"database"`
-	Cache                  CacheConfig   `yaml:"cache"`
-	EnvName                string        `yaml:"env_name"`
-	EnvColor               string        `yaml:"env_color"`
-	DefinitionPollInterval time.Duration `yaml:"definition_poll_interval"`
+	Descriptors string      `yaml:"descriptors"`
+	Upstream    string      `yaml:"upstream"`
+	Listen      string      `yaml:"listen"`
+	Admin       string      `yaml:"admin"`
+	Database    string      `yaml:"database"`
+	Cache       CacheConfig `yaml:"cache"`
+	EnvName     string      `yaml:"env_name"`
+	EnvColor    string      `yaml:"env_color"`
 }
 
 // CacheConfig controls cache TTLs and sizes.

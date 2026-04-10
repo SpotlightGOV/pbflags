@@ -37,26 +37,11 @@ type serviceTestEnv struct {
 	adminClient     pbflagsv1connect.FlagAdminServiceClient
 }
 
-func notificationsDefs() []evaluator.FlagDef {
-	return []evaluator.FlagDef{
-		{FlagID: "svc_notif/1", FeatureID: "svc_notif", FieldNum: 1, Name: "email_enabled", FlagType: pbflagsv1.FlagType_FLAG_TYPE_BOOL, Layer: "user", Default: boolVal(true)},
-		{FlagID: "svc_notif/2", FeatureID: "svc_notif", FieldNum: 2, Name: "digest_frequency", FlagType: pbflagsv1.FlagType_FLAG_TYPE_STRING, Layer: "", Default: stringVal("daily")},
-		{FlagID: "svc_notif/3", FeatureID: "svc_notif", FieldNum: 3, Name: "max_retries", FlagType: pbflagsv1.FlagType_FLAG_TYPE_INT64, Layer: "", Default: int64Val(3)},
-		{FlagID: "svc_notif/4", FeatureID: "svc_notif", FieldNum: 4, Name: "score_threshold", FlagType: pbflagsv1.FlagType_FLAG_TYPE_DOUBLE, Layer: "", Default: doubleVal(0.75)},
-	}
-}
-
 func boolVal(v bool) *pbflagsv1.FlagValue {
 	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: v}}
 }
 func stringVal(v string) *pbflagsv1.FlagValue {
 	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: v}}
-}
-func int64Val(v int64) *pbflagsv1.FlagValue {
-	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64Value{Int64Value: v}}
-}
-func doubleVal(v float64) *pbflagsv1.FlagValue {
-	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleValue{DoubleValue: v}}
 }
 
 func seedAllFlags(t *testing.T, pool *pgxpool.Pool) {
@@ -96,9 +81,6 @@ func setupServiceEnv(t *testing.T) *serviceTestEnv {
 
 	_, pool := testdb.Require(t)
 
-	defs := notificationsDefs()
-	defaults := evaluator.NewDefaults(defs)
-	reg := evaluator.NewRegistry(defaults)
 	noopM := evaluator.NewNoopMetrics()
 	noopT := tracenoop.NewTracerProvider().Tracer("test")
 	tracker := evaluator.NewHealthTracker(noopM)
@@ -110,13 +92,13 @@ func setupServiceEnv(t *testing.T) *serviceTestEnv {
 	require.NoError(t, err)
 
 	dbFetcher := evaluator.NewDBFetcher(pool, tracker, logger, noopM, noopT)
-	eval := evaluator.NewEvaluator(reg, cache, dbFetcher, logger, noopM, noopT)
+	eval := evaluator.NewEvaluator(cache, dbFetcher, logger, noopM, noopT)
 
 	pollerCtx, pollerCancel := context.WithCancel(ctx)
 	poller := evaluator.NewKillPoller(dbFetcher, cache, tracker, 200*time.Millisecond, 2*time.Second, logger, noopM)
 	go poller.Run(pollerCtx)
 
-	svc := evaluator.NewService(eval, reg, tracker, cache, dbFetcher)
+	svc := evaluator.NewService(eval, tracker, cache, dbFetcher)
 
 	// Evaluator server.
 	evalMux := http.NewServeMux()
@@ -191,10 +173,10 @@ func TestBulkEvaluate(t *testing.T) {
 		byID[e.FlagId] = e
 	}
 
-	assert.True(t, byID["svc_notif/1"].Value.GetBoolValue())
-	assert.Equal(t, "weekly", byID["svc_notif/2"].Value.GetStringValue())
-	assert.Equal(t, int64(3), byID["svc_notif/3"].Value.GetInt64Value()) // killed → default
-	assert.Equal(t, 0.75, byID["svc_notif/4"].Value.GetDoubleValue())
+	assert.Nil(t, byID["svc_notif/1"].Value)                               // DEFAULT → nil (client has compiled defaults)
+	assert.Equal(t, "weekly", byID["svc_notif/2"].Value.GetStringValue()) // ENABLED with value
+	assert.Nil(t, byID["svc_notif/3"].Value)                              // KILLED → nil (client has compiled defaults)
+	assert.Nil(t, byID["svc_notif/4"].Value)                              // DEFAULT → nil (client has compiled defaults)
 }
 
 func TestBulkEvaluateWithEntityId(t *testing.T) {

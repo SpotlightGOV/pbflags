@@ -20,11 +20,10 @@ func TestEvaluate_CreatesSpanWithAttributes(t *testing.T) {
 
 	tracer := tp.Tracer("pbflags/evaluator")
 	cache := newTestCache(t)
-	reg := registryWith(globalFlag("f/1", boolVal(false)))
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), tracer)
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), tracer)
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "entity-42")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src)
@@ -53,9 +52,8 @@ func TestEvaluate_KilledFlagSpanHasKilledSource(t *testing.T) {
 	cache.SetKillSet(&KillSet{
 		FlagIDs: map[string]struct{}{"f/1": {}},
 	})
-	reg := registryWith(globalFlag("f/1", boolVal(false)))
 	fetcher := &stubFetcher{}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), tracer)
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), tracer)
 
 	_, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED, src)
@@ -77,11 +75,10 @@ func TestEvaluate_CacheHitSetsAttribute(t *testing.T) {
 
 	tracer := tp.Tracer("pbflags/evaluator")
 	cache := newTestCache(t)
-	reg := registryWith(globalFlag("f/1", boolVal(false)))
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), tracer)
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), tracer)
 
 	// First call populates cache.
 	eval.Evaluate(context.Background(), "f/1", "")

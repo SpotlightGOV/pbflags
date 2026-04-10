@@ -13,13 +13,12 @@ import (
 
 func TestService_Evaluate(t *testing.T) {
 	cache := newTestCache(t)
-	reg := registryWith(globalFlag("f/1", boolVal(false)))
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 	tracker := NewHealthTracker(NewNoopMetrics())
-	svc := NewService(eval, reg, tracker, cache, nil)
+	svc := NewService(eval, tracker, cache, nil)
 
 	resp, err := svc.Evaluate(context.Background(), connect.NewRequest(&pbflagsv1.EvaluateRequest{
 		FlagId:   "f/1",
@@ -33,16 +32,12 @@ func TestService_Evaluate(t *testing.T) {
 
 func TestService_BulkEvaluate_SpecificFlags(t *testing.T) {
 	cache := newTestCache(t)
-	reg := registryWith(
-		globalFlag("f/1", boolVal(false)),
-		globalFlag("f/2", strVal("default")),
-	)
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 	tracker := NewHealthTracker(NewNoopMetrics())
-	svc := NewService(eval, reg, tracker, cache, nil)
+	svc := NewService(eval, tracker, cache, nil)
 
 	resp, err := svc.BulkEvaluate(context.Background(), connect.NewRequest(&pbflagsv1.BulkEvaluateRequest{
 		FlagIds: []string{"f/1", "f/2"},
@@ -51,37 +46,28 @@ func TestService_BulkEvaluate_SpecificFlags(t *testing.T) {
 	require.Len(t, resp.Msg.Evaluations, 2, "evaluations count")
 }
 
-func TestService_BulkEvaluate_AllFlags(t *testing.T) {
+func TestService_BulkEvaluate_EmptyFlags(t *testing.T) {
 	cache := newTestCache(t)
-	reg := registryWith(
-		globalFlag("f/1", boolVal(true)),
-		globalFlag("f/2", strVal("x")),
-		globalFlag("f/3", int64Val(5)),
-	)
 	fetcher := &stubFetcher{}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 	tracker := NewHealthTracker(NewNoopMetrics())
-	svc := NewService(eval, reg, tracker, cache, nil)
+	svc := NewService(eval, tracker, cache, nil)
 
 	resp, err := svc.BulkEvaluate(context.Background(), connect.NewRequest(&pbflagsv1.BulkEvaluateRequest{}))
 	require.NoError(t, err, "BulkEvaluate error")
-	require.Len(t, resp.Msg.Evaluations, 3, "evaluations count (all flags)")
+	require.Empty(t, resp.Msg.Evaluations, "evaluations count (empty when no flag IDs)")
 }
 
 func TestService_BulkEvaluate_WithEntityId(t *testing.T) {
 	cache := newTestCache(t)
-	reg := registryWith(
-		userFlag("f/1", strVal("default-1")),
-		userFlag("f/2", strVal("default-2")),
-	)
 	fetcher := &stubFetcher{
 		overrides: []*CachedOverride{
 			{FlagID: "f/1", EntityID: "user-42", State: pbflagsv1.State_STATE_ENABLED, Value: strVal("override-1")},
 		},
 	}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 	tracker := NewHealthTracker(NewNoopMetrics())
-	svc := NewService(eval, reg, tracker, cache, nil)
+	svc := NewService(eval, tracker, cache, nil)
 
 	resp, err := svc.BulkEvaluate(context.Background(), connect.NewRequest(&pbflagsv1.BulkEvaluateRequest{
 		FlagIds:  []string{"f/1", "f/2"},
@@ -109,10 +95,9 @@ func TestService_BulkEvaluate_WithEntityId(t *testing.T) {
 func TestService_Health(t *testing.T) {
 	cache := newTestCache(t)
 	tracker := NewHealthTracker(NewNoopMetrics())
-	reg := newTestRegistry()
 	fetcher := &stubFetcher{}
-	eval := NewEvaluator(reg, cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
-	svc := NewService(eval, reg, tracker, cache, nil)
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	svc := NewService(eval, tracker, cache, nil)
 
 	resp, err := svc.Health(context.Background(), connect.NewRequest(&pbflagsv1.HealthRequest{}))
 	require.NoError(t, err, "Health error")
