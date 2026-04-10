@@ -8,6 +8,10 @@ Protocol Buffer-based feature flags with type-safe code generation, multi-tier c
 
 pbflags lets you define feature flags as protobuf messages and generates type-safe client code for Go and Java. Flags are the proto source of truth, the database is the runtime source of truth, and generated clients give you compile-time type safety at every call site.
 
+## For AI agents
+
+If you are an AI agent integrating pbflags into a project, see [docs/agent-setup.md](docs/agent-setup.md) — a step-by-step guide designed for automated setup without parsing this README.
+
 ## Prerequisites
 
 - Go 1.26+
@@ -120,6 +124,7 @@ frequency := client.DigestFrequency(ctx)                            // string
 
 | Document | Description |
 |---|---|
+| [Agent Setup](docs/agent-setup.md) | Step-by-step integration guide for AI agents |
 | [Deployment](docs/deployment.md) | Service topology, standalone and production setup, admin UI, configuration |
 | [Upgrading](docs/upgrading.md) | Upgrade procedures for standalone and multi-instance deployments |
 | [Go Client](docs/go.md) | Go codegen setup, buf configuration, generated API surface |
