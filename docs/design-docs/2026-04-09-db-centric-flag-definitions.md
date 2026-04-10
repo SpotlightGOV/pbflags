@@ -67,11 +67,40 @@ registry from committed DB state. The DB commit is always the single
 promotion point for definition changes — no instance ever serves definitions
 that haven't been committed to the database.
 
-## Deployment modes
+**Resilience tradeoff:** The original design allowed the evaluator to
+cold-start and serve compiled defaults without any DB connectivity, using
+only the descriptor file. This design gives that up — the server cannot
+start without reaching the database. This is a conscious trade: the
+original resilience was belt-and-suspenders (generated clients already
+compile in defaults as the ultimate fallback), and it came at the cost of
+requiring descriptor file delivery infrastructure on every evaluator
+instance. After startup, the resilience story is unchanged — the in-memory
+registry survives DB outages and evaluation degrades gracefully through
+cached state to compiled defaults.
 
-The server requires an explicit `--monolithic` or `--distributed` flag.
-This makes the operating mode a conscious choice with clear validation
-rules, not an inference from other flags.
+## Two axes: definition sync and evaluator topology
+
+This design affects the **definition sync model** — how flag definitions
+get into the database and into the server's in-memory registry. It does
+NOT change the **evaluator topology** — the root vs proxy hierarchy that
+determines how flag *state* is fetched at evaluation time.
+
+| Axis | Options | What it controls |
+|------|---------|------------------|
+| **Definition sync** | `--monolithic` or `--distributed` | Where definitions come from (descriptor + local sync, or DB via external sync) |
+| **Evaluator topology** | `--database` (root) or `--upstream` (proxy) | Where flag state is fetched (DB directly, or forwarded to upstream) |
+
+**Proxy evaluators are orthogonal to this design.** They have no DB access,
+no descriptors, and no definitions. They receive typed `FlagValue` responses
+from upstream and cache them. The `--monolithic` / `--distributed` flags
+only apply to root evaluators — proxy evaluators use `--upstream` and are
+completely unaffected by this change.
+
+## Definition sync modes
+
+Root evaluators require an explicit `--monolithic` or `--distributed` flag.
+This makes the sync mode a conscious choice with clear validation rules,
+not an inference from other flags.
 
 ### Monolithic mode
 
@@ -87,8 +116,8 @@ pbflags-server --monolithic --migrate \
 ```
 
 On startup:
-1. Check schema version (see "Schema version check" below)
-2. If `--migrate`: run pending schema migrations
+1. If `--migrate`: run pending schema migrations
+2. Check schema version (see "Schema version check" below)
 3. Parse `descriptors.pb` and sync definitions to DB
 4. Load definitions from DB → build in-memory defaults registry
 5. Start serving (evaluator + admin UI)
@@ -137,15 +166,10 @@ separate `goose up` step. Migrations only change on new pbflags releases,
 so running them on every sync is a fast no-op in the common case.
 
 The server loads definitions from the database at startup and polls for
-changes. No descriptor file is needed at runtime.
-
-In distributed mode, servers can run as **root** evaluators (direct DB
-access) or **proxy** evaluators (cache + forward to upstream). Only root
-evaluators load definitions from the database. Proxy evaluators receive
-typed `FlagValue` responses from upstream and cache them — they don't need
-definitions, DB access, or descriptors. This limits the worst-case DB load
-to the number of root evaluators (typically 1-3), regardless of total
-instance count.
+changes. No descriptor file is needed at runtime. Only root evaluators
+load definitions — proxy evaluators are unaffected (see "Two axes" above).
+This limits the worst-case DB load from definition polling to the number of
+root evaluators (typically 1-3), regardless of total instance count.
 
 | Flag | Behavior |
 |------|----------|
@@ -165,7 +189,7 @@ instance count.
 | Who syncs definitions | Manual `pbflags-sync` | Server at startup + fsnotify | `pbflags-sync` in CI/CD |
 | Definition reload | fsnotify on descriptor file | fsnotify (sync → reload from DB) + DB poll | DB poll + reload endpoint |
 | Descriptor file at runtime | Required | Required | Not required |
-| Scaling | — | Single instance only | Root evaluators + optional proxy tiers |
+| Scaling | — | Single root instance only | Any number of root evaluators (+ optional proxy tiers) |
 | Best for | — | Single server, VM, demo | Multi-instance, CI/CD, production |
 
 ## Design
@@ -197,9 +221,10 @@ fatal: database schema version 0 < required 1
   start with "pbflags-server --monolithic --migrate" to auto-migrate
 ```
 
-In monolithic mode with `--migrate`, the schema check runs *after*
-migrations. Without `--migrate`, it runs immediately and fails if the
-schema is behind — the operator must explicitly opt in to migrations.
+In monolithic mode with `--migrate`, migrations run first, then the schema
+check verifies success. Without `--migrate`, the check runs immediately
+and fails if the schema is behind — the operator must explicitly opt in to
+migrations.
 
 ### Server startup: building the defaults registry
 
@@ -377,7 +402,7 @@ to the server at runtime, not to the sync tool in CI.
 | Property | Monolithic | Distributed |
 |----------|------------|-------------|
 | Deploy complexity | Minimal (one binary, one file) | Standard CI/CD pipeline |
-| Instance count | Single instance only | Any number of root + proxy evaluators |
+| Instance count | Single root instance | Any number of root evaluators |
 | DB load from definitions | One instance reads/writes | Only root evaluators read (typically 1-3) |
 | Definition reload | fsnotify (gated on sync) + DB poll | DB poll (60s default) + reload endpoint |
 | Operational overhead | None — server handles everything | Run `pbflags-sync` in deploy pipeline |
@@ -396,9 +421,7 @@ to the server at runtime, not to the sync tool in CI.
 - **Schema** — no migration required; the existing tables already store
   everything needed
 - **`protoc-gen-pbflags`** — codegen is unrelated to server runtime
-- **Proxy evaluators** — no DB access, no descriptors, no definitions
-  needed. They receive typed `FlagValue` responses from upstream and cache
-  them. Completely unaffected by this change.
+- **Proxy evaluators** — completely unaffected (see "Two axes" above)
 
 ## Implementation plan
 
