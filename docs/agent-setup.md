@@ -13,7 +13,7 @@ buf --version # requires buf CLI
 
 If buf is missing: `go install github.com/bufbuild/buf/cmd/buf@latest`
 
-You also need a PostgreSQL instance reachable by the `--database` DSN you will pass to `pbflags-admin` or `pbflags-sync`.
+You also need a PostgreSQL instance reachable by the `--database` DSN you will pass to `pbflags-admin`. The database user needs permission to create schemas, tables, and indexes (standalone mode runs migrations on startup).
 
 ## 2. Install the codegen plugin
 
