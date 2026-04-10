@@ -8,7 +8,7 @@ Three binaries, each with a distinct role and explicit database permission requi
 |---|---|---|
 | `pbflags-sync` | Migrations + definition sync | DDL + R/W |
 | `pbflags-admin` | Flag management, UI, local evaluator | R/W (no DDL) |
-| `pbflags-evaluator` | Read-only flag resolution | Readonly (or none if upstream) |
+| `pbflags-evaluator` | Read-only flag resolution | Readonly, or none if using an upstream evaluator |
 
 For development, `pbflags-admin --standalone` runs all three roles in one process.
 
