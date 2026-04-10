@@ -176,6 +176,47 @@ func (s *Server) handler(ctx context.Context) {
 `Defaults()` returns a zero-allocation empty struct. `Status()` returns
 `EVALUATOR_STATUS_UNSPECIFIED` since no evaluator is connected.
 
+#### Using `Testing()` for test stubs
+
+Each generated package includes a `Testing()` constructor that returns a mutable
+struct with func fields pre-populated with compiled defaults. Override individual
+fields to stub specific flags without implementing the full interface:
+
+```go
+func TestNotificationWorkflow(t *testing.T) {
+    flags := notificationsflags.Testing()
+    flags.EmailEnabledFunc = func(_ context.Context, _ layers.UserID) bool {
+        return false  // override just this flag
+    }
+    // MaxRetries, DigestFrequency, etc. still return compiled defaults
+
+    svc := NewService(flags)
+    // ...
+}
+```
+
+#### Using `FlagDescriptors` for flag metadata
+
+Each generated package includes a `FlagDescriptors` slice that provides
+structured metadata about every flag in the feature. This is useful for
+iterating over all flags to register test mocks, build admin UIs, generate
+documentation, or validate override files:
+
+```go
+import "github.com/yourorg/yourrepo/gen/flags/flagmeta"
+
+for _, d := range notificationsflags.FlagDescriptors {
+    fmt.Printf("Flag %s (%s): type=%v list=%v layer=%q\n",
+        d.ID, d.FieldName, d.Type, d.IsList, d.LayerType)
+}
+```
+
+Each `flagmeta.FlagDescriptor` provides:
+- `ID`, `FieldName` — flag identification
+- `Type` (`FlagTypeBool`, `FlagTypeString`, `FlagTypeInt64`, `FlagTypeDouble`) and `IsList`
+- Typed default fields (`DefaultBool`, `DefaultString`, `DefaultStrings`, etc.)
+- `HasEntityID` and `LayerType` — layer/entity scoping info
+
 ### 5. Use in your application (Java)
 
 ```java

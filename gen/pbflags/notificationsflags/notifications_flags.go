@@ -6,10 +6,10 @@ import (
 	"context"
 
 	"connectrpc.com/connect"
-	"github.com/SpotlightGOV/pbflags/gen/flags/flagmeta"
-	"github.com/SpotlightGOV/pbflags/gen/flags/layers"
-	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/flags/v1"
-	"github.com/SpotlightGOV/pbflags/gen/flags/v1/pbflagsv1connect"
+	"github.com/SpotlightGOV/pbflags/gen/pbflags/flagmeta"
+	"github.com/SpotlightGOV/pbflags/gen/pbflags/layers"
+	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
+	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
 )
 
 const FeatureID = "notifications"

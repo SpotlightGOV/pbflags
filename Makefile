@@ -1,7 +1,9 @@
 .PHONY: generate build test clean docker dev dev-db release-notes release
 
 # Generate protobuf Go code from proto definitions.
+# Builds protoc-gen-pbflags first so buf can invoke it.
 generate:
+	go build -o $(shell go env GOPATH)/bin/protoc-gen-pbflags ./cmd/protoc-gen-pbflags
 	buf generate
 
 # Build all Go binaries.

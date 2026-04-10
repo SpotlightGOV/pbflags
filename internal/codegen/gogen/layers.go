@@ -59,7 +59,7 @@ func addArticle(word string) string {
 		return word
 	}
 	first := unicode.ToLower(rune(word[0]))
-	if first == 'a' || first == 'e' || first == 'i' || first == 'o' || first == 'u' {
+	if first == 'a' || first == 'e' || first == 'i' || first == 'o' {
 		return "an " + word
 	}
 	return "a " + word

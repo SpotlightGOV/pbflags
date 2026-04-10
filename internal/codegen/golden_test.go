@@ -92,21 +92,28 @@ func TestGoldenGo(t *testing.T) {
 	pluginBin := buildPlugin(t, root)
 	goldenDir := filepath.Join(root, "internal", "codegen", "testdata", "golden", "go")
 
+	goFiles := []goldenFile{
+		gf("notifications_flags.go"),
+		gf("flagmeta/flagmeta.go"),
+	}
+
 	if *update {
-		// Regenerate golden files.
 		tmpDir := t.TempDir()
 		generateWithBuf(t, root, pluginBin, tmpDir, "go")
-		generated := findFile(t, tmpDir, "notifications_flags.go")
-		copyFile(t, generated, filepath.Join(goldenDir, "notifications_flags.go"))
-		t.Log("updated golden Go file")
+		for _, f := range goFiles {
+			generated := findFile(t, tmpDir, f.filename)
+			copyFile(t, generated, filepath.Join(goldenDir, f.subpath))
+		}
+		t.Log("updated golden Go files")
 		return
 	}
 
 	tmpDir := t.TempDir()
 	generateWithBuf(t, root, pluginBin, tmpDir, "go")
-	generated := findFile(t, tmpDir, "notifications_flags.go")
-
-	compareFiles(t, filepath.Join(goldenDir, "notifications_flags.go"), generated)
+	for _, f := range goFiles {
+		generated := findFile(t, tmpDir, f.filename)
+		compareFiles(t, filepath.Join(goldenDir, f.subpath), generated)
+	}
 }
 
 func TestGoldenJava(t *testing.T) {

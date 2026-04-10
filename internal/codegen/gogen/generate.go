@@ -23,6 +23,10 @@ func Generate(plugin *protogen.Plugin, packagePrefix string) error {
 		return fmt.Errorf("generating layers package: %w", err)
 	}
 
+	if err := generateFlagMetaPackage(plugin, packagePrefix); err != nil {
+		return fmt.Errorf("generating flagmeta package: %w", err)
+	}
+
 	for _, f := range plugin.Files {
 		if !f.Generate {
 			continue
@@ -48,6 +52,7 @@ type featureInfo struct {
 
 type flagInfo struct {
 	goName      string
+	fieldName   string // original snake_case proto field name (e.g., "email_enabled")
 	fieldNumber int32
 	goType      string
 	getterName  string
@@ -77,6 +82,7 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 
 	flagsV1Import := packagePrefix + "/v1"
 	flagsV1ConnectImport := packagePrefix + "/v1/pbflagsv1connect"
+	flagmetaImport := packagePrefix + "/flagmeta"
 	layersImport := packagePrefix + "/layers"
 
 	// Check if any flag uses a layer (needs layers import).
@@ -99,11 +105,12 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p(`	"context"`)
 	p()
 	p(`	"`, connectImport, `"`)
-	p(`	pbflagsv1 "`, flagsV1Import, `"`)
-	p(`	"`, flagsV1ConnectImport, `"`)
+	p(`	"`, flagmetaImport, `"`)
 	if hasLayerFlags {
 		p(`	"`, layersImport, `"`)
 	}
+	p(`	pbflagsv1 "`, flagsV1Import, `"`)
+	p(`	"`, flagsV1ConnectImport, `"`)
 	p(")")
 	p()
 
@@ -298,6 +305,35 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p("func (t *", testType, ") Status(ctx context.Context) pbflagsv1.EvaluatorStatus {")
 	p("	return t.StatusFunc(ctx)")
 	p("}")
+	p()
+
+	// Generate FlagDescriptors slice.
+	p("// FlagDescriptors provides structured metadata about each flag in this feature.")
+	p("// Use it to iterate over all flags for documentation, admin UIs, generic test")
+	p("// helpers, or override validation.")
+	p("var FlagDescriptors = []flagmeta.FlagDescriptor{")
+	for _, fl := range flags {
+		p("	{")
+		p("		ID: ", fl.goName, "ID, FieldName: ", fmt.Sprintf("%q", fl.fieldName), ",")
+		if fl.isList {
+			p("		Type: ", flagMetaTypeName(fl), ", IsList: true,")
+		} else {
+			p("		Type: ", flagMetaTypeName(fl), ",")
+		}
+		if fl.hasDefault {
+			field := flagMetaDefaultField(fl)
+			if fl.isList {
+				p("		", field, ": ", fl.goName, "Default(),")
+			} else {
+				p("		", field, ": ", fl.goName, "Default,")
+			}
+		}
+		if fl.layerName != "" {
+			p("		HasEntityID: true, LayerType: ", fmt.Sprintf("%q", fl.layerName), ",")
+		}
+		p("	},")
+	}
+	p("}")
 
 	return nil
 }
@@ -474,12 +510,14 @@ func extractFlagFromField(field *protogen.Field, layers *layerutil.LayerDef) (*f
 		}
 	}
 
-	goName := toPascalCase(string(field.Desc.Name()))
+	fieldName := string(field.Desc.Name())
+	goName := toPascalCase(fieldName)
 	isList := field.Desc.IsList()
 	goType, getterName, oneofType := goTypeInfo(field.Desc.Kind(), isList)
 
 	return &flagInfo{
 		goName:      goName,
+		fieldName:   fieldName,
 		fieldNumber: int32(field.Desc.Number()),
 		goType:      goType,
 		getterName:  getterName,

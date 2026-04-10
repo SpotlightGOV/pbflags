@@ -10,5 +10,12 @@ plugins:
     out: gen
     opt:
       - paths=source_relative
+  # pbflags typed client and metadata generation.
+  - local: protoc-gen-pbflags
+    out: gen/pbflags
+    strategy: all  # required — plugin needs all files to find the Layer enum
+    opt:
+      - lang=go
+      - package_prefix=github.com/SpotlightGOV/pbflags/gen/pbflags
 inputs:
   - directory: proto
