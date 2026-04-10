@@ -86,7 +86,7 @@ Skip hooks for a one-off commit with `git commit --no-verify`.
 
 ## Tests
 
-Tests require PostgreSQL on port 5433 (`make dev-db`). Run the full suite with:
+Tests use testcontainers to start PostgreSQL automatically (requires Docker). Run the full suite with:
 
 ```bash
 go test -count=1 -p 1 ./...

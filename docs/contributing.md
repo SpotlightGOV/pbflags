@@ -39,7 +39,7 @@ go test -count=1 -p 1 ./...
 
 The `-p 1` flag is important: several packages share the same database and running them in parallel can deadlock or flake. The `Makefile` `test` target runs `go test ./...` without `-p 1` — prefer the command above for a reliable full run.
 
-Integration tests expect PostgreSQL on port **5433**. Start it with `make dev-db`.
+Integration tests use testcontainers to start PostgreSQL automatically (requires Docker).
 
 ### E2E browser tests
 
