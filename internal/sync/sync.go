@@ -1,5 +1,5 @@
 // Package sync provides flag definition synchronization from parsed descriptors
-// into PostgreSQL. Both pbflags-sync and pbflags-server (monolithic mode) use
+// into PostgreSQL. Both pbflags-sync and pbflags-admin (standalone mode) use
 // this package to write definitions to the database.
 package sync
 

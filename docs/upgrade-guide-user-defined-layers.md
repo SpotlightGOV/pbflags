@@ -152,11 +152,8 @@ pbflags-sync \
   --database=postgres://... \
   --descriptors=descriptors.pb
 
-# Restart the evaluator server with new descriptors
-pbflags-server \
-  --database=postgres://... \
-  --descriptors=descriptors.pb \
-  --listen=:9201
+# Restart the evaluator with new definitions from DB
+pbflags-evaluator --database=postgres://...
 ```
 
 The database stores layer values as uppercase strings (`"USER"`, `"ENTITY"`).

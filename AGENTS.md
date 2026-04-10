@@ -49,45 +49,47 @@ bd close <id>         # Complete work
 
 ## Services and binaries
 
-- **`pbflags-server`** — Feature flag evaluator (Connect RPC); optional combined mode serves the admin API and embedded web UI.
-- **`pbflags-sync`** — Syncs flag definitions from `descriptors.pb` into PostgreSQL. Runs migrations automatically before syncing.
+Three runtime services, each with a distinct role and explicit DB permission requirements:
+
+- **`pbflags-admin`** — Flag management control plane: admin API, web UI, and a local evaluator interface. Requires R/W database access (no DDL). With `--standalone`, runs all three roles in one process (including migrations and sync). Requires DDL+R/W in standalone mode.
+- **`pbflags-evaluator`** — Read-only flag resolution service. Requires either `--database` (readonly) or `--upstream` (proxy to another evaluator). Does not need descriptors.
+- **`pbflags-sync`** — Runs schema migrations and syncs flag definitions from `descriptors.pb` into PostgreSQL. Requires DDL+R/W. Runs once per deploy in CI/CD pipelines.
+
+Build-time tools:
+
 - **`protoc-gen-pbflags`** — `protoc` / `buf` plugin for Go and Java client codegen.
+- **`pbflags-lint`** — Pre-commit breaking change detector.
 
-## Server modes
+## Deployment topologies
 
-The server has three deployment modes. Mode is inferred from flags:
-
-### Monolithic (single instance)
+### Standalone (development / single instance)
 
 ```bash
-pbflags-server --descriptors=descriptors.pb --database=postgres://... --admin=:8080
+pbflags-admin --standalone \
+  --descriptors=descriptors.pb \
+  --database=postgres://... \
+  --env-name=local
 ```
 
-Inferred when both `--descriptors` and `--database` are present. Automatically runs migrations, syncs definitions to DB, and loads from DB. Watches the descriptor file for changes (re-syncs on change). Also polls DB for definition updates.
+Runs all three roles (admin + evaluator + sync) in one process. Auto-migrates, syncs definitions, watches descriptor file. A lease row warns if another standalone instance is active.
 
-**Single-instance only.** Do not run multiple monolithic instances — this causes split-brain definition conflicts.
-
-### Distributed (multi-instance production)
+### Production (multi-instance)
 
 ```bash
 # CI/CD pipeline (once per deploy):
 pbflags-sync --descriptors=descriptors.pb --database=postgres://...
 
-# Application instances (any number):
-pbflags-server --distributed --database=postgres://...
+# Control plane (one or more instances):
+pbflags-admin --database=postgres://...
+
+# Evaluators (any number, as sidecars or in a hierarchy):
+pbflags-evaluator --database=postgres://...
+
+# Optional: upstream proxy evaluators for fan-out reduction:
+pbflags-evaluator --upstream=http://evaluator:9201
 ```
 
-Requires explicit `--distributed` flag. No descriptor file needed at runtime. Server polls DB for definition changes. Migrations are handled by `pbflags-sync`.
-
-**Required when running more than one root evaluator.** External `pbflags-sync` is the single writer, preventing split-brain.
-
-### Proxy
-
-```bash
-pbflags-server --upstream=http://root-evaluator:9201
-```
-
-Connects to an upstream root evaluator. No database or descriptors needed. Unaffected by definition sync — proxies just forward requests.
+`pbflags-sync` is the single writer for definitions. Admin instances serve the UI and manage flag state (R/W). Evaluator instances resolve flags (readonly). All poll the DB for changes.
 
 ## Prerequisites
 

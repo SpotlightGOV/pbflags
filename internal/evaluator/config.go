@@ -19,29 +19,7 @@ func normalizeAddr(addr string) string {
 	return ":" + addr
 }
 
-// ServerMode indicates how the server handles flag definitions.
-type ServerMode int
-
-const (
-	// ModeClassic is the legacy mode: parse descriptors into memory, no DB
-	// definition loading. Preserved for backward compatibility when
-	// --database is provided without --descriptors (root mode without
-	// DB-centric definitions).
-	ModeClassic ServerMode = iota
-	// ModeMonolithic is a single-instance root evaluator that handles
-	// migrations, descriptor sync, and definition loading from DB.
-	// Inferred when both --descriptors and --database are present.
-	// Always runs migrations automatically.
-	ModeMonolithic
-	// ModeDistributed is a root evaluator that loads definitions from DB
-	// only. An external pbflags-sync handles migrations and sync.
-	// Requires explicit --distributed flag.
-	ModeDistributed
-	// ModeProxy connects to an upstream evaluator; no DB or descriptors.
-	ModeProxy
-)
-
-// Config is the evaluator configuration.
+// Config is the shared evaluator/admin configuration.
 type Config struct {
 	Descriptors            string        `yaml:"descriptors"`
 	Upstream               string        `yaml:"upstream"`
@@ -51,7 +29,6 @@ type Config struct {
 	Cache                  CacheConfig   `yaml:"cache"`
 	EnvName                string        `yaml:"env_name"`
 	EnvColor               string        `yaml:"env_color"`
-	Mode                   ServerMode    `yaml:"-"` // Resolved from CLI flags, not YAML.
 	DefinitionPollInterval time.Duration `yaml:"definition_poll_interval"`
 }
 
@@ -80,35 +57,10 @@ func DefaultConfig() Config {
 	}
 }
 
-// LoadConfigWithMode reads configuration and applies the given mode.
-func LoadConfigWithMode(path string, mode ServerMode, defPollInterval time.Duration) (Config, error) {
-	cfg, err := loadConfigBase(path)
-	if err != nil {
-		return Config{}, err
-	}
-	cfg.Mode = mode
-	if defPollInterval > 0 {
-		cfg.DefinitionPollInterval = defPollInterval
-	}
-	if err := validateConfig(&cfg); err != nil {
-		return Config{}, err
-	}
-	return cfg, nil
-}
-
-// LoadConfig reads config for legacy/classic mode invocations.
+// LoadConfig reads configuration from an optional YAML file and environment
+// variable overrides. It does not validate the result — each binary is
+// responsible for checking that the fields it requires are populated.
 func LoadConfig(path string) (Config, error) {
-	cfg, err := loadConfigBase(path)
-	if err != nil {
-		return Config{}, err
-	}
-	if err := validateConfig(&cfg); err != nil {
-		return Config{}, err
-	}
-	return cfg, nil
-}
-
-func loadConfigBase(path string) (Config, error) {
 	cfg := DefaultConfig()
 
 	if path != "" {
@@ -144,45 +96,4 @@ func loadConfigBase(path string) (Config, error) {
 	}
 
 	return cfg, nil
-}
-
-func validateConfig(cfg *Config) error {
-	switch cfg.Mode {
-	case ModeMonolithic:
-		if cfg.Descriptors == "" {
-			return fmt.Errorf("config: --descriptors is required when --database is set")
-		}
-		if cfg.Database == "" {
-			return fmt.Errorf("config: --database is required")
-		}
-		if cfg.Upstream != "" {
-			return fmt.Errorf("config: --upstream cannot be combined with --descriptors and --database")
-		}
-	case ModeDistributed:
-		if cfg.Database == "" {
-			return fmt.Errorf("config: --database is required in distributed mode")
-		}
-		if cfg.Descriptors != "" {
-			return fmt.Errorf("config: --descriptors is not valid in distributed mode; use pbflags-sync instead")
-		}
-		if cfg.Upstream != "" {
-			return fmt.Errorf("config: --upstream is not valid in distributed mode")
-		}
-	case ModeProxy:
-		if cfg.Upstream == "" {
-			return fmt.Errorf("config: --upstream is required in proxy mode")
-		}
-	default:
-		// Classic / legacy mode: infer from flags.
-		if cfg.Descriptors == "" {
-			return fmt.Errorf("config: descriptors path is required")
-		}
-		if cfg.Admin != "" && cfg.Database == "" {
-			return fmt.Errorf("config: database is required when admin is enabled")
-		}
-		if cfg.Database == "" && cfg.Upstream == "" {
-			return fmt.Errorf("config: either database (root mode) or upstream (proxy mode) is required")
-		}
-	}
-	return nil
 }

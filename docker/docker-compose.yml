@@ -1,10 +1,10 @@
-# Local development setup for pbflags (combined mode).
+# Local development setup for pbflags (standalone mode).
 #
 # Usage:
 #   docker compose -f docker/docker-compose.yml up --build
 #
 # Ports:
-#   - 9200: Admin API (HTTP/Connect)
+#   - 9200: Admin API + Web UI
 #   - 9201: Evaluator API (HTTP/Connect)
 #   - 5433: PostgreSQL
 services:
@@ -24,31 +24,16 @@ services:
       timeout: 3s
       retries: 5
 
-  sync:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    entrypoint: ["pbflags-sync"]
-    command:
-      - --database=postgres://admin:admin@db:5432/pbflags?sslmode=disable
-      - --descriptors=/config/descriptors.pb
-    depends_on:
-      pbflags:
-        condition: service_healthy
-    volumes:
-      - ../internal/evaluator/testdata/descriptors.pb:/config/descriptors.pb:ro
-    restart: "no"
-
   pbflags:
     build:
       context: ..
       dockerfile: docker/Dockerfile
     command:
-      - --upgrade
+      - --standalone
       - --database=postgres://admin:admin@db:5432/pbflags?sslmode=disable
       - --descriptors=/config/descriptors.pb
-      - --listen=0.0.0.0:9201
-      - --admin=0.0.0.0:9200
+      - --listen=0.0.0.0:9200
+      - --evaluator-listen=0.0.0.0:9201
       - --env-name=local
     ports:
       - "9200:9200"

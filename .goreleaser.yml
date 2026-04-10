@@ -1,9 +1,18 @@
 version: 2
 
 builds:
-  - id: pbflags-server
-    main: ./cmd/pbflags-server
-    binary: pbflags-server
+  - id: pbflags-admin
+    main: ./cmd/pbflags-admin
+    binary: pbflags-admin
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+  - id: pbflags-evaluator
+    main: ./cmd/pbflags-evaluator
+    binary: pbflags-evaluator
     env: [CGO_ENABLED=0]
     goos: [linux, darwin]
     goarch: [amd64, arm64]
@@ -29,9 +38,17 @@ builds:
       - -s -w
 
 archives:
-  - id: pbflags-server
-    ids: [pbflags-server]
-    name_template: "pbflags-server_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: pbflags-admin
+    ids: [pbflags-admin]
+    name_template: "pbflags-admin_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: darwin
+        formats: [zip]
+
+  - id: pbflags-evaluator
+    ids: [pbflags-evaluator]
+    name_template: "pbflags-evaluator_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
     format_overrides:
       - goos: darwin
@@ -65,12 +82,12 @@ changelog:
 
 dockers_v2:
   - images:
-      - "ghcr.io/spotlightgov/pbflags-server"
+      - "ghcr.io/spotlightgov/pbflags"
     tags:
       - "{{ .Version }}"
       - latest
     dockerfile: docker/Dockerfile.goreleaser
-    ids: [pbflags-server, pbflags-sync]
+    ids: [pbflags-admin, pbflags-evaluator, pbflags-sync]
     labels:
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.source: "{{ .GitURL }}"

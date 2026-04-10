@@ -6,23 +6,32 @@ Protocol Buffer-based feature flags with type-safe code generation, multi-tier c
 
 ## Overview
 
-pbflags lets you define feature flags as protobuf messages and generates type-safe client code for Go and Java (with TypeScript, Rust, and Node planned). Flags are evaluated by a standalone server with the database as the single source of truth for definitions:
+pbflags lets you define feature flags as protobuf messages and generates type-safe client code for Go and Java (with TypeScript, Rust, and Node planned). Three services with explicit roles manage the flag lifecycle:
 
-- **Monolithic**: Single instance with auto-migration, descriptor sync, and definition loading — ideal for local dev, demos, and small deployments
-- **Distributed**: Multi-instance production mode where `pbflags-sync` manages migrations and sync externally, and servers read definitions from DB
-- **Proxy**: Connects to an upstream root evaluator, reducing database connection fan-out
+| Binary | Role | DB permissions |
+|---|---|---|
+| `pbflags-sync` | Migrations + definition sync | DDL + R/W |
+| `pbflags-admin` | Flag management, UI, local evaluator | R/W (no DDL) |
+| `pbflags-evaluator` | Read-only flag resolution | Readonly (or none if upstream) |
+
+For development, `pbflags-admin --standalone` runs all three roles in one process.
 
 ## Architecture
 
 ```
-┌─────────────┐     ┌─────────────────┐     ┌────────────┐
-│  Your App   │────▶│  pbflags-server  │────▶│ PostgreSQL │
-│ (Go/Java)   │     │  (evaluator)     │     │            │
-└─────────────┘     └─────────────────┘     └────────────┘
-  Generated            Three-tier cache:       Flag state,
-  type-safe            - Kill set (30s)        overrides,
-  client               - Global state (5m)     audit log
-                       - Overrides (5m LRU)
+┌─────────────┐     ┌────────────────────┐     ┌────────────┐
+│  Your App   │────▶│  pbflags-evaluator │────▶│ PostgreSQL │
+│ (Go/Java)   │     │  (flag resolution) │     │  (readonly) │
+└─────────────┘     └────────────────────┘     └────────────┘
+  Generated            Three-tier cache:       ┌────────────┐
+  type-safe            - Kill set (30s)    ┌──▶│ PostgreSQL │
+  client               - Global state (5m)│   │   (R/W)    │
+                       - Overrides (5m LRU)│   └────────────┘
+                                           │
+┌─────────────┐     ┌────────────────────┐─┘
+│  Operator   │────▶│  pbflags-admin     │
+│  (browser)  │     │  (control plane)   │
+└─────────────┘     └────────────────────┘
 ```
 
 ## Quick Start
@@ -273,13 +282,7 @@ opt:
 
 This generates `FlagRegistryModule.java` which binds each `*Flags` interface to its `*FlagsImpl`. Include the module in your Dagger component and inject the interfaces directly.
 
-## Running the Server
-
-### Docker (multi-arch: amd64 + arm64)
-
-```bash
-docker pull ghcr.io/spotlightgov/pbflags-server
-```
+## Running the Services
 
 ### Docker Compose (local development)
 
@@ -287,86 +290,59 @@ docker pull ghcr.io/spotlightgov/pbflags-server
 docker compose -f docker/docker-compose.yml up
 ```
 
-This starts PostgreSQL + pbflags-server in combined mode (evaluator + admin API).
+This starts PostgreSQL + `pbflags-admin --standalone` (admin + evaluator + sync in one process).
 
-### Binary
+### Standalone (single instance)
+
+The simplest way to run pbflags — one binary, one command:
 
 ```bash
-# Monolithic (single instance — auto-migrates, syncs, and serves)
-pbflags-server \
+pbflags-admin --standalone \
   --descriptors=descriptors.pb \
   --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable \
-  --admin=:9200
-
-# Distributed (multi-instance — reads definitions from DB only)
-pbflags-server \
-  --distributed \
-  --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable
-
-# Proxy (connects to upstream root evaluator)
-pbflags-server \
-  --upstream=http://root-evaluator:9201
+  --env-name=local
 ```
 
-### Deployment Modes
-
-#### Monolithic
-
-When both `--descriptors` and `--database` are provided, the server runs in monolithic mode. On startup it:
+On startup, standalone mode:
 
 1. Runs pending schema migrations automatically
-2. Parses `descriptors.pb` and syncs definitions to the database
-3. Loads definitions from the database into an in-memory registry
-4. Watches the descriptor file for changes (re-syncs on change)
-5. Polls the database for definition updates (60s default)
+2. Checks for other standalone instances (warns but does not fail)
+3. Parses `descriptors.pb` and syncs definitions to the database
+4. Loads definitions into an in-memory registry
+5. Watches the descriptor file for changes (re-syncs on change)
+6. Polls the database for definition updates (60s default)
+7. Starts the admin UI on `:9200` and the evaluator on `:9201`
 
-This is the easiest way to run pbflags — one binary, one command.
+**Single-instance only.** Running multiple standalone instances risks split-brain definition conflicts. A lease row in the database detects conflicts and logs a warning. For multiple instances, use the production topology below.
 
-**Single-instance only.** Do not run multiple monolithic instances behind a load balancer. Each instance would race to migrate and sync, causing split-brain definition conflicts. If you need multiple instances, use distributed mode.
+### Production (multi-instance)
 
-#### Distributed
-
-For production multi-instance deployments, use `--distributed`. The server only reads definitions from the database — no descriptor file, no migrations. An external `pbflags-sync` job in your CI/CD pipeline handles schema migrations and definition sync:
+In production, the three roles run as separate processes with explicit DB permissions:
 
 ```bash
-# CI/CD pipeline (runs once per deploy):
+# 1. CI/CD pipeline (once per deploy — DDL + R/W):
 pbflags-sync \
   --descriptors=descriptors.pb \
-  --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable
+  --database=postgres://admin:pass@db:5432/flags
 
-# Any number of application instances:
-pbflags-server --distributed --database=postgres://...
+# 2. Control plane (one or more instances — R/W, no DDL):
+pbflags-admin \
+  --database=postgres://app:pass@db:5432/flags
+
+# 3. Evaluators (any number — readonly):
+pbflags-evaluator \
+  --database=postgres://readonly:pass@db:5432/flags
+
+# 4. Optional: upstream proxy evaluators for fan-out reduction (no DB):
+pbflags-evaluator \
+  --upstream=http://evaluator:9201
 ```
 
-`pbflags-sync` runs migrations automatically before syncing, so there is no separate migration step.
-
-Distributed servers poll the database for definition changes (default 60s, configurable via `--definition-poll-interval`). For immediate propagation after a deploy, call the admin reload endpoint:
-
-```bash
-curl -X POST http://localhost:9200/admin/reload-definitions
-```
-
-#### Proxy
-
-Proxy mode connects to an upstream root evaluator and caches responses locally. No database or descriptor file needed. Use this to reduce connection fan-out in large deployments:
-
-```bash
-pbflags-server --upstream=http://root-evaluator:9201
-```
-
-### Legacy migration command
-
-For one-off migration runs (e.g., init containers), you can still use:
-
-```bash
-pbflags-server \
-  --database=postgres://... \
-  --upgrade --exit-after-upgrade
-```
+`pbflags-sync` runs migrations automatically before syncing definitions. Admin and evaluator instances poll the database for changes (default 60s, configurable via `--definition-poll-interval`).
 
 ## Admin Web UI
 
-When running in combined mode (`--admin`), pbflags serves an embedded web dashboard for flag management. The UI is built with server-rendered HTML and htmx.
+`pbflags-admin` serves an embedded web dashboard for flag management. The UI is built with server-rendered HTML and htmx.
 
 ### Features
 
@@ -375,25 +351,7 @@ When running in combined mode (`--admin`), pbflags serves an embedded web dashbo
 - **Audit Log**: Filterable log of all state changes with actor attribution
 - **Override Management**: Add and remove per-entity overrides for layer-scoped flags
 
-### Enabling
-
-Pass the `--admin` flag (or set `PBFLAGS_ADMIN`) to start the admin UI alongside the evaluator:
-
-```bash
-# Monolithic with admin
-pbflags-server \
-  --descriptors=descriptors.pb \
-  --database=postgres://... \
-  --admin=:9200
-
-# Distributed with admin
-pbflags-server \
-  --distributed \
-  --database=postgres://... \
-  --admin=:9200
-```
-
-The admin UI is then available at `http://localhost:9200/`.
+The admin UI is available at `http://localhost:9200/` by default (configurable via `--listen` or `PBFLAGS_ADMIN`).
 
 ### Security
 
@@ -417,11 +375,13 @@ Environment variables override CLI flags:
 
 | Variable | Description |
 |---|---|
-| `PBFLAGS_DESCRIPTORS` | Path to `descriptors.pb` (monolithic mode) |
 | `PBFLAGS_DATABASE` | PostgreSQL connection string |
-| `PBFLAGS_UPSTREAM` | Upstream evaluator URL (proxy mode) |
+| `PBFLAGS_DESCRIPTORS` | Path to `descriptors.pb` (standalone and sync only) |
+| `PBFLAGS_UPSTREAM` | Upstream evaluator URL (evaluator proxy mode) |
 | `PBFLAGS_LISTEN` | Evaluator listen address (default: `localhost:9201`) |
-| `PBFLAGS_ADMIN` | Admin API listen address (enables admin UI) |
+| `PBFLAGS_ADMIN` | Admin listen address (default: `:9200`) |
+| `PBFLAGS_ENV_NAME` | Environment label shown in admin UI |
+| `PBFLAGS_ENV_COLOR` | Accent color for admin UI environment banner |
 
 ## Flag Evaluation Precedence
 
@@ -633,8 +593,9 @@ pbflags/
 ├── proto/example/          # Example feature flag definitions
 ├── gen/                    # Generated Go protobuf code
 ├── cmd/
-│   ├── pbflags-server/     # Evaluator server binary
-│   ├── pbflags-sync/       # Database schema sync from descriptors
+│   ├── pbflags-admin/      # Control plane (admin API + UI + local evaluator)
+│   ├── pbflags-evaluator/  # Read-only flag resolution service
+│   ├── pbflags-sync/       # Schema migration + definition sync
 │   ├── pbflags-lint/       # Pre-commit breaking change detector
 │   └── protoc-gen-pbflags/ # Code generation plugin (Go, Java)
 ├── internal/
@@ -725,7 +686,7 @@ To regenerate notes, delete the file and re-run `make release-notes`.
 1. Verify the tag is on the correct branch (main for `.0`, release branch for patches)
 2. Use pre-committed release notes (or generate them via Claude API)
 3. Build binaries for linux/macOS on amd64/arm64
-4. Build and push a Docker image to `ghcr.io/spotlightgov/pbflags-server`
+4. Build and push a Docker image to `ghcr.io/spotlightgov/pbflags`
 5. Push proto definitions to the Buf Schema Registry
 6. Create the `release/X.Y.0` branch (for `.0` releases only)
 7. Trigger Java client publishing to Maven Central

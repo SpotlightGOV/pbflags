@@ -34,14 +34,14 @@ func CheckSchemaVersionConn(ctx context.Context, conn *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("database schema version 0 < required %d\n"+
 			"  run \"pbflags-sync --database=...\" to apply migrations, or\n"+
-			"  start with \"pbflags-server --monolithic --migrate\" to auto-migrate",
+			"  start with \"pbflags-admin --standalone\" to auto-migrate",
 			MinSchemaVersion)
 	}
 
 	if version < int64(MinSchemaVersion) {
 		return fmt.Errorf("database schema version %d < required %d\n"+
 			"  run \"pbflags-sync --database=...\" to apply migrations, or\n"+
-			"  start with \"pbflags-server --monolithic --migrate\" to auto-migrate",
+			"  start with \"pbflags-admin --standalone\" to auto-migrate",
 			version, MinSchemaVersion)
 	}
 

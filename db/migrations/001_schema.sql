@@ -1,5 +1,5 @@
 -- +goose Up
--- pbflags schema. Apply to PostgreSQL before starting pbflags-server in root mode.
+-- pbflags schema. Applied automatically by pbflags-sync and pbflags-admin --standalone.
 
 CREATE SCHEMA IF NOT EXISTS feature_flags;
 

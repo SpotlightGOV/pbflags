@@ -2,9 +2,10 @@ FROM alpine:3.23
 
 ARG TARGETARCH
 RUN apk add --no-cache ca-certificates
-COPY linux/${TARGETARCH}/pbflags-server /usr/local/bin/pbflags-server
+COPY linux/${TARGETARCH}/pbflags-admin /usr/local/bin/pbflags-admin
+COPY linux/${TARGETARCH}/pbflags-evaluator /usr/local/bin/pbflags-evaluator
 COPY linux/${TARGETARCH}/pbflags-sync /usr/local/bin/pbflags-sync
 
 EXPOSE 9200 9201
 
-ENTRYPOINT ["pbflags-server"]
+ENTRYPOINT ["pbflags-admin"]

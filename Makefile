@@ -8,7 +8,9 @@ generate:
 
 # Build all Go binaries.
 build:
-	go build ./cmd/pbflags-server
+	go build ./cmd/pbflags-admin
+	go build ./cmd/pbflags-evaluator
+	go build ./cmd/pbflags-sync
 	go build ./cmd/protoc-gen-pbflags
 
 # Run Go tests.
@@ -17,11 +19,11 @@ test:
 
 # Remove build artifacts.
 clean:
-	rm -f pbflags-server protoc-gen-pbflags
+	rm -f pbflags-admin pbflags-evaluator pbflags-sync protoc-gen-pbflags
 
 # Build the Docker image.
 docker:
-	docker build -t pbflags-server -f docker/Dockerfile .
+	docker build -t pbflags -f docker/Dockerfile .
 
 # Install the codegen plugin locally.
 install-codegen:
@@ -57,14 +59,14 @@ endif
 	RELEASE_TAG=$(VERSION) OUTPUT_FILE=docs/releasenotes/$(VERSION).md \
 		.github/scripts/generate-release-notes.sh
 
-# Run the server locally with live asset reloading.
+# Run the admin server locally with live asset reloading (standalone mode).
 # CSS/template changes take effect on browser refresh; Go changes need a restart.
 dev: dev-db
-	go run ./cmd/pbflags-server \
-		--upgrade \
+	go run ./cmd/pbflags-admin \
+		--standalone \
 		--database=postgres://admin:admin@localhost:5433/pbflags?sslmode=disable \
 		--descriptors=internal/evaluator/testdata/descriptors.pb \
-		--listen=localhost:9201 \
-		--admin=localhost:9200 \
+		--evaluator-listen=localhost:9201 \
+		--listen=localhost:9200 \
 		--env-name=local \
 		--dev-assets=internal/admin/web
