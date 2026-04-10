@@ -24,6 +24,7 @@ func Migrate(ctx context.Context, dsn string) error {
 	defer db.Close()
 
 	goose.SetBaseFS(migrations)
+	goose.SetTableName("pbflags_goose_db_version")
 
 	if err := goose.SetDialect("postgres"); err != nil {
 		return fmt.Errorf("set dialect: %w", err)
