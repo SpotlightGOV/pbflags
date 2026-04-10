@@ -219,4 +219,3 @@ If the consumer project needs the production topology instead of standalone mode
 - **Forgetting `buf dep update`** after upgrading pbflags — the Layer annotation won't be found with stale BSR deps.
 - **Forgetting `buf build ... -o descriptors.pb`** — code generation alone is not enough; the server reads the descriptor set.
 - **`protoc-gen-pbflags` not on `PATH`** — `buf generate` cannot invoke a `local:` plugin unless the binary is discoverable.
-- **Using field names as flag IDs** — flag identity is `feature_id/field_number`, not `feature_id/field_name`. Field names can be renamed safely.
