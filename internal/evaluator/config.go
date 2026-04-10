@@ -8,6 +8,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// parseDurationEnv reads an environment variable as a time.Duration.
+// Returns zero and false if the variable is unset or empty.
+func parseDurationEnv(key string) (time.Duration, bool) {
+	v := os.Getenv(key)
+	if v == "" {
+		return 0, false
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return 0, false
+	}
+	return d, true
+}
+
 // Config is the shared evaluator/admin configuration.
 type Config struct {
 	Descriptors            string        `yaml:"descriptors"`
@@ -82,6 +96,15 @@ func LoadConfig(path string) (Config, error) {
 	}
 	if v := os.Getenv("PBFLAGS_ENV_COLOR"); v != "" {
 		cfg.EnvColor = v
+	}
+	if d, ok := parseDurationEnv("PBFLAGS_CACHE_KILL_TTL"); ok {
+		cfg.Cache.KillTTL = d
+	}
+	if d, ok := parseDurationEnv("PBFLAGS_CACHE_FLAG_TTL"); ok {
+		cfg.Cache.FlagTTL = d
+	}
+	if d, ok := parseDurationEnv("PBFLAGS_CACHE_OVERRIDE_TTL"); ok {
+		cfg.Cache.OverrideTTL = d
 	}
 
 	return cfg, nil

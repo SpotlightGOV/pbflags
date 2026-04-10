@@ -15,12 +15,15 @@
 //
 // Environment variables override CLI flags:
 //
-//	PBFLAGS_DATABASE     PostgreSQL connection string
-//	PBFLAGS_ADMIN        Admin listen address (default: :9200)
-//	PBFLAGS_LISTEN       Evaluator listen address (default: :9201)
-//	PBFLAGS_DESCRIPTORS  Path to descriptors.pb (standalone only)
-//	PBFLAGS_ENV_NAME     Environment label shown in admin UI
-//	PBFLAGS_ENV_COLOR    Accent color for admin UI environment banner
+//	PBFLAGS_DATABASE            PostgreSQL connection string
+//	PBFLAGS_ADMIN               Admin listen address (default: :9200)
+//	PBFLAGS_LISTEN              Evaluator listen address (default: :9201)
+//	PBFLAGS_DESCRIPTORS         Path to descriptors.pb (standalone only)
+//	PBFLAGS_ENV_NAME            Environment label shown in admin UI
+//	PBFLAGS_ENV_COLOR           Accent color for admin UI environment banner
+//	PBFLAGS_CACHE_KILL_TTL      Kill set cache TTL (default: 30s)
+//	PBFLAGS_CACHE_FLAG_TTL      Global flag state cache TTL (default: 10m)
+//	PBFLAGS_CACHE_OVERRIDE_TTL  Per-entity override cache TTL (default: 10m)
 package main
 
 import (
@@ -61,6 +64,9 @@ func main() {
 	standalone := flag.Bool("standalone", false, "Run all roles in one process (admin + evaluator + sync + migrations)")
 	descriptors := flag.String("descriptors", "", "Path to descriptors.pb (requires --standalone)")
 	defPollInterval := flag.Duration("definition-poll-interval", 0, "How often to poll DB for definition changes (default 60s)")
+	killTTL := flag.Duration("cache-kill-ttl", 0, "Kill set cache TTL (default 30s)")
+	flagTTL := flag.Duration("cache-flag-ttl", 0, "Global flag state cache TTL (default 10m)")
+	overrideTTL := flag.Duration("cache-override-ttl", 0, "Per-entity override cache TTL (default 10m)")
 	envName := flag.String("env-name", "", "Environment label shown in admin UI")
 	envColor := flag.String("env-color", "", "Accent color for admin UI environment banner (hex)")
 	devAssets := flag.String("dev-assets", "", "Read admin UI assets from disk for live reload (dev only)")
@@ -73,6 +79,9 @@ func main() {
 	setEnvIfFlag("PBFLAGS_DESCRIPTORS", *descriptors)
 	setEnvIfFlag("PBFLAGS_ENV_NAME", *envName)
 	setEnvIfFlag("PBFLAGS_ENV_COLOR", *envColor)
+	setDurationEnvIfFlag("PBFLAGS_CACHE_KILL_TTL", *killTTL)
+	setDurationEnvIfFlag("PBFLAGS_CACHE_FLAG_TTL", *flagTTL)
+	setDurationEnvIfFlag("PBFLAGS_CACHE_OVERRIDE_TTL", *overrideTTL)
 
 	cfg, err := evaluator.LoadConfig(*configPath)
 	if err != nil {
@@ -117,6 +126,12 @@ func main() {
 func setEnvIfFlag(key, value string) {
 	if value != "" {
 		os.Setenv(key, value)
+	}
+}
+
+func setDurationEnvIfFlag(key string, d time.Duration) {
+	if d > 0 {
+		os.Setenv(key, d.String())
 	}
 }
 

@@ -12,9 +12,12 @@
 //
 // Environment variables override CLI flags:
 //
-//	PBFLAGS_DATABASE  PostgreSQL connection string (readonly)
-//	PBFLAGS_UPSTREAM  Upstream evaluator URL
-//	PBFLAGS_LISTEN    Evaluator listen address (default: localhost:9201)
+//	PBFLAGS_DATABASE            PostgreSQL connection string (readonly)
+//	PBFLAGS_UPSTREAM            Upstream evaluator URL
+//	PBFLAGS_LISTEN              Evaluator listen address (default: localhost:9201)
+//	PBFLAGS_CACHE_KILL_TTL      Kill set cache TTL (default: 30s)
+//	PBFLAGS_CACHE_FLAG_TTL      Global flag state cache TTL (default: 10m)
+//	PBFLAGS_CACHE_OVERRIDE_TTL  Per-entity override cache TTL (default: 10m)
 package main
 
 import (
@@ -49,12 +52,18 @@ func main() {
 	upstream := flag.String("upstream", "", "Upstream evaluator URL (proxy mode)")
 	listen := flag.String("listen", "", "Evaluator listen address (default localhost:9201)")
 	defPollInterval := flag.Duration("definition-poll-interval", 0, "How often to poll DB for definition changes (default 60s)")
+	killTTL := flag.Duration("cache-kill-ttl", 0, "Kill set cache TTL (default 30s)")
+	flagTTL := flag.Duration("cache-flag-ttl", 0, "Global flag state cache TTL (default 10m)")
+	overrideTTL := flag.Duration("cache-override-ttl", 0, "Per-entity override cache TTL (default 10m)")
 	configPath := flag.String("config", "", "Path to configuration YAML file")
 	flag.Parse()
 
 	setEnvIfFlag("PBFLAGS_DATABASE", *database)
 	setEnvIfFlag("PBFLAGS_UPSTREAM", *upstream)
 	setEnvIfFlag("PBFLAGS_LISTEN", *listen)
+	setDurationEnvIfFlag("PBFLAGS_CACHE_KILL_TTL", *killTTL)
+	setDurationEnvIfFlag("PBFLAGS_CACHE_FLAG_TTL", *flagTTL)
+	setDurationEnvIfFlag("PBFLAGS_CACHE_OVERRIDE_TTL", *overrideTTL)
 
 	cfg, err := evaluator.LoadConfig(*configPath)
 	if err != nil {
@@ -83,6 +92,12 @@ func main() {
 func setEnvIfFlag(key, value string) {
 	if value != "" {
 		os.Setenv(key, value)
+	}
+}
+
+func setDurationEnvIfFlag(key string, d time.Duration) {
+	if d > 0 {
+		os.Setenv(key, d.String())
 	}
 }
 
