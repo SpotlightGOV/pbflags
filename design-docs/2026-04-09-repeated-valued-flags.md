@@ -1,7 +1,7 @@
 # Repeated-Valued (List) Flags
 
 **Issue:** pb-i32
-**Status:** Draft
+**Status:** Complete
 **Author:** bmt
 **Date:** 2026-04-09
 

@@ -1,7 +1,7 @@
 # DB-Centric Flag Definitions
 
 **Date:** 2026-04-09
-**Status:** Draft
+**Status:** Complete (superseded by three-binary split: pbflags-admin, pbflags-evaluator, pbflags-sync)
 **Issue:** [#28](https://github.com/SpotlightGOV/pbflags/issues/28)
 
 > The server currently requires `descriptors.pb` at runtime to build its
