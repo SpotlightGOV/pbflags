@@ -135,6 +135,61 @@ func TestParseDoubleWrapper(t *testing.T) {
 	}
 }
 
+func TestOuterClassCaseCollision(t *testing.T) {
+	tests := []struct {
+		name       string
+		outerClass string
+		declNames  []string
+		want       string // "" means no collision
+	}{
+		{
+			name:       "no collision",
+			outerClass: "Notifications",
+			declNames:  []string{"NotificationSettings", "UserPrefs"},
+			want:       "",
+		},
+		{
+			name:       "exact match is not a case collision",
+			outerClass: "Notifications",
+			declNames:  []string{"Notifications"},
+			want:       "", // exact matches handled by OuterClass suffix
+		},
+		{
+			name:       "case-insensitive collision with message",
+			outerClass: "Docai",
+			declNames:  []string{"DocAI", "OtherMessage"},
+			want:       "DocAI",
+		},
+		{
+			name:       "case-insensitive collision with enum",
+			outerClass: "Myflags",
+			declNames:  []string{"MyFlags"},
+			want:       "MyFlags",
+		},
+		{
+			name:       "no declarations",
+			outerClass: "Foo",
+			declNames:  nil,
+			want:       "",
+		},
+		{
+			name:       "multiple declarations first match wins",
+			outerClass: "Config",
+			declNames:  []string{"CONFIG", "config"},
+			want:       "CONFIG",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := outerClassCaseCollision(tt.outerClass, tt.declNames)
+			if got != tt.want {
+				t.Errorf("outerClassCaseCollision(%q, %v) = %q, want %q",
+					tt.outerClass, tt.declNames, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestToUnderscoreCamelCase(t *testing.T) {
 	tests := []struct {
 		in, want string

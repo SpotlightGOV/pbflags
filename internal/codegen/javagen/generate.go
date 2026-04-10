@@ -32,6 +32,18 @@ func Generate(plugin *protogen.Plugin, javaPackage string, dagger ...bool) error
 		return err
 	}
 
+	// Check for case-insensitive outer class name collisions early, before
+	// generating any files.
+	var genFiles []*protogen.File
+	for _, f := range plugin.Files {
+		if f.Generate {
+			genFiles = append(genFiles, f)
+		}
+	}
+	if err := checkOuterClassCaseCollisions(genFiles); err != nil {
+		return err
+	}
+
 	var features []featureEntry
 	for _, f := range plugin.Files {
 		if !f.Generate {
@@ -469,6 +481,57 @@ func generateDescriptorProvider(plugin *protogen.Plugin, features []featureEntry
 	p("}")
 
 	return nil
+}
+
+// checkOuterClassCaseCollisions detects case-insensitive collisions between
+// derived Java outer class names and top-level declarations. On case-insensitive
+// filesystems (macOS APFS default), these produce silent file overwrites that
+// result in uncompilable Java code. protoc only checks exact (case-sensitive)
+// matches, so this fills the gap.
+func checkOuterClassCaseCollisions(files []*protogen.File) error {
+	for _, f := range files {
+		// Explicit java_outer_classname means the user has already handled it.
+		if f.Proto.GetOptions().GetJavaOuterClassname() != "" {
+			continue
+		}
+
+		base := filepath.Base(f.Proto.GetName())
+		base = strings.TrimSuffix(base, filepath.Ext(base))
+		outerClass := toUnderscoreCamelCase(base)
+
+		var declNames []string
+		for _, msg := range f.Messages {
+			declNames = append(declNames, string(msg.Desc.Name()))
+		}
+		for _, e := range f.Enums {
+			declNames = append(declNames, string(e.Desc.Name()))
+		}
+		for _, s := range f.Services {
+			declNames = append(declNames, string(s.Desc.Name()))
+		}
+
+		if collider := outerClassCaseCollision(outerClass, declNames); collider != "" {
+			return fmt.Errorf(
+				"protoc-gen-pbflags: %s: derived Java outer class %q case-insensitively collides "+
+					"with %q — on case-insensitive filesystems (macOS APFS) this causes file overwrites "+
+					"and uncompilable Java code. Fix: add 'option java_outer_classname = \"...\";' to %s",
+				f.Proto.GetName(), outerClass, collider, f.Proto.GetName())
+		}
+	}
+	return nil
+}
+
+// outerClassCaseCollision checks whether outerClass case-insensitively matches
+// any name in declNames that is NOT an exact match (exact matches are already
+// handled by protoFileToOuterClass appending "OuterClass"). Returns the
+// colliding name or "".
+func outerClassCaseCollision(outerClass string, declNames []string) string {
+	for _, name := range declNames {
+		if name != outerClass && strings.EqualFold(name, outerClass) {
+			return name
+		}
+	}
+	return ""
 }
 
 // protoOuterClassRef returns the fully qualified Java outer class reference for a proto file.
