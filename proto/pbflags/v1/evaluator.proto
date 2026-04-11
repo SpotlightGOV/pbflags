@@ -49,6 +49,7 @@ enum EvaluationSource {
   EVALUATION_SOURCE_KILLED = 4; // Kill switch active
   EVALUATION_SOURCE_CACHED = 5; // Stale cache (server unreachable)
   EVALUATION_SOURCE_ARCHIVED = 6; // Archived flag's last known value
+  EVALUATION_SOURCE_STALE = 7; // Stale value returned while background refresh in flight
 }
 
 message BulkEvaluateRequest {

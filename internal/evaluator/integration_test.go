@@ -240,9 +240,9 @@ func TestDegradationLifecycle(t *testing.T) {
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src)
 	require.Equal(t, pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_SERVING, env.tracker.Status())
 
-	// Simulate outage.
+	// Simulate outage: clear hot cache but preserve stale map.
 	ff.failing.Store(true)
-	env.cache.FlushAll()
+	env.cache.FlushHot()
 	env.cache.WaitAll()
 
 	// Record enough failures to trigger DEGRADED.
@@ -251,12 +251,12 @@ func TestDegradationLifecycle(t *testing.T) {
 	}
 	require.Equal(t, pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_DEGRADED, env.tracker.Status())
 
-	// Evaluator should still return stale cached value.
+	// Evaluator should return stale value (background refresh will fail).
 	val, src = eval.Evaluate(ctx, "eval_notif/1", "user-1")
 	require.False(t, val.GetBoolValue())
-	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED, src)
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_STALE, src)
 
-	// Restore connectivity.
+	// Restore connectivity and flush everything for a fresh fetch.
 	ff.failing.Store(false)
 	env.cache.FlushAll()
 	env.cache.WaitAll()
@@ -284,16 +284,16 @@ func TestStaleCacheDuringOutage(t *testing.T) {
 	require.Equal(t, "weekly", val.GetStringValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src)
 
-	// Go offline. Hot cache expires, stale map persists.
+	// Go offline. Clear hot cache but preserve stale map.
 	ff.failing.Store(true)
-	env.cache.FlushAll()
+	env.cache.FlushHot()
 	env.cache.WaitAll()
 
-	// Multiple evaluations should consistently return stale cached value.
+	// Multiple evaluations should consistently return stale value.
 	for i := 0; i < 5; i++ {
 		val, src = eval.Evaluate(ctx, "eval_notif/2", "")
 		require.Equal(t, "weekly", val.GetStringValue())
-		require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED, src)
+		require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_STALE, src)
 	}
 
 	// Meanwhile, the DB value changes (simulating a deploy while we're degraded).
@@ -302,13 +302,13 @@ func TestStaleCacheDuringOutage(t *testing.T) {
 	ff.failing.Store(true) // go offline again
 
 	// Still returns stale "weekly" because we can't reach DB.
-	env.cache.FlushAll()
+	env.cache.FlushHot()
 	env.cache.WaitAll()
 	val, src = eval.Evaluate(ctx, "eval_notif/2", "")
 	require.Equal(t, "weekly", val.GetStringValue())
-	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED, src)
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_STALE, src)
 
-	// Restore and see new value.
+	// Restore and flush everything for fresh fetch.
 	ff.failing.Store(false)
 	env.cache.FlushAll()
 	env.cache.WaitAll()
@@ -482,14 +482,14 @@ func TestOverrideStaleCacheDuringOutage(t *testing.T) {
 	require.False(t, val.GetBoolValue())
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, src)
 
-	// Make fetcher fail, expire cache — override should be served from stale cache.
+	// Make fetcher fail, expire hot cache — override should be served from stale map.
 	ff.failing.Store(true)
-	env.cache.FlushAll()
+	env.cache.FlushHot()
 	env.cache.WaitAll()
 
 	val, src = eval.Evaluate(ctx, "eval_notif/1", "user-stale")
 	require.False(t, val.GetBoolValue())
-	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED, src)
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_STALE, src)
 }
 
 // TestNilDefaultValue verifies a flag not in the DB returns nil value safely.

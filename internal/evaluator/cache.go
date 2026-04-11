@@ -110,9 +110,22 @@ func (s *CacheStore) Close() {
 	s.overrideCache.Close()
 }
 
-// FlushAll evicts all entries from the hot caches (Ristretto) but preserves
-// the stale fallback maps.
+// FlushAll evicts all entries from both the hot caches (Ristretto) and the
+// stale fallback maps, forcing cold-start fetches on the next evaluation.
 func (s *CacheStore) FlushAll() {
+	s.flagCache.Clear()
+	s.overrideCache.Clear()
+	s.staleFlagMu.Lock()
+	s.staleFlagMap = make(map[string]*CachedFlagState)
+	s.staleFlagMu.Unlock()
+	s.staleOverrideMu.Lock()
+	s.staleOverrideMap = make(map[string]*CachedOverride)
+	s.staleOverrideMu.Unlock()
+}
+
+// FlushHot evicts entries from the hot caches (Ristretto) only. The stale
+// fallback maps are preserved, simulating natural TTL expiry.
+func (s *CacheStore) FlushHot() {
 	s.flagCache.Clear()
 	s.overrideCache.Clear()
 }
