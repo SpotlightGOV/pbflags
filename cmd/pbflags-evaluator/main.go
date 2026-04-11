@@ -10,6 +10,10 @@
 //
 // Exactly one of --database or --upstream is required.
 //
+// Flags can also be supplied via picocli-style @file references:
+//
+//	pbflags-evaluator @config.flags
+//
 // Environment variables override CLI flags:
 //
 //	PBFLAGS_DATABASE            PostgreSQL connection string (readonly)
@@ -43,19 +47,26 @@ import (
 	"github.com/SpotlightGOV/pbflags/db"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
+	"github.com/SpotlightGOV/pbflags/internal/flagfile"
 )
 
 var version = "dev"
 
 func main() {
-	database := flag.String("database", "", "PostgreSQL connection string (readonly)")
-	upstream := flag.String("upstream", "", "Upstream evaluator URL (proxy mode)")
-	listen := flag.String("listen", "", "Evaluator listen address (default localhost:9201)")
-	killTTL := flag.Duration("cache-kill-ttl", 0, "Kill set cache TTL (default 30s)")
-	flagTTL := flag.Duration("cache-flag-ttl", 0, "Global flag state cache TTL (default 10m)")
-	overrideTTL := flag.Duration("cache-override-ttl", 0, "Per-entity override cache TTL (default 10m)")
-	configPath := flag.String("config", "", "Path to configuration YAML file")
-	flag.Parse()
+	args, err := flagfile.ExpandArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fs := flag.NewFlagSet("pbflags-evaluator", flag.ExitOnError)
+	database := fs.String("database", "", "PostgreSQL connection string (readonly)")
+	upstream := fs.String("upstream", "", "Upstream evaluator URL (proxy mode)")
+	listen := fs.String("listen", "", "Evaluator listen address (default localhost:9201)")
+	killTTL := fs.Duration("cache-kill-ttl", 0, "Kill set cache TTL (default 30s)")
+	flagTTL := fs.Duration("cache-flag-ttl", 0, "Global flag state cache TTL (default 10m)")
+	overrideTTL := fs.Duration("cache-override-ttl", 0, "Per-entity override cache TTL (default 10m)")
+	fs.Parse(args)
 
 	setEnvIfFlag("PBFLAGS_DATABASE", *database)
 	setEnvIfFlag("PBFLAGS_UPSTREAM", *upstream)
@@ -64,11 +75,7 @@ func main() {
 	setDurationEnvIfFlag("PBFLAGS_CACHE_FLAG_TTL", *flagTTL)
 	setDurationEnvIfFlag("PBFLAGS_CACHE_OVERRIDE_TTL", *overrideTTL)
 
-	cfg, err := evaluator.LoadConfig(*configPath)
-	if err != nil {
-		slog.Error("load config", "error", err)
-		os.Exit(1)
-	}
+	cfg := evaluator.LoadConfig()
 
 	hasDB := cfg.Database != ""
 	hasUpstream := cfg.Upstream != ""

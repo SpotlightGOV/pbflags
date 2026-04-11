@@ -15,15 +15,23 @@ import (
 	"os"
 
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
+	"github.com/SpotlightGOV/pbflags/internal/flagfile"
 	"github.com/SpotlightGOV/pbflags/internal/lint"
 )
 
 var version = "dev"
 
 func main() {
-	base := flag.String("base", "HEAD", "git ref to compare against (default: HEAD)")
-	showVersion := flag.Bool("version", false, "print version and exit")
-	flag.Usage = func() {
+	args, err := flagfile.ExpandArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(2)
+	}
+
+	fs := flag.NewFlagSet("pbflags-lint", flag.ExitOnError)
+	base := fs.String("base", "HEAD", "git ref to compare against (default: HEAD)")
+	showVersion := fs.Bool("version", false, "print version and exit")
+	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: pbflags-lint [--base <git-ref>] <proto-dir>\n\n")
 		fmt.Fprintf(os.Stderr, "Detects breaking changes in pbflags proto definitions.\n")
 		fmt.Fprintf(os.Stderr, "Compares the working tree against a base git ref.\n\n")
@@ -31,21 +39,21 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  0  no breaking changes\n")
 		fmt.Fprintf(os.Stderr, "  1  breaking changes found\n")
 		fmt.Fprintf(os.Stderr, "  2  tool error\n\n")
-		flag.PrintDefaults()
+		fs.PrintDefaults()
 	}
-	flag.Parse()
+	fs.Parse(args)
 
 	if *showVersion {
 		fmt.Println("pbflags-lint", version)
 		return
 	}
 
-	if flag.NArg() != 1 {
+	if fs.NArg() != 1 {
 		fmt.Fprintf(os.Stderr, "error: expected exactly one argument: <proto-dir>\n")
-		flag.Usage()
+		fs.Usage()
 		os.Exit(2)
 	}
-	protoDir := flag.Arg(0)
+	protoDir := fs.Arg(0)
 
 	if err := run(*base, protoDir); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

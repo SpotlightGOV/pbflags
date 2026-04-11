@@ -13,6 +13,10 @@
 //	pbflags-admin --standalone --descriptors=descriptors.pb \
 //	  --database=postgres://user:pass@localhost:5432/flags
 //
+// Flags can also be supplied via picocli-style @file references:
+//
+//	pbflags-admin @config.flags
+//
 // Environment variables override CLI flags:
 //
 //	PBFLAGS_DATABASE            PostgreSQL connection string
@@ -52,25 +56,32 @@ import (
 	"github.com/SpotlightGOV/pbflags/internal/admin"
 	adminweb "github.com/SpotlightGOV/pbflags/internal/admin/web"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
+	"github.com/SpotlightGOV/pbflags/internal/flagfile"
 	defsync "github.com/SpotlightGOV/pbflags/internal/sync"
 )
 
 var version = "dev"
 
 func main() {
-	database := flag.String("database", "", "PostgreSQL connection string")
-	listen := flag.String("listen", "", "Admin listen address (default :9200)")
-	evaluatorListen := flag.String("evaluator-listen", "", "Evaluator listen address (default :9201, empty to disable)")
-	standalone := flag.Bool("standalone", false, "Run all roles in one process (admin + evaluator + sync + migrations)")
-	descriptors := flag.String("descriptors", "", "Path to descriptors.pb (requires --standalone)")
-	killTTL := flag.Duration("cache-kill-ttl", 0, "Kill set cache TTL (default 30s)")
-	flagTTL := flag.Duration("cache-flag-ttl", 0, "Global flag state cache TTL (default 10m)")
-	overrideTTL := flag.Duration("cache-override-ttl", 0, "Per-entity override cache TTL (default 10m)")
-	envName := flag.String("env-name", "", "Environment label shown in admin UI")
-	envColor := flag.String("env-color", "", "Accent color for admin UI environment banner (hex)")
-	devAssets := flag.String("dev-assets", "", "Read admin UI assets from disk for live reload (dev only)")
-	configPath := flag.String("config", "", "Path to configuration YAML file")
-	flag.Parse()
+	args, err := flagfile.ExpandArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fs := flag.NewFlagSet("pbflags-admin", flag.ExitOnError)
+	database := fs.String("database", "", "PostgreSQL connection string")
+	listen := fs.String("listen", "", "Admin listen address (default :9200)")
+	evaluatorListen := fs.String("evaluator-listen", "", "Evaluator listen address (default :9201, empty to disable)")
+	standalone := fs.Bool("standalone", false, "Run all roles in one process (admin + evaluator + sync + migrations)")
+	descriptors := fs.String("descriptors", "", "Path to descriptors.pb (requires --standalone)")
+	killTTL := fs.Duration("cache-kill-ttl", 0, "Kill set cache TTL (default 30s)")
+	flagTTL := fs.Duration("cache-flag-ttl", 0, "Global flag state cache TTL (default 10m)")
+	overrideTTL := fs.Duration("cache-override-ttl", 0, "Per-entity override cache TTL (default 10m)")
+	envName := fs.String("env-name", "", "Environment label shown in admin UI")
+	envColor := fs.String("env-color", "", "Accent color for admin UI environment banner (hex)")
+	devAssets := fs.String("dev-assets", "", "Read admin UI assets from disk for live reload (dev only)")
+	fs.Parse(args)
 
 	setEnvIfFlag("PBFLAGS_DATABASE", *database)
 	setEnvIfFlag("PBFLAGS_ADMIN", *listen)
@@ -82,11 +93,7 @@ func main() {
 	setDurationEnvIfFlag("PBFLAGS_CACHE_FLAG_TTL", *flagTTL)
 	setDurationEnvIfFlag("PBFLAGS_CACHE_OVERRIDE_TTL", *overrideTTL)
 
-	cfg, err := evaluator.LoadConfig(*configPath)
-	if err != nil {
-		slog.Error("load config", "error", err)
-		os.Exit(1)
-	}
+	cfg := evaluator.LoadConfig()
 	// Admin listen defaults to :9200.
 	if cfg.Admin == "" {
 		cfg.Admin = ":9200"

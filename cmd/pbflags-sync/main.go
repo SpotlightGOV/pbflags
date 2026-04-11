@@ -14,13 +14,21 @@ import (
 
 	"github.com/SpotlightGOV/pbflags/db"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
+	"github.com/SpotlightGOV/pbflags/internal/flagfile"
 	defsync "github.com/SpotlightGOV/pbflags/internal/sync"
 )
 
 func main() {
-	database := flag.String("database", "", "PostgreSQL connection string (or PBFLAGS_DATABASE)")
-	descriptors := flag.String("descriptors", "", "path to descriptors.pb (or PBFLAGS_DESCRIPTORS)")
-	flag.Parse()
+	args, err := flagfile.ExpandArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fs := flag.NewFlagSet("pbflags-sync", flag.ExitOnError)
+	database := fs.String("database", "", "PostgreSQL connection string (or PBFLAGS_DATABASE)")
+	descriptors := fs.String("descriptors", "", "path to descriptors.pb (or PBFLAGS_DESCRIPTORS)")
+	fs.Parse(args)
 
 	if *database == "" {
 		*database = os.Getenv("PBFLAGS_DATABASE")

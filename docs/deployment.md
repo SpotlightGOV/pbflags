@@ -109,6 +109,33 @@ The admin UI is available at `http://localhost:9200/` by default (configurable v
 
 ## Configuration
 
+### @-file syntax
+
+All pbflags CLI tools accept picocli-style `@file` references. This lets you
+store flags in a file (one `--flag=value` per line) and reference it on the
+command line:
+
+```bash
+# config.flags
+--database=postgres://app:pass@db:5432/flags
+--env-name=staging
+--env-color=#FFA500
+```
+
+```bash
+pbflags-admin @config.flags --standalone --descriptors=descriptors.pb
+```
+
+Flags from `@file` expand in place — later flags on the command line win.
+
+Host-local overrides can be placed in `~/.config/pbflags/<binary>.flags`
+(e.g. `~/.config/pbflags/pbflags-admin.flags`). These merge with last-wins
+semantics, so you can override individual flags per host without editing
+checked-in config files. The override directory can be changed via
+`PBFLAGS_OVERRIDES_DIR`.
+
+### Environment variables
+
 Environment variables override CLI flags:
 
 | Variable | Used by | Equivalent flag | Notes |

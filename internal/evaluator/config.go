@@ -1,11 +1,8 @@
 package evaluator
 
 import (
-	"fmt"
 	"os"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 // parseDurationEnv reads an environment variable as a time.Duration.
@@ -24,24 +21,24 @@ func parseDurationEnv(key string) (time.Duration, bool) {
 
 // Config is the shared evaluator/admin configuration.
 type Config struct {
-	Descriptors string      `yaml:"descriptors"`
-	Upstream    string      `yaml:"upstream"`
-	Listen      string      `yaml:"listen"`
-	Admin       string      `yaml:"admin"`
-	Database    string      `yaml:"database"`
-	Cache       CacheConfig `yaml:"cache"`
-	EnvName     string      `yaml:"env_name"`
-	EnvColor    string      `yaml:"env_color"`
+	Descriptors string
+	Upstream    string
+	Listen      string
+	Admin       string
+	Database    string
+	Cache       CacheConfig
+	EnvName     string
+	EnvColor    string
 }
 
 // CacheConfig controls cache TTLs and sizes.
 type CacheConfig struct {
-	KillTTL         time.Duration `yaml:"kill_ttl"`
-	FlagTTL         time.Duration `yaml:"flag_ttl"`
-	OverrideTTL     time.Duration `yaml:"override_ttl"`
-	OverrideMaxSize int64         `yaml:"override_max_entries"`
-	JitterPercent   int           `yaml:"jitter_percent"`
-	FetchTimeout    time.Duration `yaml:"fetch_timeout"`
+	KillTTL         time.Duration
+	FlagTTL         time.Duration
+	OverrideTTL     time.Duration
+	OverrideMaxSize int64
+	JitterPercent   int
+	FetchTimeout    time.Duration
 }
 
 // DefaultConfig returns a Config with all default values applied.
@@ -59,21 +56,11 @@ func DefaultConfig() Config {
 	}
 }
 
-// LoadConfig reads configuration from an optional YAML file and environment
-// variable overrides. It does not validate the result — each binary is
-// responsible for checking that the fields it requires are populated.
-func LoadConfig(path string) (Config, error) {
+// LoadConfig reads configuration from environment variable overrides on top
+// of defaults. It does not validate the result — each binary is responsible
+// for checking that the fields it requires are populated.
+func LoadConfig() Config {
 	cfg := DefaultConfig()
-
-	if path != "" {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return Config{}, fmt.Errorf("read config: %w", err)
-		}
-		if err := yaml.Unmarshal(data, &cfg); err != nil {
-			return Config{}, fmt.Errorf("parse config: %w", err)
-		}
-	}
 
 	if v := os.Getenv("PBFLAGS_DESCRIPTORS"); v != "" {
 		cfg.Descriptors = v
@@ -106,5 +93,5 @@ func LoadConfig(path string) (Config, error) {
 		cfg.Cache.OverrideTTL = d
 	}
 
-	return cfg, nil
+	return cfg
 }
