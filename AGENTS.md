@@ -49,7 +49,9 @@ bd close <id>         # Complete work
 
 ## Documentation
 
-Detailed docs are in the `docs/` directory. Key references for contributors:
+`docs/` contains as-built documentation and release notes. `research/` contains design research and explorations.
+
+Key references for contributors:
 
 - [docs/contributing.md](docs/contributing.md) — Dev setup, testing, releasing, migration rules
 - [docs/deployment.md](docs/deployment.md) — Service topology and configuration

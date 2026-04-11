@@ -133,6 +133,8 @@ frequency := notifications.DigestFrequency(ctx)                            // st
 
 ## Documentation
 
+As-built documentation lives in `docs/`. Design research and explorations live in `research/`.
+
 | Document | Description |
 |---|---|
 | [Agent Setup](docs/agent-setup.md) | Step-by-step integration guide for AI agents |
