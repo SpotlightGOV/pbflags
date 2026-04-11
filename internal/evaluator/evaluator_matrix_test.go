@@ -210,7 +210,7 @@ func TestEval_StaleOverride_FallbackOnFetchFailure(t *testing.T) {
 	fetcher.flagErr = errors.New("unreachable")
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "user-1")
-	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED, src, "source")
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_STALE, src, "source")
 	require.Equal(t, "stale-override", val.GetStringValue(), "value")
 }
 

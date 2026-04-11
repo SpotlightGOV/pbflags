@@ -8,13 +8,14 @@ import (
 
 // Metrics holds all Prometheus metrics for the evaluator.
 type Metrics struct {
-	EvaluationsTotal  *prometheus.CounterVec
-	CacheHitsTotal    *prometheus.CounterVec
-	CacheMissesTotal  *prometheus.CounterVec
-	FetchDuration     *prometheus.HistogramVec
-	KillSetSize       prometheus.Gauge
-	ConsecutiveFails  prometheus.Gauge
-	PollerLastSuccess prometheus.Gauge
+	EvaluationsTotal    *prometheus.CounterVec
+	CacheHitsTotal      *prometheus.CounterVec
+	CacheMissesTotal    *prometheus.CounterVec
+	BackgroundRefreshes *prometheus.CounterVec
+	FetchDuration       *prometheus.HistogramVec
+	KillSetSize         prometheus.Gauge
+	ConsecutiveFails    prometheus.Gauge
+	PollerLastSuccess   prometheus.Gauge
 }
 
 // NewMetrics creates and registers all metrics with the given registerer.
@@ -34,6 +35,11 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "pbflags_cache_misses_total",
 			Help: "Cache misses by tier.",
 		}, []string{"tier"}),
+
+		BackgroundRefreshes: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "pbflags_background_refreshes_total",
+			Help: "Background cache refreshes by tier and result.",
+		}, []string{"tier", "result"}),
 
 		FetchDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "pbflags_fetch_duration_seconds",
@@ -61,6 +67,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		m.EvaluationsTotal,
 		m.CacheHitsTotal,
 		m.CacheMissesTotal,
+		m.BackgroundRefreshes,
 		m.FetchDuration,
 		m.KillSetSize,
 		m.ConsecutiveFails,
@@ -88,6 +95,11 @@ func NewNoopMetrics() *Metrics {
 			Name: "pbflags_cache_misses_total",
 			Help: "Cache misses by tier.",
 		}, []string{"tier"}),
+
+		BackgroundRefreshes: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "pbflags_background_refreshes_total",
+			Help: "Background refreshes.",
+		}, []string{"tier", "result"}),
 
 		FetchDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name: "pbflags_fetch_duration_seconds",
@@ -126,6 +138,8 @@ func sourceLabel(source pbflagsv1.EvaluationSource) string {
 		return "cached"
 	case pbflagsv1.EvaluationSource_EVALUATION_SOURCE_ARCHIVED:
 		return "archived"
+	case pbflagsv1.EvaluationSource_EVALUATION_SOURCE_STALE:
+		return "stale"
 	default:
 		return "unknown"
 	}

@@ -79,8 +79,104 @@ func TestResolveGlobal_StaleCache(t *testing.T) {
 	fetcher.flagErr = errors.New("server unreachable")
 
 	val, src = eval.Evaluate(context.Background(), "test-flag", "")
-	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED, src, "expected CACHED source during outage")
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_STALE, src, "expected STALE source (background refresh in flight)")
 	require.Equal(t, true, val.GetBoolValue(), "expected stale value true")
+}
+
+func TestResolveGlobal_StaleCache_NextCallReturnsFresh(t *testing.T) {
+	cache := newTestCache(t)
+
+	fetcher := &stubFetcher{
+		flagState: &CachedFlagState{
+			FlagID: "test-flag",
+			State:  pbflagsv1.State_STATE_ENABLED,
+			Value:  &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}},
+		},
+	}
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+
+	// Cold start: blocks on fetch, returns GLOBAL.
+	val, src := eval.Evaluate(context.Background(), "test-flag", "")
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src)
+	require.Equal(t, true, val.GetBoolValue())
+
+	// Simulate TTL expiry.
+	cache.FlushHot()
+	cache.WaitAll()
+
+	// Update what the fetcher returns.
+	fetcher.flagState = &CachedFlagState{
+		FlagID: "test-flag",
+		State:  pbflagsv1.State_STATE_ENABLED,
+		Value:  &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: false}},
+	}
+
+	// First eval after expiry: returns STALE, triggers background refresh.
+	val, src = eval.Evaluate(context.Background(), "test-flag", "")
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_STALE, src, "first miss should return stale")
+	require.Equal(t, true, val.GetBoolValue(), "stale value should be the old one")
+
+	// Wait for background refresh to populate hot cache.
+	require.Eventually(t, func() bool {
+		cache.WaitAll()
+		return cache.GetFlagState("test-flag") != nil
+	}, time.Second, time.Millisecond)
+
+	// Next eval: background refresh populated the cache with the updated value.
+	val, src = eval.Evaluate(context.Background(), "test-flag", "")
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src, "after refresh should return GLOBAL")
+	require.Equal(t, false, val.GetBoolValue(), "should see updated value")
+}
+
+func TestResolveOverride_StaleCache_NextCallReturnsFresh(t *testing.T) {
+	cache := newTestCache(t)
+
+	fetcher := &stubFetcher{
+		overrides: []*CachedOverride{
+			{
+				FlagID:   "test-flag",
+				EntityID: "entity-1",
+				State:    pbflagsv1.State_STATE_ENABLED,
+				Value:    &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: "v1"}},
+			},
+		},
+	}
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+
+	// Cold start.
+	val, src := eval.Evaluate(context.Background(), "test-flag", "entity-1")
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, src)
+	require.Equal(t, "v1", val.GetStringValue())
+
+	// Simulate TTL expiry.
+	cache.FlushHot()
+	cache.WaitAll()
+
+	// Update what the fetcher returns.
+	fetcher.overrides = []*CachedOverride{
+		{
+			FlagID:   "test-flag",
+			EntityID: "entity-1",
+			State:    pbflagsv1.State_STATE_ENABLED,
+			Value:    &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: "v2"}},
+		},
+	}
+
+	// First miss: returns stale v1, triggers background refresh.
+	val, src = eval.Evaluate(context.Background(), "test-flag", "entity-1")
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_STALE, src)
+	require.Equal(t, "v1", val.GetStringValue())
+
+	// Wait for background refresh.
+	require.Eventually(t, func() bool {
+		cache.WaitAll()
+		return cache.GetOverride("test-flag", "entity-1") != nil
+	}, time.Second, time.Millisecond)
+
+	// Next eval: should see updated v2.
+	val, src = eval.Evaluate(context.Background(), "test-flag", "entity-1")
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, src)
+	require.Equal(t, "v2", val.GetStringValue())
 }
 
 func TestResolveGlobal_NoStaleCache_FallsToDefault(t *testing.T) {
@@ -182,6 +278,6 @@ func TestResolveOverride_StaleCache(t *testing.T) {
 	fetcher.flagErr = errors.New("server unreachable")
 
 	val, src = eval.Evaluate(context.Background(), "test-flag", "entity-1")
-	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED, src, "expected CACHED source during outage")
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_STALE, src, "expected STALE source (background refresh in flight)")
 	require.Equal(t, "custom", val.GetStringValue(), "expected stale override 'custom'")
 }
