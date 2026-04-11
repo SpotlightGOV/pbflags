@@ -175,6 +175,79 @@ func TestCacheStore_JitteredTTL_NoJitter(t *testing.T) {
 	require.Equal(t, time.Second, ttl, "jitteredTTL with 0%% jitter")
 }
 
+func newWriteThroughCache(t *testing.T) *CacheStore {
+	t.Helper()
+	cs, err := NewCacheStore(CacheStoreConfig{
+		FlagTTL:         0,
+		OverrideTTL:     0,
+		OverrideMaxSize: 100,
+		JitterPercent:   0,
+	})
+	require.NoError(t, err)
+	t.Cleanup(cs.Close)
+	return cs
+}
+
+func TestCacheStore_WriteThrough_FlagGetAlwaysMisses(t *testing.T) {
+	cs := newWriteThroughCache(t)
+
+	state := &CachedFlagState{
+		FlagID: "feature/1",
+		State:  pbflagsv1.State_STATE_ENABLED,
+		Value:  &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}},
+	}
+	cs.SetFlagState(state)
+	waitCaches(cs)
+
+	require.Nil(t, cs.GetFlagState("feature/1"), "write-through: hot cache should always miss")
+}
+
+func TestCacheStore_WriteThrough_FlagStaleMapPopulated(t *testing.T) {
+	cs := newWriteThroughCache(t)
+
+	state := &CachedFlagState{
+		FlagID: "feature/1",
+		State:  pbflagsv1.State_STATE_ENABLED,
+		Value:  &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: "hello"}},
+	}
+	cs.SetFlagState(state)
+
+	stale := cs.GetStaleFlagState("feature/1")
+	require.NotNil(t, stale, "write-through: stale map should still be populated")
+	require.Equal(t, "hello", stale.Value.GetStringValue())
+}
+
+func TestCacheStore_WriteThrough_OverrideGetAlwaysMisses(t *testing.T) {
+	cs := newWriteThroughCache(t)
+
+	override := &CachedOverride{
+		FlagID:   "feature/1",
+		EntityID: "user-42",
+		State:    pbflagsv1.State_STATE_ENABLED,
+		Value:    &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64Value{Int64Value: 99}},
+	}
+	cs.SetOverride(override)
+	waitCaches(cs)
+
+	require.Nil(t, cs.GetOverride("feature/1", "user-42"), "write-through: hot cache should always miss")
+}
+
+func TestCacheStore_WriteThrough_OverrideStaleMapPopulated(t *testing.T) {
+	cs := newWriteThroughCache(t)
+
+	override := &CachedOverride{
+		FlagID:   "feature/1",
+		EntityID: "user-42",
+		State:    pbflagsv1.State_STATE_ENABLED,
+		Value:    &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleValue{DoubleValue: 3.14}},
+	}
+	cs.SetOverride(override)
+
+	stale := cs.GetStaleOverride("feature/1", "user-42")
+	require.NotNil(t, stale, "write-through: stale map should still be populated")
+	require.Equal(t, 3.14, stale.Value.GetDoubleValue())
+}
+
 func TestCacheStore_JitteredTTL_WithJitter(t *testing.T) {
 	cs, err := NewCacheStore(CacheStoreConfig{
 		FlagTTL:         time.Second,

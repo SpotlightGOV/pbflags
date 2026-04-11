@@ -139,7 +139,11 @@ func (s *CacheStore) SetKillSet(ks *KillSet) {
 }
 
 // GetFlagState returns the cached state for a flag, or nil on miss.
+// When flagTTL is 0 (write-through mode), always returns nil to force a fresh fetch.
 func (s *CacheStore) GetFlagState(flagID string) *CachedFlagState {
+	if s.flagTTL <= 0 {
+		return nil
+	}
 	val, ok := s.flagCache.Get(flagID)
 	if !ok {
 		return nil
@@ -148,8 +152,11 @@ func (s *CacheStore) GetFlagState(flagID string) *CachedFlagState {
 }
 
 // SetFlagState caches a flag state with TTL + jitter.
+// When flagTTL is 0 (write-through mode), only the stale fallback map is populated.
 func (s *CacheStore) SetFlagState(state *CachedFlagState) {
-	s.flagCache.SetWithTTL(state.FlagID, state, 1, s.jitteredTTL(s.flagTTL))
+	if s.flagTTL > 0 {
+		s.flagCache.SetWithTTL(state.FlagID, state, 1, s.jitteredTTL(s.flagTTL))
+	}
 	s.staleFlagMu.Lock()
 	s.staleFlagMap[state.FlagID] = state
 	s.staleFlagMu.Unlock()
@@ -181,7 +188,11 @@ func (s *CacheStore) OverrideCacheSize() int64 {
 }
 
 // GetOverride returns the cached override, or nil on miss.
+// When overrideTTL is 0 (write-through mode), always returns nil to force a fresh fetch.
 func (s *CacheStore) GetOverride(flagID, entityID string) *CachedOverride {
+	if s.overrideTTL <= 0 {
+		return nil
+	}
 	val, ok := s.overrideCache.Get(flagID + ":" + entityID)
 	if !ok {
 		return nil
@@ -190,9 +201,12 @@ func (s *CacheStore) GetOverride(flagID, entityID string) *CachedOverride {
 }
 
 // SetOverride caches an override with TTL + jitter.
+// When overrideTTL is 0 (write-through mode), only the stale fallback map is populated.
 func (s *CacheStore) SetOverride(o *CachedOverride) {
 	key := o.FlagID + ":" + o.EntityID
-	s.overrideCache.SetWithTTL(key, o, 1, s.jitteredTTL(s.overrideTTL))
+	if s.overrideTTL > 0 {
+		s.overrideCache.SetWithTTL(key, o, 1, s.jitteredTTL(s.overrideTTL))
+	}
 	s.staleOverrideMu.Lock()
 	s.staleOverrideMap[key] = o
 	s.staleOverrideMu.Unlock()
