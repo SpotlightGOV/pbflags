@@ -64,9 +64,6 @@ type CacheStore struct {
 	jitterPercent int
 }
 
-// FlagWriteThrough reports whether flag caching is bypassed (TTL <= 0).
-func (s *CacheStore) FlagWriteThrough() bool { return s.flagTTL <= 0 }
-
 // CacheStoreConfig configures cache sizes and TTLs.
 type CacheStoreConfig struct {
 	FlagTTL         time.Duration
