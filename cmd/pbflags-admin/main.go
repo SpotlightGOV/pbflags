@@ -240,10 +240,15 @@ func run(cfg evaluator.Config, standalone bool, devAssetsDir string, logger *slo
 
 	// ── Background goroutines ───────────────────────────────────────
 
-	killPoller := evaluator.NewKillPoller(dbFetcher, cache, tracker,
-		cfg.Cache.KillTTL, cfg.Cache.FetchTimeout,
-		logger.With("component", "kill-poller"), metrics)
-	go killPoller.Run(ctx)
+	if cfg.Cache.FlagTTL > cfg.Cache.KillTTL {
+		killPoller := evaluator.NewKillPoller(dbFetcher, cache, tracker,
+			cfg.Cache.KillTTL, cfg.Cache.FetchTimeout,
+			logger.With("component", "kill-poller"), metrics)
+		go killPoller.Run(ctx)
+	} else {
+		logger.Info("kill set poller disabled (flag_ttl <= kill_ttl), using inline kill checks")
+		eval.SetInlineKillCheck(true)
+	}
 
 	if standalone {
 		sighupCh := make(chan os.Signal, 1)

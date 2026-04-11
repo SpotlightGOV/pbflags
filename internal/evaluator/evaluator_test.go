@@ -96,6 +96,61 @@ func TestResolveGlobal_NoStaleCache_FallsToDefault(t *testing.T) {
 	require.Nil(t, val, "expected nil value (no default registered)")
 }
 
+func TestInlineKillCheck_BlocksOverride(t *testing.T) {
+	cache := newTestCache(t)
+
+	fetcher := &stubFetcher{
+		// Global state: killed.
+		flagState: &CachedFlagState{
+			FlagID: "test-flag",
+			State:  pbflagsv1.State_STATE_KILLED,
+		},
+		// Override: enabled with a value.
+		overrides: []*CachedOverride{
+			{
+				FlagID:   "test-flag",
+				EntityID: "entity-1",
+				State:    pbflagsv1.State_STATE_ENABLED,
+				Value:    &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}},
+			},
+		},
+	}
+
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval.SetInlineKillCheck(true)
+
+	_, src := eval.Evaluate(context.Background(), "test-flag", "entity-1")
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED, src,
+		"inline kill check should block override")
+}
+
+func TestInlineKillCheck_Disabled_OverrideWins(t *testing.T) {
+	cache := newTestCache(t)
+
+	fetcher := &stubFetcher{
+		flagState: &CachedFlagState{
+			FlagID: "test-flag",
+			State:  pbflagsv1.State_STATE_KILLED,
+		},
+		overrides: []*CachedOverride{
+			{
+				FlagID:   "test-flag",
+				EntityID: "entity-1",
+				State:    pbflagsv1.State_STATE_ENABLED,
+				Value:    &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}},
+			},
+		},
+	}
+
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	// inlineKillCheck is false — poller would normally handle this.
+
+	val, src := eval.Evaluate(context.Background(), "test-flag", "entity-1")
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, src,
+		"without inline kill check, override should win (poller would catch this)")
+	require.Equal(t, true, val.GetBoolValue())
+}
+
 func TestResolveOverride_StaleCache(t *testing.T) {
 	cache := newTestCache(t)
 

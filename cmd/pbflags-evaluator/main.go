@@ -188,10 +188,15 @@ func run(cfg evaluator.Config, logger *slog.Logger) error {
 
 	// ── Background goroutines ───────────────────────────────────────
 
-	killPoller := evaluator.NewKillPoller(killFetcher, cache, tracker,
-		cfg.Cache.KillTTL, cfg.Cache.FetchTimeout,
-		logger.With("component", "kill-poller"), metrics)
-	go killPoller.Run(ctx)
+	if cfg.Cache.FlagTTL > cfg.Cache.KillTTL {
+		killPoller := evaluator.NewKillPoller(killFetcher, cache, tracker,
+			cfg.Cache.KillTTL, cfg.Cache.FetchTimeout,
+			logger.With("component", "kill-poller"), metrics)
+		go killPoller.Run(ctx)
+	} else {
+		logger.Info("kill set poller disabled (flag_ttl <= kill_ttl), using inline kill checks")
+		eval.SetInlineKillCheck(true)
+	}
 
 	// ── HTTP server ─────────────────────────────────────────────────
 
