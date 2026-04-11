@@ -160,7 +160,7 @@ import (
 
 evaluator := pbflagsv1connect.NewFlagEvaluatorServiceClient(
     http.DefaultClient,
-    "http://localhost:9201",
+    "http://localhost:9201", // "localhost:9201" also accepted
 )
 <feature> := <feature>flags.New<Feature>FlagsClient(evaluator)
 val := <feature>.<FlagName>(context.Background(), layers.User("user-123"))
@@ -170,6 +170,14 @@ val := <feature>.<FlagName>(context.Background(), layers.User("user-123"))
 val := <feature>.<FlagName>(context.Background(), layers.UserID{})
 ```
 
+Evaluation errors (network failures, type mismatches) are logged via `slog.Default()` and the compiled default is returned. To use a custom logger:
+
+```go
+import "<MODULE>/gen/flags/flagmeta"
+
+<feature> := <feature>flags.New<Feature>FlagsClient(evaluator, flagmeta.WithLogger(myLogger))
+```
+
 ### Java
 
 ```java
@@ -177,6 +185,7 @@ import com.yourorg.flags.generated.<Feature>Flags;
 import com.yourorg.flags.generated.layers.UserID;
 import org.spotlightgov.pbflags.FlagEvaluatorClient;
 
+// All formats accepted: "localhost:9201", "http://localhost:9201", "https://host:9201"
 FlagEvaluatorClient evaluator = new FlagEvaluatorClient("localhost:9201");
 <Feature>Flags <feature> = <Feature>Flags.forEvaluator(evaluator);
 boolean val = <feature>.<flagName>().get(UserID.of("user-123"));
