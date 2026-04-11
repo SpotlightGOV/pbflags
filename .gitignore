@@ -1,13 +1,3 @@
-# Gas Town workspace
-.runtime/
-.claude/
-.logs/
-.beads/
-__pycache__/
-state.json
-CLAUDE.local.md
-mail/
-
 # Generated release notes
 release-notes.md
 
