@@ -2,6 +2,32 @@
 
 package flagmeta
 
+import "log/slog"
+
+// Option configures a generated flag client.
+type Option func(*Config)
+
+// Config holds settings for a generated flag client.
+type Config struct {
+	Logger *slog.Logger
+}
+
+// WithLogger sets a custom logger for flag evaluation errors.
+// By default, clients log via slog.Default().
+func WithLogger(l *slog.Logger) Option {
+	return func(c *Config) { c.Logger = l }
+}
+
+// Apply builds a Config from the given options, using slog.Default() when
+// no logger is provided.
+func Apply(opts ...Option) Config {
+	cfg := Config{Logger: slog.Default()}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return cfg
+}
+
 // FlagType identifies the underlying scalar type of a flag.
 type FlagType int
 

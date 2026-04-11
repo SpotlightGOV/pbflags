@@ -3,6 +3,7 @@ package evaluator
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -25,10 +26,19 @@ type FlagServerClient struct {
 	metrics *Metrics
 }
 
+// NormalizeConnectURL ensures a URL has an http:// or https:// scheme,
+// which Connect-Go requires. Bare "host:port" strings get http:// prepended.
+func NormalizeConnectURL(raw string) string {
+	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+		return raw
+	}
+	return "http://" + raw
+}
+
 // NewFlagServerClient creates a Connect client for the upstream evaluator.
 func NewFlagServerClient(serverURL string, tracker *HealthTracker, fetchTimeout time.Duration, m *Metrics, opts ...connect.ClientOption) *FlagServerClient {
 	return &FlagServerClient{
-		eval:    pbflagsv1connect.NewFlagEvaluatorServiceClient(http.DefaultClient, serverURL, opts...),
+		eval:    pbflagsv1connect.NewFlagEvaluatorServiceClient(http.DefaultClient, NormalizeConnectURL(serverURL), opts...),
 		tracker: tracker,
 		timeout: fetchTimeout,
 		metrics: m,

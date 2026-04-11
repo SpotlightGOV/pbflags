@@ -66,6 +66,8 @@ make install-codegen  # Install protoc-gen-pbflags to GOPATH/bin
 
 Migrations live in `db/migrations/` and use [goose](https://github.com/pressly/goose). `pbflags-sync` and `pbflags-admin --standalone` run them automatically on startup; `pbflags-admin` (normal) and `pbflags-evaluator` only check the schema version.
 
+**Goose version table location:** the migration tracker table (`pbflags_goose_db_version`) lives in the `feature_flags` schema. Releases before this change created it in `public` — after upgrading you can safely `DROP TABLE IF EXISTS public.pbflags_goose_db_version;` once all services are on the new version. Existing migrations are idempotent, so goose will re-record them in the new table automatically.
+
 **Backwards compatibility rule:** every migration must be compatible with the previous release's queries. During a production upgrade, `pbflags-sync` applies the new schema first, then admin and evaluator instances are rolled out — so the old code runs against the new schema during the rollout window.
 
 - Add columns as nullable or with defaults.

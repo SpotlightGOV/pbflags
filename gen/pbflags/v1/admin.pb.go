@@ -950,7 +950,7 @@ var File_pbflags_v1_admin_proto protoreflect.FileDescriptor
 const file_pbflags_v1_admin_proto_rawDesc = "" +
 	"\n" +
 	"\x16pbflags/v1/admin.proto\x12\n" +
-	"pbflags.v1\x1a\x15pbflags/options.proto\x1a\x16pbflags/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x15\n" +
+	"pbflags.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15pbflags/options.proto\x1a\x16pbflags/v1/types.proto\"\x15\n" +
 	"\x13ListFeaturesRequest\"M\n" +
 	"\x14ListFeaturesResponse\x125\n" +
 	"\bfeatures\x18\x01 \x03(\v2\x19.pbflags.v1.FeatureDetailR\bfeatures\"\x94\x01\n" +

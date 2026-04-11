@@ -23,8 +23,13 @@ func Migrate(ctx context.Context, dsn string) error {
 	}
 	defer db.Close()
 
+	// Ensure the schema exists before goose tries to create its version table there.
+	if _, err := db.ExecContext(ctx, `CREATE SCHEMA IF NOT EXISTS feature_flags`); err != nil {
+		return fmt.Errorf("create schema: %w", err)
+	}
+
 	goose.SetBaseFS(migrations)
-	goose.SetTableName("pbflags_goose_db_version")
+	goose.SetTableName("feature_flags.pbflags_goose_db_version")
 
 	if err := goose.SetDialect("postgres"); err != nil {
 		return fmt.Errorf("set dialect: %w", err)

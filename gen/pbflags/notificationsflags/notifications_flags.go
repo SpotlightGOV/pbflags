@@ -4,6 +4,7 @@ package notificationsflags
 
 import (
 	"context"
+	"log/slog"
 
 	"connectrpc.com/connect"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/flagmeta"
@@ -56,12 +57,16 @@ type NotificationsFlags interface {
 }
 
 // NewNotificationsFlagsClient creates a client backed by a FlagEvaluator connection.
-func NewNotificationsFlagsClient(evaluator pbflagsv1connect.FlagEvaluatorServiceClient) NotificationsFlags {
-	return &notificationsFlagsClient{evaluator: evaluator}
+// By default, evaluation errors are logged via slog.Default(). Use
+// flagmeta.WithLogger to override.
+func NewNotificationsFlagsClient(evaluator pbflagsv1connect.FlagEvaluatorServiceClient, opts ...flagmeta.Option) NotificationsFlags {
+	cfg := flagmeta.Apply(opts...)
+	return &notificationsFlagsClient{evaluator: evaluator, logger: cfg.Logger}
 }
 
 type notificationsFlagsClient struct {
 	evaluator pbflagsv1connect.FlagEvaluatorServiceClient
+	logger    *slog.Logger
 }
 
 func (c *notificationsFlagsClient) EmailEnabled(ctx context.Context, user layers.UserID) bool {
@@ -70,9 +75,17 @@ func (c *notificationsFlagsClient) EmailEnabled(ctx context.Context, user layers
 		EntityId: user.String(),
 	}))
 	if err != nil {
+		c.logger.ErrorContext(ctx, "flag evaluation failed",
+			"flag_id", EmailEnabledID,
+			"error", err,
+		)
 		return EmailEnabledDefault
 	}
 	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.FlagValue_BoolValue); !ok {
+		c.logger.WarnContext(ctx, "flag type mismatch, using default",
+			"flag_id", EmailEnabledID,
+			"expected", "bool",
+		)
 		return EmailEnabledDefault
 	}
 	return resp.Msg.GetValue().GetBoolValue()
@@ -83,9 +96,17 @@ func (c *notificationsFlagsClient) DigestFrequency(ctx context.Context) string {
 		FlagId: DigestFrequencyID,
 	}))
 	if err != nil {
+		c.logger.ErrorContext(ctx, "flag evaluation failed",
+			"flag_id", DigestFrequencyID,
+			"error", err,
+		)
 		return DigestFrequencyDefault
 	}
 	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.FlagValue_StringValue); !ok {
+		c.logger.WarnContext(ctx, "flag type mismatch, using default",
+			"flag_id", DigestFrequencyID,
+			"expected", "string",
+		)
 		return DigestFrequencyDefault
 	}
 	return resp.Msg.GetValue().GetStringValue()
@@ -96,9 +117,17 @@ func (c *notificationsFlagsClient) MaxRetries(ctx context.Context) int64 {
 		FlagId: MaxRetriesID,
 	}))
 	if err != nil {
+		c.logger.ErrorContext(ctx, "flag evaluation failed",
+			"flag_id", MaxRetriesID,
+			"error", err,
+		)
 		return MaxRetriesDefault
 	}
 	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.FlagValue_Int64Value); !ok {
+		c.logger.WarnContext(ctx, "flag type mismatch, using default",
+			"flag_id", MaxRetriesID,
+			"expected", "int64",
+		)
 		return MaxRetriesDefault
 	}
 	return resp.Msg.GetValue().GetInt64Value()
@@ -109,9 +138,17 @@ func (c *notificationsFlagsClient) ScoreThreshold(ctx context.Context) float64 {
 		FlagId: ScoreThresholdID,
 	}))
 	if err != nil {
+		c.logger.ErrorContext(ctx, "flag evaluation failed",
+			"flag_id", ScoreThresholdID,
+			"error", err,
+		)
 		return ScoreThresholdDefault
 	}
 	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.FlagValue_DoubleValue); !ok {
+		c.logger.WarnContext(ctx, "flag type mismatch, using default",
+			"flag_id", ScoreThresholdID,
+			"expected", "float64",
+		)
 		return ScoreThresholdDefault
 	}
 	return resp.Msg.GetValue().GetDoubleValue()
@@ -123,9 +160,17 @@ func (c *notificationsFlagsClient) NotificationEmails(ctx context.Context, entit
 		EntityId: entity.String(),
 	}))
 	if err != nil {
+		c.logger.ErrorContext(ctx, "flag evaluation failed",
+			"flag_id", NotificationEmailsID,
+			"error", err,
+		)
 		return NotificationEmailsDefault()
 	}
 	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.FlagValue_StringListValue); !ok {
+		c.logger.WarnContext(ctx, "flag type mismatch, using default",
+			"flag_id", NotificationEmailsID,
+			"expected", "[]string",
+		)
 		return NotificationEmailsDefault()
 	}
 	return resp.Msg.GetValue().GetStringListValue().GetValues()
@@ -136,9 +181,17 @@ func (c *notificationsFlagsClient) RetryDelays(ctx context.Context) []int64 {
 		FlagId: RetryDelaysID,
 	}))
 	if err != nil {
+		c.logger.ErrorContext(ctx, "flag evaluation failed",
+			"flag_id", RetryDelaysID,
+			"error", err,
+		)
 		return RetryDelaysDefault()
 	}
 	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.FlagValue_Int64ListValue); !ok {
+		c.logger.WarnContext(ctx, "flag type mismatch, using default",
+			"flag_id", RetryDelaysID,
+			"expected", "[]int64",
+		)
 		return RetryDelaysDefault()
 	}
 	return resp.Msg.GetValue().GetInt64ListValue().GetValues()
@@ -147,6 +200,7 @@ func (c *notificationsFlagsClient) RetryDelays(ctx context.Context) []int64 {
 func (c *notificationsFlagsClient) Status(ctx context.Context) pbflagsv1.EvaluatorStatus {
 	resp, err := c.evaluator.Health(ctx, connect.NewRequest(&pbflagsv1.HealthRequest{}))
 	if err != nil {
+		c.logger.ErrorContext(ctx, "health check failed", "error", err)
 		return pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_UNSPECIFIED
 	}
 	return resp.Msg.Status

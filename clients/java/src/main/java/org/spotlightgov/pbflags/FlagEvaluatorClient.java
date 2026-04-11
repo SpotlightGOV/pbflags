@@ -34,13 +34,28 @@ public final class FlagEvaluatorClient implements FlagEvaluator {
   private final ManagedChannel channel;
 
   public FlagEvaluatorClient(String target) {
-    this.channel =
-        ManagedChannelBuilder.forTarget(target)
-            .usePlaintext()
-            .maxInboundMessageSize(4 * 1024 * 1024)
-            .build();
+    boolean useTls = target.startsWith("https://");
+    String normalizedTarget = stripScheme(target);
+
+    ManagedChannelBuilder<?> builder =
+        ManagedChannelBuilder.forTarget(normalizedTarget).maxInboundMessageSize(4 * 1024 * 1024);
+    if (!useTls) {
+      builder.usePlaintext();
+    }
+    this.channel = builder.build();
     this.stub = FlagEvaluatorServiceGrpc.newBlockingStub(channel);
-    logger.info("FlagEvaluatorClient connecting to {}", target);
+    logger.info("FlagEvaluatorClient connecting to {}{}", useTls ? "(TLS) " : "", normalizedTarget);
+  }
+
+  /** Strips http:// or https:// from a target string so ManagedChannelBuilder can parse it. */
+  private static String stripScheme(String target) {
+    if (target.startsWith("https://")) {
+      return target.substring("https://".length());
+    }
+    if (target.startsWith("http://")) {
+      return target.substring("http://".length());
+    }
+    return target;
   }
 
   /**

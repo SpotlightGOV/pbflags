@@ -29,7 +29,7 @@ func CheckSchemaVersion(ctx context.Context, dsn string) error {
 func CheckSchemaVersionConn(ctx context.Context, conn *sql.DB) error {
 	var version int64
 	err := conn.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(version_id), 0) FROM pbflags_goose_db_version WHERE is_applied = true`,
+		`SELECT COALESCE(MAX(version_id), 0) FROM feature_flags.pbflags_goose_db_version WHERE is_applied = true`,
 	).Scan(&version)
 	if err != nil {
 		return fmt.Errorf("database schema version 0 < required %d\n"+
