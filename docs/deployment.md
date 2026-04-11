@@ -134,6 +134,63 @@ semantics, so you can override individual flags per host without editing
 checked-in config files. The override directory can be changed via
 `PBFLAGS_OVERRIDES_DIR`.
 
+### Cache tuning
+
+The evaluator uses a three-tier cache with configurable TTLs:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--cache-kill-ttl` | 30s | Kill set poll interval |
+| `--cache-flag-ttl` | 10m | Global flag state hot-cache TTL |
+| `--cache-override-ttl` | 10m | Per-entity override hot-cache TTL |
+
+#### Standard mode (default)
+
+With the default TTLs, the evaluator caches flag state in a hot cache
+(Ristretto) with jitter to prevent thundering herd. When an entry
+expires, the evaluator returns the **stale value immediately** and
+triggers a background refresh — no request ever blocks on a fetch after
+initial warmup. The evaluation source will be `STALE` until the
+background refresh completes, then `GLOBAL` or `OVERRIDE` on the next
+call.
+
+A background kill set poller runs every `--cache-kill-ttl` (default 30s)
+to ensure killed flags take effect quickly.
+
+#### Write-through mode (`--cache-flag-ttl=0`)
+
+Setting `--cache-flag-ttl=0` (and/or `--cache-override-ttl=0`) disables
+the hot cache entirely. Every evaluation fetches from the database,
+giving instant flag propagation. A stale fallback map is still populated
+on each fetch as a safety net if the database becomes unavailable.
+
+This mode is designed for small or standalone deployments where the
+database is local and sub-millisecond fetch latency is acceptable.
+
+When `--cache-flag-ttl` is less than or equal to `--cache-kill-ttl`, the
+kill set poller is automatically disabled. Instead, the evaluator fetches
+each flag's state before checking overrides and detects kills inline.
+
+#### Evaluation sources
+
+The `EvaluationSource` in the response tells consumers where the
+resolved value came from:
+
+| Source | Meaning |
+|---|---|
+| `GLOBAL` | Fresh value from global flag state |
+| `OVERRIDE` | Fresh value from per-entity override |
+| `STALE` | Stale value returned while background refresh is in flight (normal operation after TTL expiry) |
+| `CACHED` | Last-resort stale value (database unreachable, no background refresh possible) |
+| `KILLED` | Flag is globally killed |
+| `ARCHIVED` | Archived flag's last known value |
+| `DEFAULT` | Compiled default (flag not found, not enabled, or no value set) |
+
+In dashboards, a steady rate of `STALE` evaluations is normal — it
+means TTL-expired entries are being served while refreshes complete in
+the background. A spike in `CACHED` evaluations indicates the database
+may be unreachable.
+
 ### Environment variables
 
 Environment variables override CLI flags:
@@ -147,6 +204,9 @@ Environment variables override CLI flags:
 | `PBFLAGS_LISTEN` | admin, evaluator | `--evaluator-listen` on admin, `--listen` on evaluator | Evaluator listen address; default is `:9201` in `pbflags-admin`, `localhost:9201` in `pbflags-evaluator` |
 | `PBFLAGS_ENV_NAME` | admin | `--env-name` | Environment label shown in admin UI |
 | `PBFLAGS_ENV_COLOR` | admin | `--env-color` | Accent color for admin UI environment banner |
+| `PBFLAGS_CACHE_KILL_TTL` | admin, evaluator | `--cache-kill-ttl` | Kill set poll interval (default `30s`) |
+| `PBFLAGS_CACHE_FLAG_TTL` | admin, evaluator | `--cache-flag-ttl` | Flag state cache TTL (default `10m`, `0` for write-through) |
+| `PBFLAGS_CACHE_OVERRIDE_TTL` | admin, evaluator | `--cache-override-ttl` | Override cache TTL (default `10m`, `0` for write-through) |
 
 ## Proto Definitions (BSR)
 

@@ -10,8 +10,8 @@ This gives you a property most feature flag systems don't have: your flag defini
 
 - **Never-throw guarantee**: All evaluation errors return the compiled default. Application code never needs to handle flag evaluation failures.
 - **Type-safe code generation**: Generated interfaces with compile-time type checking. You can't pass a user ID where an entity ID is expected.
-- **Graceful degradation**: Stale cache served during outages, compiled defaults as last resort. Flag evaluation keeps working even if the database is unreachable.
-- **Fast kill switches**: ~30s polling for emergency shutoffs. Kill a flag globally and it takes effect within one poll cycle.
+- **Graceful degradation**: Stale values served instantly on cache expiry (background refresh in flight); last-resort stale fallback during outages; compiled defaults as the ultimate safety net. Flag evaluation never blocks after initial warmup and keeps working even if the database is unreachable.
+- **Fast kill switches**: ~30s polling for emergency shutoffs by default. Kill a flag globally and it takes effect within one poll cycle. In write-through mode (`--cache-flag-ttl=0`), kills are checked inline on every evaluation — no polling delay.
 - **Immutable identity**: Flag identity is `feature_id/field_number`, safe to rename proto fields without breaking existing state.
 - **Audit trail**: All state changes logged with actor and timestamp.
 
@@ -19,11 +19,12 @@ This gives you a property most feature flag systems don't have: your flag defini
 
 The evaluator resolves flags using this precedence chain:
 
-1. **Global KILLED** -> compiled default (polled every ~30s)
+1. **Global KILLED** -> compiled default (polled every ~30s, or checked inline in write-through mode)
 2. **Per-entity override ENABLED** -> override value
 3. **Per-entity override DEFAULT** -> compiled default
 4. **Global ENABLED** -> configured value
-5. **Fallback** -> compiled default (always safe)
+5. **Stale fallback** -> last known value (if hot cache expired, served while background refresh runs)
+6. **Compiled default** -> always safe
 
 The key insight is that the global kill switch always wins, overrides beat global state, and the compiled default is the ultimate safety net. Per-entity kills are not supported — use the global kill switch instead.
 
