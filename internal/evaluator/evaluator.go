@@ -20,22 +20,37 @@ type Fetcher interface {
 // kill set → per-entity override → global state → stale cache → compiled default.
 // Note: per-entity kills are not supported; overrides can only be ENABLED or DEFAULT.
 type Evaluator struct {
-	cache   *CacheStore
-	fetcher Fetcher
-	logger  *slog.Logger
-	metrics *Metrics
-	tracer  trace.Tracer
+	cache           *CacheStore
+	fetcher         Fetcher
+	logger          *slog.Logger
+	metrics         *Metrics
+	tracer          trace.Tracer
+	inlineKillCheck bool // when true, fetch flag state before overrides to check kills
+}
+
+// EvaluatorOption configures optional Evaluator behavior.
+type EvaluatorOption func(*Evaluator)
+
+// WithInlineKillCheck enables inline kill checking. Use this when the kill
+// set poller is not running (e.g. flagTTL <= killTTL) so kills are still
+// checked before overrides by fetching each flag's state eagerly.
+func WithInlineKillCheck() EvaluatorOption {
+	return func(e *Evaluator) { e.inlineKillCheck = true }
 }
 
 // NewEvaluator creates an Evaluator.
-func NewEvaluator(cache *CacheStore, fetcher Fetcher, logger *slog.Logger, m *Metrics, tracer trace.Tracer) *Evaluator {
-	return &Evaluator{
+func NewEvaluator(cache *CacheStore, fetcher Fetcher, logger *slog.Logger, m *Metrics, tracer trace.Tracer, opts ...EvaluatorOption) *Evaluator {
+	e := &Evaluator{
 		cache:   cache,
 		fetcher: fetcher,
 		logger:  logger,
 		metrics: m,
 		tracer:  tracer,
 	}
+	for _, opt := range opts {
+		opt(e)
+	}
+	return e
 }
 
 // Evaluate resolves a single flag for an optional entity.
@@ -51,21 +66,38 @@ func (e *Evaluator) Evaluate(ctx context.Context, flagID, entityID string) (valu
 		e.metrics.EvaluationsTotal.WithLabelValues(sourceLabel(source), "ok").Inc()
 	}()
 
-	// 1. Kill set check — highest priority.
+	// 1. Kill set check — highest priority (populated by poller).
 	ks := e.cache.GetKillSet()
 	if ks.IsKilled(flagID) {
 		e.metrics.CacheHitsTotal.WithLabelValues("kill_set").Inc()
 		return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED
 	}
 
-	// 2. Per-entity override (if applicable).
+	// 2. Inline kill check: when the kill set poller is not running,
+	//    fetch state now and check killed before overrides.
+	var prefetched *CachedFlagState
+	if e.inlineKillCheck {
+		fetched, err := e.fetcher.FetchFlagState(ctx, flagID)
+		if err == nil && fetched != nil {
+			e.cache.SetFlagState(fetched)
+			if fetched.State == pbflagsv1.State_STATE_KILLED {
+				return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED
+			}
+			prefetched = fetched
+		}
+	}
+
+	// 3. Per-entity override (if applicable).
 	if entityID != "" {
 		if val, src, ok := e.resolveOverride(ctx, flagID, entityID); ok {
 			return val, src
 		}
 	}
 
-	// 3. Global state (on-demand, 10m TTL).
+	// 4. Global state.
+	if prefetched != nil {
+		return e.evalFlagState(prefetched)
+	}
 	return e.resolveGlobal(ctx, flagID)
 }
 
@@ -138,6 +170,12 @@ func (e *Evaluator) resolveGlobal(
 		}
 	}
 
+	return e.evalFlagState(state)
+}
+
+// evalFlagState evaluates an already-fetched flag state. Shared by
+// resolveGlobal and the inline kill-check prefetch path.
+func (e *Evaluator) evalFlagState(state *CachedFlagState) (*pbflagsv1.FlagValue, pbflagsv1.EvaluationSource) {
 	if state == nil {
 		return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT
 	}
