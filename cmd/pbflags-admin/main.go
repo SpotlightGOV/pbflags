@@ -236,10 +236,7 @@ func run(cfg evaluator.Config, standalone bool, devAssetsDir string, logger *slo
 	dbFetcher := evaluator.NewDBFetcher(pool, tracker,
 		logger.With("component", "db-fetcher"), metrics, tracer)
 
-	eval := evaluator.NewEvaluator(cache, dbFetcher, logger, metrics, tracer)
-
-	// ── Background goroutines ───────────────────────────────────────
-
+	var evalOpts []evaluator.EvaluatorOption
 	if cfg.Cache.FlagTTL > cfg.Cache.KillTTL {
 		killPoller := evaluator.NewKillPoller(dbFetcher, cache, tracker,
 			cfg.Cache.KillTTL, cfg.Cache.FetchTimeout,
@@ -247,8 +244,10 @@ func run(cfg evaluator.Config, standalone bool, devAssetsDir string, logger *slo
 		go killPoller.Run(ctx)
 	} else {
 		logger.Info("kill set poller disabled (flag_ttl <= kill_ttl), using inline kill checks")
-		eval.SetInlineKillCheck(true)
+		evalOpts = append(evalOpts, evaluator.WithInlineKillCheck())
 	}
+
+	eval := evaluator.NewEvaluator(cache, dbFetcher, logger, metrics, tracer, evalOpts...)
 
 	if standalone {
 		sighupCh := make(chan os.Signal, 1)

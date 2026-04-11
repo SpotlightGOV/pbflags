@@ -28,21 +28,30 @@ type Evaluator struct {
 	inlineKillCheck bool // when true, fetch flag state before overrides to check kills
 }
 
+// EvaluatorOption configures optional Evaluator behavior.
+type EvaluatorOption func(*Evaluator)
+
+// WithInlineKillCheck enables inline kill checking. Use this when the kill
+// set poller is not running (e.g. flagTTL <= killTTL) so kills are still
+// checked before overrides by fetching each flag's state eagerly.
+func WithInlineKillCheck() EvaluatorOption {
+	return func(e *Evaluator) { e.inlineKillCheck = true }
+}
+
 // NewEvaluator creates an Evaluator.
-func NewEvaluator(cache *CacheStore, fetcher Fetcher, logger *slog.Logger, m *Metrics, tracer trace.Tracer) *Evaluator {
-	return &Evaluator{
+func NewEvaluator(cache *CacheStore, fetcher Fetcher, logger *slog.Logger, m *Metrics, tracer trace.Tracer, opts ...EvaluatorOption) *Evaluator {
+	e := &Evaluator{
 		cache:   cache,
 		fetcher: fetcher,
 		logger:  logger,
 		metrics: m,
 		tracer:  tracer,
 	}
+	for _, opt := range opts {
+		opt(e)
+	}
+	return e
 }
-
-// SetInlineKillCheck enables inline kill checking. Use this when the kill
-// set poller is not running (e.g. flagTTL <= killTTL) so kills are still
-// checked before overrides.
-func (e *Evaluator) SetInlineKillCheck(v bool) { e.inlineKillCheck = v }
 
 // Evaluate resolves a single flag for an optional entity.
 func (e *Evaluator) Evaluate(ctx context.Context, flagID, entityID string) (value *pbflagsv1.FlagValue, source pbflagsv1.EvaluationSource) {

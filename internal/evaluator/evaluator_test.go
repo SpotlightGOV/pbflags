@@ -116,8 +116,8 @@ func TestInlineKillCheck_BlocksOverride(t *testing.T) {
 		},
 	}
 
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
-	eval.SetInlineKillCheck(true)
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer(),
+		WithInlineKillCheck())
 
 	_, src := eval.Evaluate(context.Background(), "test-flag", "entity-1")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED, src,

@@ -184,10 +184,7 @@ func run(cfg evaluator.Config, logger *slog.Logger) error {
 	}
 	defer cache.Close()
 
-	eval := evaluator.NewEvaluator(cache, fetcher, logger, metrics, tracer)
-
-	// ── Background goroutines ───────────────────────────────────────
-
+	var evalOpts []evaluator.EvaluatorOption
 	if cfg.Cache.FlagTTL > cfg.Cache.KillTTL {
 		killPoller := evaluator.NewKillPoller(killFetcher, cache, tracker,
 			cfg.Cache.KillTTL, cfg.Cache.FetchTimeout,
@@ -195,8 +192,10 @@ func run(cfg evaluator.Config, logger *slog.Logger) error {
 		go killPoller.Run(ctx)
 	} else {
 		logger.Info("kill set poller disabled (flag_ttl <= kill_ttl), using inline kill checks")
-		eval.SetInlineKillCheck(true)
+		evalOpts = append(evalOpts, evaluator.WithInlineKillCheck())
 	}
+
+	eval := evaluator.NewEvaluator(cache, fetcher, logger, metrics, tracer, evalOpts...)
 
 	// ── HTTP server ─────────────────────────────────────────────────
 
