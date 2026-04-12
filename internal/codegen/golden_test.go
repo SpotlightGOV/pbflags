@@ -95,6 +95,7 @@ func TestGoldenGo(t *testing.T) {
 	goFiles := []goldenFile{
 		gf("notifications_flags.go"),
 		gf("flagmeta/flagmeta.go"),
+		gf("dims/dims.go"),
 	}
 
 	if *update {

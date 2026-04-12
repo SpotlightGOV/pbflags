@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/SpotlightGOV/pbflags/internal/codegen/contextutil"
 	"github.com/SpotlightGOV/pbflags/internal/codegen/layerutil"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -22,6 +23,16 @@ func Generate(plugin *protogen.Plugin, packagePrefix string) error {
 	if layers != nil {
 		if err := generateLayersPackage(plugin, layers, packagePrefix); err != nil {
 			return fmt.Errorf("generating layers package: %w", err)
+		}
+	}
+
+	ctxDef, err := contextutil.DiscoverContext(plugin)
+	if err != nil {
+		return fmt.Errorf("discovering evaluation context: %w", err)
+	}
+	if ctxDef != nil {
+		if err := generateDimsPackage(plugin, ctxDef, packagePrefix); err != nil {
+			return fmt.Errorf("generating dims package: %w", err)
 		}
 	}
 
