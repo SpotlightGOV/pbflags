@@ -99,7 +99,13 @@ message DimensionOptions {
 }
 
 // Extension field numbers 51000-51004 are reserved for pbflags.
-// 51002 was: layers (bool on EnumOptions, removed).
+// Protobuf does not support `reserved` inside extend blocks, so this
+// reservation is by convention only. Do not reuse these numbers:
+//   51000: feature (MessageOptions) — active
+//   51001: flag (FieldOptions) — active
+//   51002: was layers (EnumOptions) — removed, do not reuse
+//   51003: context (MessageOptions) — active
+//   51004: dimension (FieldOptions) — active
 extend google.protobuf.MessageOptions {
   optional FeatureOptions feature = 51000;
   optional ContextOptions context = 51003;

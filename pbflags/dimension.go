@@ -11,7 +11,8 @@ import "google.golang.org/protobuf/reflect/protoreflect"
 type Dimension interface {
 	// Apply sets this dimension's value on the given proto message.
 	// The message must be the EvaluationContext type. Apply silently
-	// does nothing if the named field does not exist on the message.
+	// does nothing if the named field does not exist on the message
+	// or if the field's proto kind does not match the dimension type.
 	Apply(msg protoreflect.Message)
 }
 
@@ -42,7 +43,7 @@ type stringDim struct {
 
 func (d stringDim) Apply(msg protoreflect.Message) {
 	fd := msg.Descriptor().Fields().ByName(d.name)
-	if fd == nil {
+	if fd == nil || fd.Kind() != protoreflect.StringKind {
 		return
 	}
 	msg.Set(fd, protoreflect.ValueOfString(d.val))
@@ -55,7 +56,7 @@ type enumDim struct {
 
 func (d enumDim) Apply(msg protoreflect.Message) {
 	fd := msg.Descriptor().Fields().ByName(d.name)
-	if fd == nil {
+	if fd == nil || fd.Kind() != protoreflect.EnumKind {
 		return
 	}
 	msg.Set(fd, protoreflect.ValueOfEnum(d.val))
@@ -68,7 +69,7 @@ type boolDim struct {
 
 func (d boolDim) Apply(msg protoreflect.Message) {
 	fd := msg.Descriptor().Fields().ByName(d.name)
-	if fd == nil {
+	if fd == nil || fd.Kind() != protoreflect.BoolKind {
 		return
 	}
 	msg.Set(fd, protoreflect.ValueOfBool(d.val))
@@ -81,7 +82,7 @@ type int64Dim struct {
 
 func (d int64Dim) Apply(msg protoreflect.Message) {
 	fd := msg.Descriptor().Fields().ByName(d.name)
-	if fd == nil {
+	if fd == nil || fd.Kind() != protoreflect.Int64Kind {
 		return
 	}
 	msg.Set(fd, protoreflect.ValueOfInt64(d.val))
