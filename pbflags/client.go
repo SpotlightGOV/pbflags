@@ -2,6 +2,7 @@ package pbflags
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"connectrpc.com/connect"
@@ -44,14 +45,14 @@ func (e *clientEvaluator) With(dims ...Dimension) Evaluator {
 func (e *clientEvaluator) Evaluate(ctx context.Context, flagID string) (*Result, error) {
 	anyCtx, err := e.buildContext()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("pbflags.Evaluate(%q): building context: %w", flagID, err)
 	}
 	resp, err := e.client.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{
 		FlagId:  flagID,
 		Context: anyCtx,
 	}))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("pbflags.Evaluate(%q): %w", flagID, err)
 	}
 	return &Result{
 		Value:  resp.Msg.GetValue(),
@@ -62,14 +63,14 @@ func (e *clientEvaluator) Evaluate(ctx context.Context, flagID string) (*Result,
 func (e *clientEvaluator) BulkEvaluate(ctx context.Context, flagIDs []string) ([]*Result, error) {
 	anyCtx, err := e.buildContext()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("pbflags.BulkEvaluate: building context: %w", err)
 	}
 	resp, err := e.client.BulkEvaluate(ctx, connect.NewRequest(&pbflagsv1.BulkEvaluateRequest{
 		FlagIds: flagIDs,
 		Context: anyCtx,
 	}))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("pbflags.BulkEvaluate(%d flags): %w", len(flagIDs), err)
 	}
 	results := make([]*Result, len(resp.Msg.GetEvaluations()))
 	for i, eval := range resp.Msg.GetEvaluations() {

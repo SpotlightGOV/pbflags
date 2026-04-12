@@ -178,4 +178,96 @@ func TestConnect_BulkEvaluate(t *testing.T) {
 	if len(results) != 2 {
 		t.Fatalf("expected 2 results, got %d", len(results))
 	}
+	for i, r := range results {
+		if r.Source != pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT {
+			t.Errorf("result[%d]: expected DEFAULT, got %v", i, r.Source)
+		}
+	}
+}
+
+func TestConnect_BulkEvaluate_WithDimensions(t *testing.T) {
+	t.Parallel()
+	handler := &captureHandler{}
+	eval, h := setupTestServer(t, handler)
+
+	scoped := eval.With(
+		pbflags.StringDimension("user_id", "bulk-user"),
+		pbflags.BoolDimension("is_internal", true),
+	)
+	_, err := scoped.BulkEvaluate(context.Background(), []string{"a/1", "b/2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if h.lastContext == nil {
+		t.Fatal("expected context in bulk request")
+	}
+	ctx := &examplepb.EvaluationContext{}
+	if err := anypb.UnmarshalTo(h.lastContext, ctx, proto.UnmarshalOptions{}); err != nil {
+		t.Fatalf("unmarshal context: %v", err)
+	}
+	if ctx.UserId != "bulk-user" {
+		t.Errorf("user_id: got %q, want %q", ctx.UserId, "bulk-user")
+	}
+	if !ctx.IsInternal {
+		t.Error("is_internal: expected true")
+	}
+}
+
+func TestConnect_Evaluate_RPCError(t *testing.T) {
+	t.Parallel()
+	_, h := pbflagsv1connect.NewFlagEvaluatorServiceHandler(&errorHandler{})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	eval := pbflags.Connect(http.DefaultClient, srv.URL, &examplepb.EvaluationContext{})
+
+	_, err := eval.Evaluate(context.Background(), "test/flag1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if got := err.Error(); !contains(got, "test/flag1") {
+		t.Errorf("error should contain flag ID, got: %s", got)
+	}
+}
+
+func TestConnect_BulkEvaluate_RPCError(t *testing.T) {
+	t.Parallel()
+	_, h := pbflagsv1connect.NewFlagEvaluatorServiceHandler(&errorHandler{})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	eval := pbflags.Connect(http.DefaultClient, srv.URL, &examplepb.EvaluationContext{})
+
+	_, err := eval.BulkEvaluate(context.Background(), []string{"a/1", "b/2"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if got := err.Error(); !contains(got, "BulkEvaluate") {
+		t.Errorf("error should contain BulkEvaluate, got: %s", got)
+	}
+}
+
+// errorHandler always returns errors for Evaluate and BulkEvaluate.
+type errorHandler struct {
+	pbflagsv1connect.UnimplementedFlagEvaluatorServiceHandler
+}
+
+func (h *errorHandler) Evaluate(context.Context, *connect.Request[pbflagsv1.EvaluateRequest]) (*connect.Response[pbflagsv1.EvaluateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnavailable, nil)
+}
+
+func (h *errorHandler) BulkEvaluate(context.Context, *connect.Request[pbflagsv1.BulkEvaluateRequest]) (*connect.Response[pbflagsv1.BulkEvaluateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnavailable, nil)
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && searchString(s, substr)
+}
+
+func searchString(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
 }
