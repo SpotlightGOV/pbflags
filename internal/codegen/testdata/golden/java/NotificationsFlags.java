@@ -4,11 +4,7 @@ package org.spotlightgov.pbflags.generated;
 import java.util.List;
 import org.spotlightgov.pbflags.Flag;
 import org.spotlightgov.pbflags.FlagEvaluator;
-import org.spotlightgov.pbflags.LayerFlag;
-import org.spotlightgov.pbflags.LayerListFlag;
 import org.spotlightgov.pbflags.ListFlag;
-import org.spotlightgov.pbflags.generated.layers.EntityID;
-import org.spotlightgov.pbflags.generated.layers.UserID;
 
 /**
  * Generated type-safe flag accessors for the {@code notifications} feature.
@@ -34,7 +30,7 @@ public interface NotificationsFlags {
   java.util.List<Long> RETRY_DELAYS_DEFAULT = java.util.List.of();
 
   /** Enable email notifications */
-  LayerFlag<Boolean, UserID> emailEnabled();
+  Flag<Boolean> emailEnabled();
 
   /** How often to send digest emails */
   Flag<String> digestFrequency();
@@ -46,7 +42,7 @@ public interface NotificationsFlags {
   Flag<Double> scoreThreshold();
 
   /** Email addresses for incident notifications */
-  LayerListFlag<String, EntityID> notificationEmails();
+  ListFlag<String> notificationEmails();
 
   /** Retry delay intervals in seconds */
   ListFlag<Long> retryDelays();
@@ -58,8 +54,8 @@ public interface NotificationsFlags {
     return new NotificationsFlags() {
 
       @Override
-      public LayerFlag<Boolean, UserID> emailEnabled() {
-        return evaluator.layerFlag(EMAIL_ENABLED_ID, Boolean.class, EMAIL_ENABLED_DEFAULT, UserID::value);
+      public Flag<Boolean> emailEnabled() {
+        return evaluator.flag(EMAIL_ENABLED_ID, Boolean.class, EMAIL_ENABLED_DEFAULT);
       }
 
       @Override
@@ -78,8 +74,8 @@ public interface NotificationsFlags {
       }
 
       @Override
-      public LayerListFlag<String, EntityID> notificationEmails() {
-        return evaluator.layerListFlag(NOTIFICATION_EMAILS_ID, String.class, NOTIFICATION_EMAILS_DEFAULT, EntityID::value);
+      public ListFlag<String> notificationEmails() {
+        return evaluator.listFlag(NOTIFICATION_EMAILS_ID, String.class, NOTIFICATION_EMAILS_DEFAULT);
       }
 
       @Override

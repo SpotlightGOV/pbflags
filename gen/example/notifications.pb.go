@@ -7,12 +7,13 @@
 package examplepb
 
 import (
-	_ "github.com/SpotlightGOV/pbflags/gen/pbflags"
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	_ "github.com/SpotlightGOV/pbflags/gen/pbflags"
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -22,65 +23,197 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Layer defines the override dimensions for this flag system.
-// Each non-global value represents a dimension along which flags can vary.
-type Layer int32
+// Enum dimensions get typed constructors and sync-time value validation.
+type PlanLevel int32
 
 const (
-	Layer_LAYER_UNSPECIFIED Layer = 0
-	Layer_LAYER_GLOBAL      Layer = 1
-	Layer_LAYER_USER        Layer = 2
-	Layer_LAYER_ENTITY      Layer = 3
+	PlanLevel_PLAN_LEVEL_UNSPECIFIED PlanLevel = 0
+	PlanLevel_PLAN_LEVEL_FREE        PlanLevel = 1
+	PlanLevel_PLAN_LEVEL_PRO         PlanLevel = 2
+	PlanLevel_PLAN_LEVEL_ENTERPRISE  PlanLevel = 3
 )
 
-// Enum value maps for Layer.
+// Enum value maps for PlanLevel.
 var (
-	Layer_name = map[int32]string{
-		0: "LAYER_UNSPECIFIED",
-		1: "LAYER_GLOBAL",
-		2: "LAYER_USER",
-		3: "LAYER_ENTITY",
+	PlanLevel_name = map[int32]string{
+		0: "PLAN_LEVEL_UNSPECIFIED",
+		1: "PLAN_LEVEL_FREE",
+		2: "PLAN_LEVEL_PRO",
+		3: "PLAN_LEVEL_ENTERPRISE",
 	}
-	Layer_value = map[string]int32{
-		"LAYER_UNSPECIFIED": 0,
-		"LAYER_GLOBAL":      1,
-		"LAYER_USER":        2,
-		"LAYER_ENTITY":      3,
+	PlanLevel_value = map[string]int32{
+		"PLAN_LEVEL_UNSPECIFIED": 0,
+		"PLAN_LEVEL_FREE":        1,
+		"PLAN_LEVEL_PRO":         2,
+		"PLAN_LEVEL_ENTERPRISE":  3,
 	}
 )
 
-func (x Layer) Enum() *Layer {
-	p := new(Layer)
+func (x PlanLevel) Enum() *PlanLevel {
+	p := new(PlanLevel)
 	*p = x
 	return p
 }
 
-func (x Layer) String() string {
+func (x PlanLevel) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (Layer) Descriptor() protoreflect.EnumDescriptor {
+func (PlanLevel) Descriptor() protoreflect.EnumDescriptor {
 	return file_example_notifications_proto_enumTypes[0].Descriptor()
 }
 
-func (Layer) Type() protoreflect.EnumType {
+func (PlanLevel) Type() protoreflect.EnumType {
 	return &file_example_notifications_proto_enumTypes[0]
 }
 
-func (x Layer) Number() protoreflect.EnumNumber {
+func (x PlanLevel) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use Layer.Descriptor instead.
-func (Layer) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use PlanLevel.Descriptor instead.
+func (PlanLevel) EnumDescriptor() ([]byte, []int) {
 	return file_example_notifications_proto_rawDescGZIP(), []int{0}
+}
+
+type DeviceType int32
+
+const (
+	DeviceType_DEVICE_TYPE_UNSPECIFIED DeviceType = 0
+	DeviceType_DEVICE_TYPE_DESKTOP     DeviceType = 1
+	DeviceType_DEVICE_TYPE_MOBILE      DeviceType = 2
+	DeviceType_DEVICE_TYPE_TABLET      DeviceType = 3
+)
+
+// Enum value maps for DeviceType.
+var (
+	DeviceType_name = map[int32]string{
+		0: "DEVICE_TYPE_UNSPECIFIED",
+		1: "DEVICE_TYPE_DESKTOP",
+		2: "DEVICE_TYPE_MOBILE",
+		3: "DEVICE_TYPE_TABLET",
+	}
+	DeviceType_value = map[string]int32{
+		"DEVICE_TYPE_UNSPECIFIED": 0,
+		"DEVICE_TYPE_DESKTOP":     1,
+		"DEVICE_TYPE_MOBILE":      2,
+		"DEVICE_TYPE_TABLET":      3,
+	}
+)
+
+func (x DeviceType) Enum() *DeviceType {
+	p := new(DeviceType)
+	*p = x
+	return p
+}
+
+func (x DeviceType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DeviceType) Descriptor() protoreflect.EnumDescriptor {
+	return file_example_notifications_proto_enumTypes[1].Descriptor()
+}
+
+func (DeviceType) Type() protoreflect.EnumType {
+	return &file_example_notifications_proto_enumTypes[1]
+}
+
+func (x DeviceType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DeviceType.Descriptor instead.
+func (DeviceType) EnumDescriptor() ([]byte, []int) {
+	return file_example_notifications_proto_rawDescGZIP(), []int{1}
+}
+
+// EvaluationContext defines the typed dimensions available for flag conditions.
+// Exactly one message in the input files must carry the (pbflags.context) option.
+type EvaluationContext struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// String dimensions — identifiers with unbounded cardinality.
+	UserId    string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	SessionId string `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// Enum dimensions — bounded cardinality, compile-time safe constructors.
+	Plan       PlanLevel  `protobuf:"varint,3,opt,name=plan,proto3,enum=example.PlanLevel" json:"plan,omitempty"`
+	DeviceType DeviceType `protobuf:"varint,4,opt,name=device_type,json=deviceType,proto3,enum=example.DeviceType" json:"device_type,omitempty"`
+	// Bool dimension.
+	IsInternal    bool `protobuf:"varint,5,opt,name=is_internal,json=isInternal,proto3" json:"is_internal,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EvaluationContext) Reset() {
+	*x = EvaluationContext{}
+	mi := &file_example_notifications_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EvaluationContext) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EvaluationContext) ProtoMessage() {}
+
+func (x *EvaluationContext) ProtoReflect() protoreflect.Message {
+	mi := &file_example_notifications_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EvaluationContext.ProtoReflect.Descriptor instead.
+func (*EvaluationContext) Descriptor() ([]byte, []int) {
+	return file_example_notifications_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *EvaluationContext) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *EvaluationContext) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *EvaluationContext) GetPlan() PlanLevel {
+	if x != nil {
+		return x.Plan
+	}
+	return PlanLevel_PLAN_LEVEL_UNSPECIFIED
+}
+
+func (x *EvaluationContext) GetDeviceType() DeviceType {
+	if x != nil {
+		return x.DeviceType
+	}
+	return DeviceType_DEVICE_TYPE_UNSPECIFIED
+}
+
+func (x *EvaluationContext) GetIsInternal() bool {
+	if x != nil {
+		return x.IsInternal
+	}
+	return false
 }
 
 // Notifications demonstrates how to define a feature with multiple flags.
 // Each field annotated with (pbflags.flag) becomes a runtime-configurable flag.
 type Notifications struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Enable email notifications globally or per-user.
+	// Enable email notifications.
 	EmailEnabled bool `protobuf:"varint,1,opt,name=email_enabled,json=emailEnabled,proto3" json:"email_enabled,omitempty"`
 	// How often to send digest emails.
 	DigestFrequency string `protobuf:"bytes,2,opt,name=digest_frequency,json=digestFrequency,proto3" json:"digest_frequency,omitempty"`
@@ -98,7 +231,7 @@ type Notifications struct {
 
 func (x *Notifications) Reset() {
 	*x = Notifications{}
-	mi := &file_example_notifications_proto_msgTypes[0]
+	mi := &file_example_notifications_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -110,7 +243,7 @@ func (x *Notifications) String() string {
 func (*Notifications) ProtoMessage() {}
 
 func (x *Notifications) ProtoReflect() protoreflect.Message {
-	mi := &file_example_notifications_proto_msgTypes[0]
+	mi := &file_example_notifications_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -123,7 +256,7 @@ func (x *Notifications) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Notifications.ProtoReflect.Descriptor instead.
 func (*Notifications) Descriptor() ([]byte, []int) {
-	return file_example_notifications_proto_rawDescGZIP(), []int{0}
+	return file_example_notifications_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *Notifications) GetEmailEnabled() bool {
@@ -172,11 +305,25 @@ var File_example_notifications_proto protoreflect.FileDescriptor
 
 const file_example_notifications_proto_rawDesc = "" +
 	"\n" +
-	"\x1bexample/notifications.proto\x12\aexample\x1a\x15pbflags/options.proto\"\xa5\x05\n" +
-	"\rNotifications\x12Q\n" +
-	"\remail_enabled\x18\x01 \x01(\bB,\xca\xf3\x18(\n" +
+	"\x1bexample/notifications.proto\x12\aexample\x1a\x15pbflags/options.proto\"\xf5\x02\n" +
+	"\x11EvaluationContext\x12>\n" +
+	"\auser_id\x18\x01 \x01(\tB%\xe2\xf3\x18!\n" +
+	"\x1dAuthenticated user identifier\x10\x01R\x06userId\x12N\n" +
+	"\n" +
+	"session_id\x18\x02 \x01(\tB/\xe2\xf3\x18+\n" +
+	"'Browser session (unauthenticated users)\x10\x01R\tsessionId\x12?\n" +
+	"\x04plan\x18\x03 \x01(\x0e2\x12.example.PlanLevelB\x17\xe2\xf3\x18\x13\n" +
+	"\x11Subscription tierR\x04plan\x12O\n" +
+	"\vdevice_type\x18\x04 \x01(\x0e2\x13.example.DeviceTypeB\x19\xe2\xf3\x18\x15\n" +
+	"\x13Client device classR\n" +
+	"deviceType\x128\n" +
+	"\vis_internal\x18\x05 \x01(\bB\x17\xe2\xf3\x18\x13\n" +
+	"\x11Internal employeeR\n" +
+	"isInternal:\x04\xda\xf3\x18\x00\"\x97\x05\n" +
+	"\rNotifications\x12K\n" +
+	"\remail_enabled\x18\x01 \x01(\bB&\xca\xf3\x18\"\n" +
 	"\x1aEnable email notifications\x12\x04\n" +
-	"\x02\b\x01*\x04userR\femailEnabled\x12t\n" +
+	"\x02\b\x01R\femailEnabled\x12t\n" +
 	"\x10digest_frequency\x18\x02 \x01(\tBI\xca\xf3\x18E\n" +
 	"\x1fHow often to send digest emails\x12\t\x12\a\n" +
 	"\x05daily\"\x17\n" +
@@ -187,20 +334,25 @@ const file_example_notifications_proto_rawDesc = "" +
 	"\x16Maximum retry attempts\x12\x04\x1a\x02\b\x03R\n" +
 	"maxRetries\x12e\n" +
 	"\x0fscore_threshold\x18\x04 \x01(\x01B<\xca\xf3\x188\n" +
-	")Score threshold for notification triggers\x12\v\"\t\t\x00\x00\x00\x00\x00\x00\xe8?R\x0escoreThreshold\x12~\n" +
-	"\x13notification_emails\x18\x05 \x03(\tBM\xca\xf3\x18I\n" +
+	")Score threshold for notification triggers\x12\v\"\t\t\x00\x00\x00\x00\x00\x00\xe8?R\x0escoreThreshold\x12v\n" +
+	"\x13notification_emails\x18\x05 \x03(\tBE\xca\xf3\x18A\n" +
 	"*Email addresses for incident notifications\x12\x132\x11\n" +
-	"\x0fops@example.com*\x06entityR\x12notificationEmails\x12R\n" +
+	"\x0fops@example.comR\x12notificationEmails\x12R\n" +
 	"\fretry_delays\x18\x06 \x03(\x03B/\xca\xf3\x18+\n" +
 	" Retry delay intervals in seconds\x12\a:\x05\n" +
 	"\x03\x01\x05\x1eR\vretryDelays:K\xc2\xf3\x18G\n" +
-	"\rnotifications\x12'Controls notification delivery behavior\x1a\rplatform-team*X\n" +
-	"\x05Layer\x12\x15\n" +
-	"\x11LAYER_UNSPECIFIED\x10\x00\x12\x10\n" +
-	"\fLAYER_GLOBAL\x10\x01\x12\x0e\n" +
+	"\rnotifications\x12'Controls notification delivery behavior\x1a\rplatform-team*k\n" +
+	"\tPlanLevel\x12\x1a\n" +
+	"\x16PLAN_LEVEL_UNSPECIFIED\x10\x00\x12\x13\n" +
+	"\x0fPLAN_LEVEL_FREE\x10\x01\x12\x12\n" +
+	"\x0ePLAN_LEVEL_PRO\x10\x02\x12\x19\n" +
+	"\x15PLAN_LEVEL_ENTERPRISE\x10\x03*r\n" +
 	"\n" +
-	"LAYER_USER\x10\x02\x12\x10\n" +
-	"\fLAYER_ENTITY\x10\x03\x1a\x04\xd0\xf3\x18\x01Ba\n" +
+	"DeviceType\x12\x1b\n" +
+	"\x17DEVICE_TYPE_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13DEVICE_TYPE_DESKTOP\x10\x01\x12\x16\n" +
+	"\x12DEVICE_TYPE_MOBILE\x10\x02\x12\x16\n" +
+	"\x12DEVICE_TYPE_TABLET\x10\x03Ba\n" +
 	"&org.spotlightgov.pbflags.example.protoP\x01Z5github.com/SpotlightGOV/pbflags/gen/example;examplepbb\x06proto3"
 
 var (
@@ -215,18 +367,22 @@ func file_example_notifications_proto_rawDescGZIP() []byte {
 	return file_example_notifications_proto_rawDescData
 }
 
-var file_example_notifications_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_example_notifications_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_example_notifications_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_example_notifications_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_example_notifications_proto_goTypes = []any{
-	(Layer)(0),            // 0: example.Layer
-	(*Notifications)(nil), // 1: example.Notifications
+	(PlanLevel)(0),            // 0: example.PlanLevel
+	(DeviceType)(0),           // 1: example.DeviceType
+	(*EvaluationContext)(nil), // 2: example.EvaluationContext
+	(*Notifications)(nil),     // 3: example.Notifications
 }
 var file_example_notifications_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	0, // 0: example.EvaluationContext.plan:type_name -> example.PlanLevel
+	1, // 1: example.EvaluationContext.device_type:type_name -> example.DeviceType
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_example_notifications_proto_init() }
@@ -239,8 +395,8 @@ func file_example_notifications_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_example_notifications_proto_rawDesc), len(file_example_notifications_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   1,
+			NumEnums:      2,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

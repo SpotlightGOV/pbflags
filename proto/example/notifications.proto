@@ -7,14 +7,44 @@ option go_package = "github.com/SpotlightGOV/pbflags/gen/example;examplepb";
 option java_multiple_files = true;
 option java_package = "org.spotlightgov.pbflags.example.proto";
 
-// Layer defines the override dimensions for this flag system.
-// Each non-global value represents a dimension along which flags can vary.
-enum Layer {
-  option (pbflags.layers) = true;
-  LAYER_UNSPECIFIED = 0;
-  LAYER_GLOBAL = 1;
-  LAYER_USER = 2;
-  LAYER_ENTITY = 3;
+// Enum dimensions get typed constructors and sync-time value validation.
+enum PlanLevel {
+  PLAN_LEVEL_UNSPECIFIED = 0;
+  PLAN_LEVEL_FREE = 1;
+  PLAN_LEVEL_PRO = 2;
+  PLAN_LEVEL_ENTERPRISE = 3;
+}
+
+enum DeviceType {
+  DEVICE_TYPE_UNSPECIFIED = 0;
+  DEVICE_TYPE_DESKTOP = 1;
+  DEVICE_TYPE_MOBILE = 2;
+  DEVICE_TYPE_TABLET = 3;
+}
+
+// EvaluationContext defines the typed dimensions available for flag conditions.
+// Exactly one message in the input files must carry the (pbflags.context) option.
+message EvaluationContext {
+  option (pbflags.context) = {};
+
+  // String dimensions — identifiers with unbounded cardinality.
+  string user_id = 1 [(pbflags.dimension) = {
+    description: "Authenticated user identifier"
+    hashable: true
+  }];
+
+  string session_id = 2 [(pbflags.dimension) = {
+    description: "Browser session (unauthenticated users)"
+    hashable: true
+  }];
+
+  // Enum dimensions — bounded cardinality, compile-time safe constructors.
+  PlanLevel plan = 3 [(pbflags.dimension) = {description: "Subscription tier"}];
+
+  DeviceType device_type = 4 [(pbflags.dimension) = {description: "Client device class"}];
+
+  // Bool dimension.
+  bool is_internal = 5 [(pbflags.dimension) = {description: "Internal employee"}];
 }
 
 // Notifications demonstrates how to define a feature with multiple flags.
@@ -26,13 +56,12 @@ message Notifications {
     owner: "platform-team"
   };
 
-  // Enable email notifications globally or per-user.
+  // Enable email notifications.
   bool email_enabled = 1 [(pbflags.flag) = {
     description: "Enable email notifications"
     default: {
       bool_value: {value: true}
     }
-    layer: "user"
   }];
 
   // How often to send digest emails.
@@ -74,7 +103,6 @@ message Notifications {
         values: ["ops@example.com"]
       }
     }
-    layer: "entity"
   }];
 
   // Retry delay intervals in seconds.

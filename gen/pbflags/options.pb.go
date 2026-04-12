@@ -7,13 +7,14 @@
 package pbflagspb
 
 import (
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
+
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	descriptorpb "google.golang.org/protobuf/types/descriptorpb"
 	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
-	reflect "reflect"
-	sync "sync"
-	unsafe "unsafe"
 )
 
 const (
@@ -97,13 +98,8 @@ type FlagOptions struct {
 	// Suggested values for the UI dropdown. Not enforced at evaluation time.
 	// Can be overridden in the UI when setting values.
 	SupportedValues *SupportedValues `protobuf:"bytes,4,opt,name=supported_values,json=supportedValues,proto3" json:"supported_values,omitempty"`
-	// Override layer name. Must match a value from the enum annotated with
-	// option (pbflags.layers) = true, using the prefix-stripped, lowercase
-	// enum value name (e.g., LAYER_ENTITY → "entity").
-	// Empty or "global" means no per-entity overrides.
-	Layer         string `protobuf:"bytes,5,opt,name=layer,proto3" json:"layer,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *FlagOptions) Reset() {
@@ -155,13 +151,6 @@ func (x *FlagOptions) GetSupportedValues() *SupportedValues {
 		return x.SupportedValues
 	}
 	return nil
-}
-
-func (x *FlagOptions) GetLayer() string {
-	if x != nil {
-		return x.Layer
-	}
-	return ""
 }
 
 // List wrapper messages for FlagDefault. These are structurally identical to
@@ -589,6 +578,112 @@ func (x *SupportedValues) GetDoubleValues() []float64 {
 	return nil
 }
 
+// Applied to a message to mark it as the evaluation context.
+// Exactly one message in the input files must carry this annotation.
+// Each field defines a context dimension (string, enum, bool, or int64).
+type ContextOptions struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ContextOptions) Reset() {
+	*x = ContextOptions{}
+	mi := &file_pbflags_options_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContextOptions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContextOptions) ProtoMessage() {}
+
+func (x *ContextOptions) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_options_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContextOptions.ProtoReflect.Descriptor instead.
+func (*ContextOptions) Descriptor() ([]byte, []int) {
+	return file_pbflags_options_proto_rawDescGZIP(), []int{8}
+}
+
+// Applied to a field within the context message to define a dimension.
+type DimensionOptions struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Description string                 `protobuf:"bytes,1,opt,name=description,proto3" json:"description,omitempty"`
+	// Whether this dimension can be used for percentage-based hashing
+	// (launches, experiments). Typically true for stable identifiers
+	// like user_id, false for attributes like plan or device_type.
+	Hashable bool `protobuf:"varint,2,opt,name=hashable,proto3" json:"hashable,omitempty"`
+	// Explicitly declare a string or int64 dimension as having bounded
+	// cardinality. Enum and bool dimensions are inherently bounded.
+	// String and int64 dimensions are unbounded by default.
+	Bounded       bool `protobuf:"varint,3,opt,name=bounded,proto3" json:"bounded,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DimensionOptions) Reset() {
+	*x = DimensionOptions{}
+	mi := &file_pbflags_options_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DimensionOptions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DimensionOptions) ProtoMessage() {}
+
+func (x *DimensionOptions) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_options_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DimensionOptions.ProtoReflect.Descriptor instead.
+func (*DimensionOptions) Descriptor() ([]byte, []int) {
+	return file_pbflags_options_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *DimensionOptions) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *DimensionOptions) GetHashable() bool {
+	if x != nil {
+		return x.Hashable
+	}
+	return false
+}
+
+func (x *DimensionOptions) GetBounded() bool {
+	if x != nil {
+		return x.Bounded
+	}
+	return false
+}
+
 var file_pbflags_options_proto_extTypes = []protoimpl.ExtensionInfo{
 	{
 		ExtendedType:  (*descriptorpb.MessageOptions)(nil),
@@ -596,6 +691,14 @@ var file_pbflags_options_proto_extTypes = []protoimpl.ExtensionInfo{
 		Field:         51000,
 		Name:          "pbflags.feature",
 		Tag:           "bytes,51000,opt,name=feature",
+		Filename:      "pbflags/options.proto",
+	},
+	{
+		ExtendedType:  (*descriptorpb.MessageOptions)(nil),
+		ExtensionType: (*ContextOptions)(nil),
+		Field:         51003,
+		Name:          "pbflags.context",
+		Tag:           "bytes,51003,opt,name=context",
 		Filename:      "pbflags/options.proto",
 	},
 	{
@@ -607,11 +710,11 @@ var file_pbflags_options_proto_extTypes = []protoimpl.ExtensionInfo{
 		Filename:      "pbflags/options.proto",
 	},
 	{
-		ExtendedType:  (*descriptorpb.EnumOptions)(nil),
-		ExtensionType: (*bool)(nil),
-		Field:         51002,
-		Name:          "pbflags.layers",
-		Tag:           "varint,51002,opt,name=layers",
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: (*DimensionOptions)(nil),
+		Field:         51004,
+		Name:          "pbflags.dimension",
+		Tag:           "bytes,51004,opt,name=dimension",
 		Filename:      "pbflags/options.proto",
 	},
 }
@@ -620,18 +723,16 @@ var file_pbflags_options_proto_extTypes = []protoimpl.ExtensionInfo{
 var (
 	// optional pbflags.FeatureOptions feature = 51000;
 	E_Feature = &file_pbflags_options_proto_extTypes[0]
+	// optional pbflags.ContextOptions context = 51003;
+	E_Context = &file_pbflags_options_proto_extTypes[1]
 )
 
 // Extension fields to descriptorpb.FieldOptions.
 var (
 	// optional pbflags.FlagOptions flag = 51001;
-	E_Flag = &file_pbflags_options_proto_extTypes[1]
-)
-
-// Extension fields to descriptorpb.EnumOptions.
-var (
-	// optional bool layers = 51002;
-	E_Layers = &file_pbflags_options_proto_extTypes[2]
+	E_Flag = &file_pbflags_options_proto_extTypes[2]
+	// optional pbflags.DimensionOptions dimension = 51004;
+	E_Dimension = &file_pbflags_options_proto_extTypes[3]
 )
 
 var File_pbflags_options_proto protoreflect.FileDescriptor
@@ -642,12 +743,11 @@ const file_pbflags_options_proto_rawDesc = "" +
 	"\x0eFeatureOptions\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x14\n" +
-	"\x05owner\x18\x03 \x01(\tR\x05owner\"\xc0\x01\n" +
+	"\x05owner\x18\x03 \x01(\tR\x05owner\"\xb0\x01\n" +
 	"\vFlagOptions\x12 \n" +
 	"\vdescription\x18\x01 \x01(\tR\vdescription\x12.\n" +
 	"\adefault\x18\x02 \x01(\v2\x14.pbflags.FlagDefaultR\adefault\x12C\n" +
-	"\x10supported_values\x18\x04 \x01(\v2\x18.pbflags.SupportedValuesR\x0fsupportedValues\x12\x14\n" +
-	"\x05layer\x18\x05 \x01(\tR\x05layerJ\x04\b\x03\x10\x04\"-\n" +
+	"\x10supported_values\x18\x04 \x01(\v2\x18.pbflags.SupportedValuesR\x0fsupportedValuesJ\x04\b\x03\x10\x04J\x04\b\x05\x10\x06\"-\n" +
 	"\x13FlagDefaultBoolList\x12\x16\n" +
 	"\x06values\x18\x01 \x03(\bR\x06values\"/\n" +
 	"\x15FlagDefaultStringList\x12\x16\n" +
@@ -671,10 +771,16 @@ const file_pbflags_options_proto_rawDesc = "" +
 	"\x0fSupportedValues\x12#\n" +
 	"\rstring_values\x18\x01 \x03(\tR\fstringValues\x12!\n" +
 	"\fint64_values\x18\x02 \x03(\x03R\vint64Values\x12#\n" +
-	"\rdouble_values\x18\x03 \x03(\x01R\fdoubleValues:W\n" +
-	"\afeature\x12\x1f.google.protobuf.MessageOptions\x18\xb8\x8e\x03 \x01(\v2\x17.pbflags.FeatureOptionsR\afeature\x88\x01\x01:L\n" +
-	"\x04flag\x12\x1d.google.protobuf.FieldOptions\x18\xb9\x8e\x03 \x01(\v2\x14.pbflags.FlagOptionsR\x04flag\x88\x01\x01:9\n" +
-	"\x06layers\x12\x1c.google.protobuf.EnumOptions\x18\xba\x8e\x03 \x01(\bR\x06layers\x88\x01\x01BY\n" +
+	"\rdouble_values\x18\x03 \x03(\x01R\fdoubleValues\"\x10\n" +
+	"\x0eContextOptions\"j\n" +
+	"\x10DimensionOptions\x12 \n" +
+	"\vdescription\x18\x01 \x01(\tR\vdescription\x12\x1a\n" +
+	"\bhashable\x18\x02 \x01(\bR\bhashable\x12\x18\n" +
+	"\abounded\x18\x03 \x01(\bR\abounded:W\n" +
+	"\afeature\x12\x1f.google.protobuf.MessageOptions\x18\xb8\x8e\x03 \x01(\v2\x17.pbflags.FeatureOptionsR\afeature\x88\x01\x01:W\n" +
+	"\acontext\x12\x1f.google.protobuf.MessageOptions\x18\xbb\x8e\x03 \x01(\v2\x17.pbflags.ContextOptionsR\acontext\x88\x01\x01:L\n" +
+	"\x04flag\x12\x1d.google.protobuf.FieldOptions\x18\xb9\x8e\x03 \x01(\v2\x14.pbflags.FlagOptionsR\x04flag\x88\x01\x01:[\n" +
+	"\tdimension\x12\x1d.google.protobuf.FieldOptions\x18\xbc\x8e\x03 \x01(\v2\x19.pbflags.DimensionOptionsR\tdimension\x88\x01\x01BY\n" +
 	"\x1eorg.spotlightgov.pbflags.protoP\x01Z5github.com/SpotlightGOV/pbflags/gen/pbflags;pbflagspbb\x06proto3"
 
 var (
@@ -689,7 +795,7 @@ func file_pbflags_options_proto_rawDescGZIP() []byte {
 	return file_pbflags_options_proto_rawDescData
 }
 
-var file_pbflags_options_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_pbflags_options_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_pbflags_options_proto_goTypes = []any{
 	(*FeatureOptions)(nil),              // 0: pbflags.FeatureOptions
 	(*FlagOptions)(nil),                 // 1: pbflags.FlagOptions
@@ -699,34 +805,38 @@ var file_pbflags_options_proto_goTypes = []any{
 	(*FlagDefaultDoubleList)(nil),       // 5: pbflags.FlagDefaultDoubleList
 	(*FlagDefault)(nil),                 // 6: pbflags.FlagDefault
 	(*SupportedValues)(nil),             // 7: pbflags.SupportedValues
-	(*wrapperspb.BoolValue)(nil),        // 8: google.protobuf.BoolValue
-	(*wrapperspb.StringValue)(nil),      // 9: google.protobuf.StringValue
-	(*wrapperspb.Int64Value)(nil),       // 10: google.protobuf.Int64Value
-	(*wrapperspb.DoubleValue)(nil),      // 11: google.protobuf.DoubleValue
-	(*descriptorpb.MessageOptions)(nil), // 12: google.protobuf.MessageOptions
-	(*descriptorpb.FieldOptions)(nil),   // 13: google.protobuf.FieldOptions
-	(*descriptorpb.EnumOptions)(nil),    // 14: google.protobuf.EnumOptions
+	(*ContextOptions)(nil),              // 8: pbflags.ContextOptions
+	(*DimensionOptions)(nil),            // 9: pbflags.DimensionOptions
+	(*wrapperspb.BoolValue)(nil),        // 10: google.protobuf.BoolValue
+	(*wrapperspb.StringValue)(nil),      // 11: google.protobuf.StringValue
+	(*wrapperspb.Int64Value)(nil),       // 12: google.protobuf.Int64Value
+	(*wrapperspb.DoubleValue)(nil),      // 13: google.protobuf.DoubleValue
+	(*descriptorpb.MessageOptions)(nil), // 14: google.protobuf.MessageOptions
+	(*descriptorpb.FieldOptions)(nil),   // 15: google.protobuf.FieldOptions
 }
 var file_pbflags_options_proto_depIdxs = []int32{
 	6,  // 0: pbflags.FlagOptions.default:type_name -> pbflags.FlagDefault
 	7,  // 1: pbflags.FlagOptions.supported_values:type_name -> pbflags.SupportedValues
-	8,  // 2: pbflags.FlagDefault.bool_value:type_name -> google.protobuf.BoolValue
-	9,  // 3: pbflags.FlagDefault.string_value:type_name -> google.protobuf.StringValue
-	10, // 4: pbflags.FlagDefault.int64_value:type_name -> google.protobuf.Int64Value
-	11, // 5: pbflags.FlagDefault.double_value:type_name -> google.protobuf.DoubleValue
+	10, // 2: pbflags.FlagDefault.bool_value:type_name -> google.protobuf.BoolValue
+	11, // 3: pbflags.FlagDefault.string_value:type_name -> google.protobuf.StringValue
+	12, // 4: pbflags.FlagDefault.int64_value:type_name -> google.protobuf.Int64Value
+	13, // 5: pbflags.FlagDefault.double_value:type_name -> google.protobuf.DoubleValue
 	2,  // 6: pbflags.FlagDefault.bool_list_value:type_name -> pbflags.FlagDefaultBoolList
 	3,  // 7: pbflags.FlagDefault.string_list_value:type_name -> pbflags.FlagDefaultStringList
 	4,  // 8: pbflags.FlagDefault.int64_list_value:type_name -> pbflags.FlagDefaultInt64List
 	5,  // 9: pbflags.FlagDefault.double_list_value:type_name -> pbflags.FlagDefaultDoubleList
-	12, // 10: pbflags.feature:extendee -> google.protobuf.MessageOptions
-	13, // 11: pbflags.flag:extendee -> google.protobuf.FieldOptions
-	14, // 12: pbflags.layers:extendee -> google.protobuf.EnumOptions
-	0,  // 13: pbflags.feature:type_name -> pbflags.FeatureOptions
-	1,  // 14: pbflags.flag:type_name -> pbflags.FlagOptions
-	15, // [15:15] is the sub-list for method output_type
-	15, // [15:15] is the sub-list for method input_type
-	13, // [13:15] is the sub-list for extension type_name
-	10, // [10:13] is the sub-list for extension extendee
+	14, // 10: pbflags.feature:extendee -> google.protobuf.MessageOptions
+	14, // 11: pbflags.context:extendee -> google.protobuf.MessageOptions
+	15, // 12: pbflags.flag:extendee -> google.protobuf.FieldOptions
+	15, // 13: pbflags.dimension:extendee -> google.protobuf.FieldOptions
+	0,  // 14: pbflags.feature:type_name -> pbflags.FeatureOptions
+	8,  // 15: pbflags.context:type_name -> pbflags.ContextOptions
+	1,  // 16: pbflags.flag:type_name -> pbflags.FlagOptions
+	9,  // 17: pbflags.dimension:type_name -> pbflags.DimensionOptions
+	18, // [18:18] is the sub-list for method output_type
+	18, // [18:18] is the sub-list for method input_type
+	14, // [14:18] is the sub-list for extension type_name
+	10, // [10:14] is the sub-list for extension extendee
 	0,  // [0:10] is the sub-list for field type_name
 }
 
@@ -751,8 +861,8 @@ func file_pbflags_options_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pbflags_options_proto_rawDesc), len(file_pbflags_options_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
-			NumExtensions: 3,
+			NumMessages:   10,
+			NumExtensions: 4,
 			NumServices:   0,
 		},
 		GoTypes:           file_pbflags_options_proto_goTypes,

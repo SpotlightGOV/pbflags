@@ -8,7 +8,6 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/flagmeta"
-	"github.com/SpotlightGOV/pbflags/gen/pbflags/layers"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
 )
@@ -45,11 +44,11 @@ func RetryDelaysDefault() []int64 {
 
 // NotificationsFlags provides type-safe access to notifications feature flags.
 type NotificationsFlags interface {
-	EmailEnabled(ctx context.Context, user layers.UserID) bool
+	EmailEnabled(ctx context.Context) bool
 	DigestFrequency(ctx context.Context) string
 	MaxRetries(ctx context.Context) int64
 	ScoreThreshold(ctx context.Context) float64
-	NotificationEmails(ctx context.Context, entity layers.EntityID) []string
+	NotificationEmails(ctx context.Context) []string
 	RetryDelays(ctx context.Context) []int64
 
 	// Status returns the evaluator's current health state.
@@ -69,10 +68,9 @@ type notificationsFlagsClient struct {
 	logger    *slog.Logger
 }
 
-func (c *notificationsFlagsClient) EmailEnabled(ctx context.Context, user layers.UserID) bool {
+func (c *notificationsFlagsClient) EmailEnabled(ctx context.Context) bool {
 	resp, err := c.evaluator.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{
-		FlagId:   EmailEnabledID,
-		EntityId: user.String(),
+		FlagId: EmailEnabledID,
 	}))
 	if err != nil {
 		c.logger.ErrorContext(ctx, "flag evaluation failed",
@@ -170,10 +168,9 @@ func (c *notificationsFlagsClient) ScoreThreshold(ctx context.Context) float64 {
 	return resp.Msg.GetValue().GetDoubleValue()
 }
 
-func (c *notificationsFlagsClient) NotificationEmails(ctx context.Context, entity layers.EntityID) []string {
+func (c *notificationsFlagsClient) NotificationEmails(ctx context.Context) []string {
 	resp, err := c.evaluator.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{
-		FlagId:   NotificationEmailsID,
-		EntityId: entity.String(),
+		FlagId: NotificationEmailsID,
 	}))
 	if err != nil {
 		c.logger.ErrorContext(ctx, "flag evaluation failed",
@@ -239,7 +236,7 @@ func Defaults() NotificationsFlags {
 
 type defaultNotificationsFlags struct{}
 
-func (defaultNotificationsFlags) EmailEnabled(_ context.Context, _ layers.UserID) bool {
+func (defaultNotificationsFlags) EmailEnabled(_ context.Context) bool {
 	return EmailEnabledDefault
 }
 
@@ -255,7 +252,7 @@ func (defaultNotificationsFlags) ScoreThreshold(_ context.Context) float64 {
 	return ScoreThresholdDefault
 }
 
-func (defaultNotificationsFlags) NotificationEmails(_ context.Context, _ layers.EntityID) []string {
+func (defaultNotificationsFlags) NotificationEmails(_ context.Context) []string {
 	return NotificationEmailsDefault()
 }
 
@@ -271,11 +268,11 @@ func (defaultNotificationsFlags) Status(_ context.Context) pbflagsv1.EvaluatorSt
 // Each method delegates to its corresponding Func field, which is pre-populated
 // with the compiled default. Override individual fields to stub specific flags.
 type TestNotificationsFlags struct {
-	EmailEnabledFunc       func(context.Context, layers.UserID) bool
+	EmailEnabledFunc       func(context.Context) bool
 	DigestFrequencyFunc    func(context.Context) string
 	MaxRetriesFunc         func(context.Context) int64
 	ScoreThresholdFunc     func(context.Context) float64
-	NotificationEmailsFunc func(context.Context, layers.EntityID) []string
+	NotificationEmailsFunc func(context.Context) []string
 	RetryDelaysFunc        func(context.Context) []int64
 	StatusFunc             func(context.Context) pbflagsv1.EvaluatorStatus
 }
@@ -285,7 +282,7 @@ type TestNotificationsFlags struct {
 // without implementing the entire interface.
 func Testing() *TestNotificationsFlags {
 	return &TestNotificationsFlags{
-		EmailEnabledFunc: func(_ context.Context, _ layers.UserID) bool {
+		EmailEnabledFunc: func(_ context.Context) bool {
 			return EmailEnabledDefault
 		},
 		DigestFrequencyFunc: func(_ context.Context) string {
@@ -297,7 +294,7 @@ func Testing() *TestNotificationsFlags {
 		ScoreThresholdFunc: func(_ context.Context) float64 {
 			return ScoreThresholdDefault
 		},
-		NotificationEmailsFunc: func(_ context.Context, _ layers.EntityID) []string {
+		NotificationEmailsFunc: func(_ context.Context) []string {
 			return NotificationEmailsDefault()
 		},
 		RetryDelaysFunc: func(_ context.Context) []int64 {
@@ -309,8 +306,8 @@ func Testing() *TestNotificationsFlags {
 	}
 }
 
-func (t *TestNotificationsFlags) EmailEnabled(ctx context.Context, user layers.UserID) bool {
-	return t.EmailEnabledFunc(ctx, user)
+func (t *TestNotificationsFlags) EmailEnabled(ctx context.Context) bool {
+	return t.EmailEnabledFunc(ctx)
 }
 
 func (t *TestNotificationsFlags) DigestFrequency(ctx context.Context) string {
@@ -325,8 +322,8 @@ func (t *TestNotificationsFlags) ScoreThreshold(ctx context.Context) float64 {
 	return t.ScoreThresholdFunc(ctx)
 }
 
-func (t *TestNotificationsFlags) NotificationEmails(ctx context.Context, entity layers.EntityID) []string {
-	return t.NotificationEmailsFunc(ctx, entity)
+func (t *TestNotificationsFlags) NotificationEmails(ctx context.Context) []string {
+	return t.NotificationEmailsFunc(ctx)
 }
 
 func (t *TestNotificationsFlags) RetryDelays(ctx context.Context) []int64 {
@@ -345,7 +342,6 @@ var FlagDescriptors = []flagmeta.FlagDescriptor{
 		ID: EmailEnabledID, FieldName: "email_enabled",
 		Type:        flagmeta.FlagTypeBool,
 		DefaultBool: EmailEnabledDefault,
-		HasEntityID: true, LayerType: "user",
 	},
 	{
 		ID: DigestFrequencyID, FieldName: "digest_frequency",
@@ -366,7 +362,6 @@ var FlagDescriptors = []flagmeta.FlagDescriptor{
 		ID: NotificationEmailsID, FieldName: "notification_emails",
 		Type: flagmeta.FlagTypeString, IsList: true,
 		DefaultStrings: NotificationEmailsDefault(),
-		HasEntityID:    true, LayerType: "entity",
 	},
 	{
 		ID: RetryDelaysID, FieldName: "retry_delays",

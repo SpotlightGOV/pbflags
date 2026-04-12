@@ -169,10 +169,10 @@ func TestBulkEvaluate(t *testing.T) {
 		byID[e.FlagId] = e
 	}
 
-	assert.Nil(t, byID[tf.FlagID(1)].Value)                               // DEFAULT -> nil (client has compiled defaults)
-	assert.Equal(t, "weekly", byID[tf.FlagID(2)].Value.GetStringValue())   // ENABLED with value
-	assert.Nil(t, byID[tf.FlagID(3)].Value)                               // KILLED -> nil (client has compiled defaults)
-	assert.Nil(t, byID[tf.FlagID(4)].Value)                               // DEFAULT -> nil (client has compiled defaults)
+	assert.Nil(t, byID[tf.FlagID(1)].Value)                              // DEFAULT -> nil (client has compiled defaults)
+	assert.Equal(t, "weekly", byID[tf.FlagID(2)].Value.GetStringValue()) // ENABLED with value
+	assert.Nil(t, byID[tf.FlagID(3)].Value)                              // KILLED -> nil (client has compiled defaults)
+	assert.Nil(t, byID[tf.FlagID(4)].Value)                              // DEFAULT -> nil (client has compiled defaults)
 }
 
 func TestBulkEvaluateWithEntityId(t *testing.T) {

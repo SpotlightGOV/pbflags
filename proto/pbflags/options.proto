@@ -33,11 +33,7 @@ message FlagOptions {
   // Can be overridden in the UI when setting values.
   SupportedValues supported_values = 4;
 
-  // Override layer name. Must match a value from the enum annotated with
-  // option (pbflags.layers) = true, using the prefix-stripped, lowercase
-  // enum value name (e.g., LAYER_ENTITY → "entity").
-  // Empty or "global" means no per-entity overrides.
-  string layer = 5;
+  reserved 5; // was: string layer (removed; evaluation context replaces layers)
 }
 
 // List wrapper messages for FlagDefault. These are structurally identical to
@@ -84,23 +80,32 @@ message SupportedValues {
   // (bool flags don't need supported_values — it's always true/false)
 }
 
-// Extension field numbers 51000-51002 are reserved for pbflags.
+// Applied to a message to mark it as the evaluation context.
+// Exactly one message in the input files must carry this annotation.
+// Each field defines a context dimension (string, enum, bool, or int64).
+message ContextOptions {}
+
+// Applied to a field within the context message to define a dimension.
+message DimensionOptions {
+  string description = 1;
+  // Whether this dimension can be used for percentage-based hashing
+  // (launches, experiments). Typically true for stable identifiers
+  // like user_id, false for attributes like plan or device_type.
+  bool hashable = 2;
+  // Explicitly declare a string or int64 dimension as having bounded
+  // cardinality. Enum and bool dimensions are inherently bounded.
+  // String and int64 dimensions are unbounded by default.
+  bool bounded = 3;
+}
+
+// Extension field numbers 51000-51004 are reserved for pbflags.
+// 51002 was: layers (bool on EnumOptions, removed).
 extend google.protobuf.MessageOptions {
   optional FeatureOptions feature = 51000;
+  optional ContextOptions context = 51003;
 }
 
 extend google.protobuf.FieldOptions {
   optional FlagOptions flag = 51001;
-}
-
-// Applied to an enum to mark it as the layer definition for this flag system.
-// Exactly one enum in the input files must carry this annotation.
-// Enum values define the set of valid layer names. Convention:
-//   - Ordinal 0 is always unspecified (treated as global).
-//   - Values whose prefix-stripped name is "global" are global layers.
-//   - All other values define per-entity override dimensions.
-//   - Value names should follow UPPER_SNAKE_CASE with a shared prefix
-//     (e.g., LAYER_USER, LAYER_ENTITY).
-extend google.protobuf.EnumOptions {
-  optional bool layers = 51002;
+  optional DimensionOptions dimension = 51004;
 }

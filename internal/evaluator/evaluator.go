@@ -3,8 +3,9 @@ package evaluator
 import (
 	"context"
 	"log/slog"
-	"golang.org/x/sync/singleflight"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"

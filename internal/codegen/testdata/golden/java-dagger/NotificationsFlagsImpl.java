@@ -3,11 +3,7 @@ package org.spotlightgov.pbflags.generated;
 
 import org.spotlightgov.pbflags.Flag;
 import org.spotlightgov.pbflags.FlagEvaluator;
-import org.spotlightgov.pbflags.LayerFlag;
-import org.spotlightgov.pbflags.LayerListFlag;
 import org.spotlightgov.pbflags.ListFlag;
-import org.spotlightgov.pbflags.generated.layers.EntityID;
-import org.spotlightgov.pbflags.generated.layers.UserID;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
@@ -15,17 +11,17 @@ import javax.inject.Singleton;
 @Singleton
 public final class NotificationsFlagsImpl implements NotificationsFlags {
 
-  private final LayerFlag<Boolean, UserID> emailEnabled;
+  private final Flag<Boolean> emailEnabled;
   private final Flag<String> digestFrequency;
   private final Flag<Long> maxRetries;
   private final Flag<Double> scoreThreshold;
-  private final LayerListFlag<String, EntityID> notificationEmails;
+  private final ListFlag<String> notificationEmails;
   private final ListFlag<Long> retryDelays;
 
   @Inject
   public NotificationsFlagsImpl(FlagEvaluator evaluator) {
     this.emailEnabled =
-        evaluator.layerFlag(EMAIL_ENABLED_ID, Boolean.class, EMAIL_ENABLED_DEFAULT, UserID::value);
+        evaluator.flag(EMAIL_ENABLED_ID, Boolean.class, EMAIL_ENABLED_DEFAULT);
     this.digestFrequency =
         evaluator.flag(DIGEST_FREQUENCY_ID, String.class, DIGEST_FREQUENCY_DEFAULT);
     this.maxRetries =
@@ -33,13 +29,13 @@ public final class NotificationsFlagsImpl implements NotificationsFlags {
     this.scoreThreshold =
         evaluator.flag(SCORE_THRESHOLD_ID, Double.class, SCORE_THRESHOLD_DEFAULT);
     this.notificationEmails =
-        evaluator.layerListFlag(NOTIFICATION_EMAILS_ID, String.class, NOTIFICATION_EMAILS_DEFAULT, EntityID::value);
+        evaluator.listFlag(NOTIFICATION_EMAILS_ID, String.class, NOTIFICATION_EMAILS_DEFAULT);
     this.retryDelays =
         evaluator.listFlag(RETRY_DELAYS_ID, Long.class, RETRY_DELAYS_DEFAULT);
   }
 
   @Override
-  public LayerFlag<Boolean, UserID> emailEnabled() {
+  public Flag<Boolean> emailEnabled() {
     return emailEnabled;
   }
 
@@ -59,7 +55,7 @@ public final class NotificationsFlagsImpl implements NotificationsFlags {
   }
 
   @Override
-  public LayerListFlag<String, EntityID> notificationEmails() {
+  public ListFlag<String> notificationEmails() {
     return notificationEmails;
   }
 

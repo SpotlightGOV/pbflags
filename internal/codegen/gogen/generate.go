@@ -19,8 +19,10 @@ func Generate(plugin *protogen.Plugin, packagePrefix string) error {
 		return err
 	}
 
-	if err := generateLayersPackage(plugin, layers, packagePrefix); err != nil {
-		return fmt.Errorf("generating layers package: %w", err)
+	if layers != nil {
+		if err := generateLayersPackage(plugin, layers, packagePrefix); err != nil {
+			return fmt.Errorf("generating layers package: %w", err)
+		}
 	}
 
 	if err := generateFlagMetaPackage(plugin, packagePrefix); err != nil {
@@ -516,9 +518,9 @@ func extractFlagFromField(field *protogen.Field, layers *layerutil.LayerDef) (*f
 		}
 	}
 
-	// Validate the layer against the discovered enum.
+	// Validate the layer against the discovered enum (if layers are defined).
 	var resolvedLayerName string
-	if layerStr != "" {
+	if layerStr != "" && layers != nil {
 		lv, ok := layers.ResolveLayer(layerStr)
 		if !ok {
 			return nil, fmt.Errorf("flag %s.%s: layer %q does not match any value in the %s enum",

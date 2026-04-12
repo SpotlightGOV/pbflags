@@ -125,8 +125,6 @@ func TestGoldenJava(t *testing.T) {
 		gf("NotificationsFlags.java"),
 		gf("NotificationsFlagsImpl.java"),
 		gf("PbflagsFlagDescriptorProvider.java"),
-		gf("layers/UserID.java"),
-		gf("layers/EntityID.java"),
 	}
 
 	if *update {
@@ -158,8 +156,6 @@ func TestGoldenJavaDagger(t *testing.T) {
 		gf("NotificationsFlagsImpl.java"),
 		gf("FlagRegistryModule.java"),
 		gf("PbflagsFlagDescriptorProvider.java"),
-		gf("layers/UserID.java"),
-		gf("layers/EntityID.java"),
 	}
 
 	if *update {

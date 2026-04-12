@@ -129,7 +129,6 @@ import (
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/flagmeta"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
-	"github.com/SpotlightGOV/pbflags/gen/pbflags/layers"
 	nf "testeval/notificationsflags"
 )
 
@@ -158,7 +157,7 @@ func TestBoolFlag(t *testing.T) {
 		nf.EmailEnabledID: {Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: false}}},
 	}}
 	client := nf.NewNotificationsFlagsClient(mock)
-	if got := client.EmailEnabled(context.Background(), layers.User("user-1")); got != false {
+	if got := client.EmailEnabled(context.Background()); got != false {
 		t.Errorf("EmailEnabled = %v, want false", got)
 	}
 }
@@ -199,7 +198,7 @@ func TestErrorReturnsDefaults(t *testing.T) {
 	client := nf.NewNotificationsFlagsClient(mock)
 	ctx := context.Background()
 
-	if got := client.EmailEnabled(ctx, layers.User("user-1")); got != nf.EmailEnabledDefault {
+	if got := client.EmailEnabled(ctx); got != nf.EmailEnabledDefault {
 		t.Errorf("EmailEnabled on error = %v, want %v", got, nf.EmailEnabledDefault)
 	}
 	if got := client.DigestFrequency(ctx); got != nf.DigestFrequencyDefault {
@@ -242,7 +241,7 @@ func TestNilValueNoWarning(t *testing.T) {
 	if got := client.DigestFrequency(ctx); got != nf.DigestFrequencyDefault {
 		t.Errorf("DigestFrequency = %q, want default %q", got, nf.DigestFrequencyDefault)
 	}
-	if got := client.EmailEnabled(ctx, layers.User("u")); got != nf.EmailEnabledDefault {
+	if got := client.EmailEnabled(ctx); got != nf.EmailEnabledDefault {
 		t.Errorf("EmailEnabled = %v, want default %v", got, nf.EmailEnabledDefault)
 	}
 	if got := client.MaxRetries(ctx); got != nf.MaxRetriesDefault {
