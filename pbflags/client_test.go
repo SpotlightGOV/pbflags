@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -225,7 +226,7 @@ func TestConnect_Evaluate_RPCError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if got := err.Error(); !contains(got, "test/flag1") {
+	if got := err.Error(); !strings.Contains(got, "test/flag1") {
 		t.Errorf("error should contain flag ID, got: %s", got)
 	}
 }
@@ -241,7 +242,7 @@ func TestConnect_BulkEvaluate_RPCError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if got := err.Error(); !contains(got, "BulkEvaluate") {
+	if got := err.Error(); !strings.Contains(got, "BulkEvaluate") {
 		t.Errorf("error should contain BulkEvaluate, got: %s", got)
 	}
 }
@@ -257,17 +258,4 @@ func (h *errorHandler) Evaluate(context.Context, *connect.Request[pbflagsv1.Eval
 
 func (h *errorHandler) BulkEvaluate(context.Context, *connect.Request[pbflagsv1.BulkEvaluateRequest]) (*connect.Response[pbflagsv1.BulkEvaluateResponse], error) {
 	return nil, connect.NewError(connect.CodeUnavailable, nil)
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }
