@@ -55,9 +55,9 @@ import "pbflags/options.proto";
 // Required: exactly one message with this annotation.
 // Each field is an override dimension (user, plan, etc).
 message EvaluationContext {
-  option (pbflags.context) = true;
+  option (pbflags.context) = {};
 
-  string user_id = 1 [(pbflags.dimension) = { description: "Authenticated user" }];
+  string user_id = 1 [(pbflags.dimension) = { description: "Authenticated user" hashable: true }];
   PlanLevel plan = 2 [(pbflags.dimension) = { description: "Subscription plan" }];
   bool is_internal = 3 [(pbflags.dimension) = { description: "Internal/dogfood user" }];
 }
@@ -72,18 +72,17 @@ message MyFeature {
   bool enabled = 1 [(pbflags.flag) = {
     description: "Enable the feature"
     default: { bool_value: { value: false } }
-    dimension: "user_id"  // per-user override; omit for global-only
   }];
 }
 ```
 
 Key rules:
-- Exactly one `EvaluationContext` message with `option (pbflags.context) = true` across all proto files
+- Exactly one `EvaluationContext` message with `option (pbflags.context) = {}` across all proto files
 - Each dimension is a field on that message annotated with `(pbflags.dimension)`
 - Each feature is a `message` with `option (pbflags.feature)`
 - Each flag is a field with `option (pbflags.flag)`
 - Supported types: `bool`, `string`, `int64`, `double` (and `repeated` variants)
-- `dimension` is optional; omit for global-only flags
+- Dimension-based targeting is configured via CEL conditions in YAML config, not in proto annotations
 - Flag identity is `feature_id/field_number` — field numbers are immutable
 
 ## 5. Configure codegen
@@ -155,31 +154,38 @@ import (
     "context"
     "net/http"
 
-    "github.com/SpotlightGOV/pbflags"
+    "github.com/SpotlightGOV/pbflags/pbflags"
     "<MODULE>/gen/flags/<feature>flags"
     "<MODULE>/gen/flags/dims"
     pb "<MODULE>/gen/flags/<proto_package>"
 )
 
+// Create a base evaluator.
 eval := pbflags.Connect(http.DefaultClient, "http://localhost:9201", &pb.EvaluationContext{})
-<feature> := <feature>flags.New(eval)
-val := <feature>.<FlagName>(context.Background(), eval.With(dims.UserID("user-123")))
+
+// Bind dimensions — With() returns a new evaluator (immutable).
+scoped := eval.With(dims.UserID("user-123"))
+<feature> := <feature>flags.New(scoped)
+val := <feature>.<FlagName>(context.Background())
 
 // Multiple dimensions:
-val := <feature>.<FlagName>(ctx, eval.With(
+scoped := eval.With(
     dims.UserID("user-123"),
     dims.Plan(pb.PlanLevel_PLAN_LEVEL_PRO),
     dims.IsInternal(true),
-))
+)
+<feature> := <feature>flags.New(scoped)
+val := <feature>.<FlagName>(ctx)
 
 // Context propagation:
 ctx = pbflags.ContextWith(ctx, eval.With(dims.UserID("user-123")))
 // ... later, in a handler or service:
-val := <feature>.<FlagName>(ctx, pbflags.FromContext(ctx))
+<feature> := <feature>flags.New(pbflags.FromContext(ctx))
+val := <feature>.<FlagName>(ctx)
 
 // Without an evaluator (compiled defaults only):
 <feature> := <feature>flags.Defaults()
-val := <feature>.<FlagName>(context.Background(), eval)
+val := <feature>.<FlagName>(context.Background())
 ```
 
 Evaluation errors (network failures, type mismatches) are logged via `slog.Default()` and the compiled default is returned. To use a custom logger:
@@ -189,6 +195,8 @@ import "<MODULE>/gen/flags/flagmeta"
 
 <feature> := <feature>flags.New(eval, flagmeta.WithLogger(myLogger))
 ```
+
+Note: flag methods take only `context.Context` — dimensions are bound on the evaluator via `With()`, not passed per-call.
 
 ### Java
 

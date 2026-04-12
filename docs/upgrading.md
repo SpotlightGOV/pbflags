@@ -23,12 +23,11 @@ This order matters because `pbflags-admin` and `pbflags-evaluator` do not run mi
 
 ## Version-specific upgrade guides
 
-- [Evaluation context dimensions](upgrade-guide-evaluation-context.md) — migrating from layers to evaluation context dimensions (v0.7.0)
 - [User-defined layers](upgrade-guide-user-defined-layers.md) — migrating from hardcoded to user-defined layer enums (v0.6.0)
 
 ---
 
-## Evaluation context dimensions (v0.7.0)
+## Evaluation context dimensions (v0.15.0)
 
 This release replaces the layer system with evaluation context dimensions.
 The change touches proto annotations, generated code, and the wire protocol.
@@ -58,20 +57,29 @@ Two new packages are introduced:
 
 Feature client constructors have changed signature:
 
-```
+```go
 // Before
-client := NewXxxFlagsClient(serviceClient)
+client := notificationsflags.NewNotificationsFlagsClient(serviceClient)
 
 // After
-client := New(eval pbflags.Evaluator)
+client := notificationsflags.New(eval)
 ```
+
+The old `New<Feature>FlagsClient` name is available as a deprecated alias
+during the transition.
 
 ### Method signatures
 
 All layer parameters have been removed from generated method signatures.
 Evaluation context is now carried implicitly rather than passed per-call.
 
-The `Status()` method has been removed from generated interfaces.
+The `Status()` method has been removed from generated interfaces. If you
+need evaluator health checks, use the Connect client directly:
+
+```go
+healthClient := pbflagsv1connect.NewFlagEvaluatorServiceClient(httpClient, url)
+resp, err := healthClient.Health(ctx, connect.NewRequest(&pbflagsv1.HealthRequest{}))
+```
 
 ### Wire protocol
 

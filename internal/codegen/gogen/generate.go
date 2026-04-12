@@ -170,6 +170,15 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p("}")
 	p()
 
+	// Deprecated alias for migration.
+	p("// New", pascalFeat, "FlagsClient is a deprecated alias for New.")
+	p("//")
+	p("// Deprecated: Use New instead.")
+	p("func New", pascalFeat, "FlagsClient(eval pbflags.Evaluator, opts ...flagmeta.Option) ", pascalFeat, "Flags {")
+	p("	return New(eval, opts...)")
+	p("}")
+	p()
+
 	p("type ", clientType, " struct {")
 	p("	eval   pbflags.Evaluator")
 	p("	logger *slog.Logger")
@@ -184,6 +193,9 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 		p("			\"flag_id\", ", fl.goName, "ID,")
 		p("			\"error\", err,")
 		p("		)")
+		emitReturnDefault(p, fl)
+		p("	}")
+		p("	if result == nil || result.Value == nil {")
 		emitReturnDefault(p, fl)
 		p("	}")
 		p("	val := result.Value.GetValue()")

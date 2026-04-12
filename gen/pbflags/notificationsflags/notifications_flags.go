@@ -59,6 +59,13 @@ func New(eval pbflags.Evaluator, opts ...flagmeta.Option) NotificationsFlags {
 	return &notificationsFlagsClient{eval: eval, logger: cfg.Logger}
 }
 
+// NewNotificationsFlagsClient is a deprecated alias for New.
+//
+// Deprecated: Use New instead.
+func NewNotificationsFlagsClient(eval pbflags.Evaluator, opts ...flagmeta.Option) NotificationsFlags {
+	return New(eval, opts...)
+}
+
 type notificationsFlagsClient struct {
 	eval   pbflags.Evaluator
 	logger *slog.Logger
@@ -71,6 +78,9 @@ func (c *notificationsFlagsClient) EmailEnabled(ctx context.Context) bool {
 			"flag_id", EmailEnabledID,
 			"error", err,
 		)
+		return EmailEnabledDefault
+	}
+	if result == nil || result.Value == nil {
 		return EmailEnabledDefault
 	}
 	val := result.Value.GetValue()
@@ -96,6 +106,9 @@ func (c *notificationsFlagsClient) DigestFrequency(ctx context.Context) string {
 		)
 		return DigestFrequencyDefault
 	}
+	if result == nil || result.Value == nil {
+		return DigestFrequencyDefault
+	}
 	val := result.Value.GetValue()
 	if val == nil {
 		return DigestFrequencyDefault
@@ -117,6 +130,9 @@ func (c *notificationsFlagsClient) MaxRetries(ctx context.Context) int64 {
 			"flag_id", MaxRetriesID,
 			"error", err,
 		)
+		return MaxRetriesDefault
+	}
+	if result == nil || result.Value == nil {
 		return MaxRetriesDefault
 	}
 	val := result.Value.GetValue()
@@ -142,6 +158,9 @@ func (c *notificationsFlagsClient) ScoreThreshold(ctx context.Context) float64 {
 		)
 		return ScoreThresholdDefault
 	}
+	if result == nil || result.Value == nil {
+		return ScoreThresholdDefault
+	}
 	val := result.Value.GetValue()
 	if val == nil {
 		return ScoreThresholdDefault
@@ -165,6 +184,9 @@ func (c *notificationsFlagsClient) NotificationEmails(ctx context.Context) []str
 		)
 		return NotificationEmailsDefault()
 	}
+	if result == nil || result.Value == nil {
+		return NotificationEmailsDefault()
+	}
 	val := result.Value.GetValue()
 	if val == nil {
 		return NotificationEmailsDefault()
@@ -186,6 +208,9 @@ func (c *notificationsFlagsClient) RetryDelays(ctx context.Context) []int64 {
 			"flag_id", RetryDelaysID,
 			"error", err,
 		)
+		return RetryDelaysDefault()
+	}
+	if result == nil || result.Value == nil {
 		return RetryDelaysDefault()
 	}
 	val := result.Value.GetValue()
