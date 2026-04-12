@@ -208,7 +208,12 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 		p("		)")
 		emitReturnDefault(p, fl)
 		p("	}")
-		p("	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.", fl.oneofType, "); !ok {")
+		p("	val := resp.Msg.GetValue().GetValue()")
+		p("	if val == nil {")
+		// Evaluator returned no value — normal DEFAULT/KILLED path, no warning.
+		emitReturnDefault(p, fl)
+		p("	}")
+		p("	if _, ok := val.(*pbflagsv1.", fl.oneofType, "); !ok {")
 		p("		c.logger.WarnContext(ctx, \"flag type mismatch, using default\",")
 		p("			\"flag_id\", ", fl.goName, "ID,")
 		p("			\"expected\", ", fmt.Sprintf("%q", fl.goType), ",")

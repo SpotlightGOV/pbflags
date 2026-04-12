@@ -119,10 +119,14 @@ replace github.com/SpotlightGOV/pbflags => ` + root + `
 	testCode := `package notificationsflags_test
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
+	"github.com/SpotlightGOV/pbflags/gen/pbflags/flagmeta"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/layers"
@@ -214,6 +218,62 @@ func TestStatus(t *testing.T) {
 	client := nf.NewNotificationsFlagsClient(mock)
 	if got := client.Status(context.Background()); got != pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_SERVING {
 		t.Errorf("Status = %v, want SERVING", got)
+	}
+}
+
+// TestNilValueNoWarning verifies that when the evaluator returns a response
+// with no FlagValue set (the normal DEFAULT/KILLED path), the client silently
+// returns the compiled default without logging a spurious "type mismatch"
+// warning. Regression test for pb-462.
+func TestNilValueNoWarning(t *testing.T) {
+	mock := &mockEvaluator{responses: map[string]*pbflagsv1.EvaluateResponse{
+		// Empty response — no FlagValue set, simulating SOURCE_DEFAULT.
+		nf.DigestFrequencyID: {},
+		nf.EmailEnabledID:    {},
+		nf.MaxRetriesID:      {},
+		nf.ScoreThresholdID:  {},
+	}}
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	client := nf.NewNotificationsFlagsClient(mock, flagmeta.WithLogger(logger))
+	ctx := context.Background()
+
+	if got := client.DigestFrequency(ctx); got != nf.DigestFrequencyDefault {
+		t.Errorf("DigestFrequency = %q, want default %q", got, nf.DigestFrequencyDefault)
+	}
+	if got := client.EmailEnabled(ctx, layers.User("u")); got != nf.EmailEnabledDefault {
+		t.Errorf("EmailEnabled = %v, want default %v", got, nf.EmailEnabledDefault)
+	}
+	if got := client.MaxRetries(ctx); got != nf.MaxRetriesDefault {
+		t.Errorf("MaxRetries = %d, want default %d", got, nf.MaxRetriesDefault)
+	}
+	if got := client.ScoreThreshold(ctx); got != nf.ScoreThresholdDefault {
+		t.Errorf("ScoreThreshold = %f, want default %f", got, nf.ScoreThresholdDefault)
+	}
+
+	if logs := buf.String(); strings.Contains(logs, "type mismatch") {
+		t.Errorf("nil-value response should not log 'type mismatch', got:\n%s", logs)
+	}
+}
+
+// TestTypeMismatchWarns verifies the warning DOES fire when the evaluator
+// returns a non-nil FlagValue of the wrong concrete type.
+func TestTypeMismatchWarns(t *testing.T) {
+	// Return a bool value for a string flag — genuine type mismatch.
+	mock := &mockEvaluator{responses: map[string]*pbflagsv1.EvaluateResponse{
+		nf.DigestFrequencyID: {Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}}},
+	}}
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	client := nf.NewNotificationsFlagsClient(mock, flagmeta.WithLogger(logger))
+
+	if got := client.DigestFrequency(context.Background()); got != nf.DigestFrequencyDefault {
+		t.Errorf("DigestFrequency = %q, want default %q", got, nf.DigestFrequencyDefault)
+	}
+	if logs := buf.String(); !strings.Contains(logs, "type mismatch") {
+		t.Errorf("wrong-type response should log 'type mismatch', got:\n%s", logs)
 	}
 }
 `

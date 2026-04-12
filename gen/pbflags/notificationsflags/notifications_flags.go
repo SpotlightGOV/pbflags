@@ -81,7 +81,11 @@ func (c *notificationsFlagsClient) EmailEnabled(ctx context.Context, user layers
 		)
 		return EmailEnabledDefault
 	}
-	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.FlagValue_BoolValue); !ok {
+	val := resp.Msg.GetValue().GetValue()
+	if val == nil {
+		return EmailEnabledDefault
+	}
+	if _, ok := val.(*pbflagsv1.FlagValue_BoolValue); !ok {
 		c.logger.WarnContext(ctx, "flag type mismatch, using default",
 			"flag_id", EmailEnabledID,
 			"expected", "bool",
@@ -102,7 +106,11 @@ func (c *notificationsFlagsClient) DigestFrequency(ctx context.Context) string {
 		)
 		return DigestFrequencyDefault
 	}
-	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.FlagValue_StringValue); !ok {
+	val := resp.Msg.GetValue().GetValue()
+	if val == nil {
+		return DigestFrequencyDefault
+	}
+	if _, ok := val.(*pbflagsv1.FlagValue_StringValue); !ok {
 		c.logger.WarnContext(ctx, "flag type mismatch, using default",
 			"flag_id", DigestFrequencyID,
 			"expected", "string",
@@ -123,7 +131,11 @@ func (c *notificationsFlagsClient) MaxRetries(ctx context.Context) int64 {
 		)
 		return MaxRetriesDefault
 	}
-	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.FlagValue_Int64Value); !ok {
+	val := resp.Msg.GetValue().GetValue()
+	if val == nil {
+		return MaxRetriesDefault
+	}
+	if _, ok := val.(*pbflagsv1.FlagValue_Int64Value); !ok {
 		c.logger.WarnContext(ctx, "flag type mismatch, using default",
 			"flag_id", MaxRetriesID,
 			"expected", "int64",
@@ -144,7 +156,11 @@ func (c *notificationsFlagsClient) ScoreThreshold(ctx context.Context) float64 {
 		)
 		return ScoreThresholdDefault
 	}
-	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.FlagValue_DoubleValue); !ok {
+	val := resp.Msg.GetValue().GetValue()
+	if val == nil {
+		return ScoreThresholdDefault
+	}
+	if _, ok := val.(*pbflagsv1.FlagValue_DoubleValue); !ok {
 		c.logger.WarnContext(ctx, "flag type mismatch, using default",
 			"flag_id", ScoreThresholdID,
 			"expected", "float64",
@@ -166,7 +182,11 @@ func (c *notificationsFlagsClient) NotificationEmails(ctx context.Context, entit
 		)
 		return NotificationEmailsDefault()
 	}
-	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.FlagValue_StringListValue); !ok {
+	val := resp.Msg.GetValue().GetValue()
+	if val == nil {
+		return NotificationEmailsDefault()
+	}
+	if _, ok := val.(*pbflagsv1.FlagValue_StringListValue); !ok {
 		c.logger.WarnContext(ctx, "flag type mismatch, using default",
 			"flag_id", NotificationEmailsID,
 			"expected", "[]string",
@@ -187,7 +207,11 @@ func (c *notificationsFlagsClient) RetryDelays(ctx context.Context) []int64 {
 		)
 		return RetryDelaysDefault()
 	}
-	if _, ok := resp.Msg.GetValue().GetValue().(*pbflagsv1.FlagValue_Int64ListValue); !ok {
+	val := resp.Msg.GetValue().GetValue()
+	if val == nil {
+		return RetryDelaysDefault()
+	}
+	if _, ok := val.(*pbflagsv1.FlagValue_Int64ListValue); !ok {
 		c.logger.WarnContext(ctx, "flag type mismatch, using default",
 			"flag_id", RetryDelaysID,
 			"expected", "[]int64",
