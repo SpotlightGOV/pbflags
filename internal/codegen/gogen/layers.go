@@ -64,13 +64,3 @@ func addArticle(word string) string {
 	}
 	return "a " + word
 }
-
-// layerTypeName returns the Go type name for a layer (e.g., "entity" -> "EntityID").
-func layerTypeName(layerName string) string {
-	return toPascalCase(layerName) + "ID"
-}
-
-// layerParamName returns the Go parameter name for a layer (e.g., "entity" -> "entity").
-func layerParamName(layerName string) string {
-	return lowerFirst(toPascalCase(layerName))
-}

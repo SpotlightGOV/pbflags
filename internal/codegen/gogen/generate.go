@@ -76,8 +76,6 @@ type flagInfo struct {
 	layerName   string // empty = global; otherwise the lowercase layer name (e.g., "user", "entity")
 }
 
-const connectImport = "connectrpc.com/connect"
-
 func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featureInfo, packagePrefix string, layers *layerutil.LayerDef) error {
 	flags, err := extractFlags(msg, layers)
 	if err != nil {
@@ -94,18 +92,7 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	clientType := lowerFirst(pascalFeat) + "FlagsClient"
 
 	flagsV1Import := packagePrefix + "/v1"
-	flagsV1ConnectImport := packagePrefix + "/v1/pbflagsv1connect"
 	flagmetaImport := packagePrefix + "/flagmeta"
-	layersImport := packagePrefix + "/layers"
-
-	// Check if any flag uses a layer (needs layers import).
-	hasLayerFlags := false
-	for _, fl := range flags {
-		if fl.layerName != "" {
-			hasLayerFlags = true
-			break
-		}
-	}
 
 	g := plugin.NewGeneratedFile(outPath, importPath)
 	p := g.P
@@ -118,13 +105,9 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p(`	"context"`)
 	p(`	"log/slog"`)
 	p()
-	p(`	"`, connectImport, `"`)
 	p(`	"`, flagmetaImport, `"`)
-	if hasLayerFlags {
-		p(`	"`, layersImport, `"`)
-	}
 	p(`	pbflagsv1 "`, flagsV1Import, `"`)
-	p(`	"`, flagsV1ConnectImport, `"`)
+	p(`	"`, pbflagsImport, `"`)
 	p(")")
 	p()
 
@@ -173,47 +156,29 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p("// ", pascalFeat, "Flags provides type-safe access to ", feat.id, " feature flags.")
 	p("type ", pascalFeat, "Flags interface {")
 	for _, fl := range flags {
-		if fl.layerName != "" {
-			p("	", fl.goName, "(ctx context.Context, ", layerParamName(fl.layerName), " layers.", layerTypeName(fl.layerName), ") ", fl.goType)
-		} else {
-			p("	", fl.goName, "(ctx context.Context) ", fl.goType)
-		}
+		p("	", fl.goName, "(ctx context.Context) ", fl.goType)
 	}
-	p()
-	p("	// Status returns the evaluator's current health state.")
-	p("	Status(ctx context.Context) pbflagsv1.EvaluatorStatus")
 	p("}")
 	p()
 
-	p("// New", pascalFeat, "FlagsClient creates a client backed by a FlagEvaluator connection.")
+	p("// New creates a ", pascalFeat, "Flags client backed by a pbflags.Evaluator.")
 	p("// By default, evaluation errors are logged via slog.Default(). Use")
 	p("// flagmeta.WithLogger to override.")
-	p("func New", pascalFeat, "FlagsClient(evaluator pbflagsv1connect.FlagEvaluatorServiceClient, opts ...flagmeta.Option) ", pascalFeat, "Flags {")
+	p("func New(eval pbflags.Evaluator, opts ...flagmeta.Option) ", pascalFeat, "Flags {")
 	p("	cfg := flagmeta.Apply(opts...)")
-	p("	return &", clientType, "{evaluator: evaluator, logger: cfg.Logger}")
+	p("	return &", clientType, "{eval: eval, logger: cfg.Logger}")
 	p("}")
 	p()
 
 	p("type ", clientType, " struct {")
-	p("	evaluator pbflagsv1connect.FlagEvaluatorServiceClient")
-	p("	logger    *slog.Logger")
+	p("	eval   pbflags.Evaluator")
+	p("	logger *slog.Logger")
 	p("}")
 	p()
 
 	for _, fl := range flags {
-		if fl.layerName != "" {
-			paramName := layerParamName(fl.layerName)
-			p("func (c *", clientType, ") ", fl.goName, "(ctx context.Context, ", paramName, " layers.", layerTypeName(fl.layerName), ") ", fl.goType, " {")
-			p("	resp, err := c.evaluator.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{")
-			p("		FlagId:   ", fl.goName, "ID,")
-			p("		EntityId: ", paramName, ".String(),")
-			p("	}))")
-		} else {
-			p("func (c *", clientType, ") ", fl.goName, "(ctx context.Context) ", fl.goType, " {")
-			p("	resp, err := c.evaluator.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{")
-			p("		FlagId: ", fl.goName, "ID,")
-			p("	}))")
-		}
+		p("func (c *", clientType, ") ", fl.goName, "(ctx context.Context) ", fl.goType, " {")
+		p("	result, err := c.eval.Evaluate(ctx, ", fl.goName, "ID)")
 		p("	if err != nil {")
 		p("		c.logger.ErrorContext(ctx, \"flag evaluation failed\",")
 		p("			\"flag_id\", ", fl.goName, "ID,")
@@ -221,7 +186,7 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 		p("		)")
 		emitReturnDefault(p, fl)
 		p("	}")
-		p("	val := resp.Msg.GetValue().GetValue()")
+		p("	val := result.Value.GetValue()")
 		p("	if val == nil {")
 		// Evaluator returned no value — normal DEFAULT/KILLED path, no warning.
 		emitReturnDefault(p, fl)
@@ -234,23 +199,13 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 		emitReturnDefault(p, fl)
 		p("	}")
 		if fl.isList {
-			p("	return resp.Msg.GetValue().", fl.getterName, "().GetValues()")
+			p("	return result.Value.", fl.getterName, "().GetValues()")
 		} else {
-			p("	return resp.Msg.GetValue().", fl.getterName, "()")
+			p("	return result.Value.", fl.getterName, "()")
 		}
 		p("}")
 		p()
 	}
-
-	p("func (c *", clientType, ") Status(ctx context.Context) pbflagsv1.EvaluatorStatus {")
-	p("	resp, err := c.evaluator.Health(ctx, connect.NewRequest(&pbflagsv1.HealthRequest{}))")
-	p("	if err != nil {")
-	p("		c.logger.ErrorContext(ctx, \"health check failed\", \"error\", err)")
-	p("		return pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_UNSPECIFIED")
-	p("	}")
-	p("	return resp.Msg.Status")
-	p("}")
-	p()
 
 	// Generate Defaults() constructor and default implementation (null object pattern).
 	defaultType := "default" + pascalFeat + "Flags"
@@ -267,20 +222,11 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p()
 
 	for _, fl := range flags {
-		if fl.layerName != "" {
-			p("func (", defaultType, ") ", fl.goName, "(_ context.Context, _ layers.", layerTypeName(fl.layerName), ") ", fl.goType, " {")
-		} else {
-			p("func (", defaultType, ") ", fl.goName, "(_ context.Context) ", fl.goType, " {")
-		}
+		p("func (", defaultType, ") ", fl.goName, "(_ context.Context) ", fl.goType, " {")
 		emitReturnDefault(p, fl)
 		p("}")
 		p()
 	}
-
-	p("func (", defaultType, ") Status(_ context.Context) pbflagsv1.EvaluatorStatus {")
-	p("	return pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_UNSPECIFIED")
-	p("}")
-	p()
 
 	// Generate Testing() constructor and mutable func-field struct.
 	testType := "Test" + pascalFeat + "Flags"
@@ -290,13 +236,8 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p("// with the compiled default. Override individual fields to stub specific flags.")
 	p("type ", testType, " struct {")
 	for _, fl := range flags {
-		if fl.layerName != "" {
-			p("	", fl.goName, "Func func(context.Context, layers.", layerTypeName(fl.layerName), ") ", fl.goType)
-		} else {
-			p("	", fl.goName, "Func func(context.Context) ", fl.goType)
-		}
+		p("	", fl.goName, "Func func(context.Context) ", fl.goType)
 	}
-	p("	StatusFunc func(context.Context) pbflagsv1.EvaluatorStatus")
 	p("}")
 	p()
 
@@ -306,38 +247,20 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p("func Testing() *", testType, " {")
 	p("	return &", testType, "{")
 	for _, fl := range flags {
-		if fl.layerName != "" {
-			p("		", fl.goName, "Func: func(_ context.Context, _ layers.", layerTypeName(fl.layerName), ") ", fl.goType, " {")
-		} else {
-			p("		", fl.goName, "Func: func(_ context.Context) ", fl.goType, " {")
-		}
+		p("		", fl.goName, "Func: func(_ context.Context) ", fl.goType, " {")
 		emitReturnDefault(p, fl)
 		p("		},")
 	}
-	p("		StatusFunc: func(_ context.Context) pbflagsv1.EvaluatorStatus {")
-	p("			return pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_UNSPECIFIED")
-	p("		},")
 	p("	}")
 	p("}")
 	p()
 
 	for _, fl := range flags {
-		if fl.layerName != "" {
-			paramName := layerParamName(fl.layerName)
-			p("func (t *", testType, ") ", fl.goName, "(ctx context.Context, ", paramName, " layers.", layerTypeName(fl.layerName), ") ", fl.goType, " {")
-			p("	return t.", fl.goName, "Func(ctx, ", paramName, ")")
-		} else {
-			p("func (t *", testType, ") ", fl.goName, "(ctx context.Context) ", fl.goType, " {")
-			p("	return t.", fl.goName, "Func(ctx)")
-		}
+		p("func (t *", testType, ") ", fl.goName, "(ctx context.Context) ", fl.goType, " {")
+		p("	return t.", fl.goName, "Func(ctx)")
 		p("}")
 		p()
 	}
-
-	p("func (t *", testType, ") Status(ctx context.Context) pbflagsv1.EvaluatorStatus {")
-	p("	return t.StatusFunc(ctx)")
-	p("}")
-	p()
 
 	// Generate FlagDescriptors slice.
 	p("// FlagDescriptors provides structured metadata about each flag in this feature.")
@@ -359,9 +282,6 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 			} else {
 				p("		", field, ": ", fl.goName, "Default,")
 			}
-		}
-		if fl.layerName != "" {
-			p("		HasEntityID: true, LayerType: ", fmt.Sprintf("%q", fl.layerName), ",")
 		}
 		p("	},")
 	}

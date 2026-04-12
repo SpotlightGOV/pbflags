@@ -87,9 +87,6 @@ func generateFlagMetaPackage(plugin *protogen.Plugin, packagePrefix string) erro
 	p("	DefaultStrings []string")
 	p("	DefaultInt64s  []int64")
 	p("	DefaultDoubles []float64")
-	p()
-	p("	HasEntityID bool   // True if the flag method takes a layer ID parameter.")
-	p(`	LayerType   string // Layer name (e.g., "user", "entity") or empty for global.`)
 	p("}")
 
 	return nil

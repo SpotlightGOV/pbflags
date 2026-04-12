@@ -121,81 +121,92 @@ replace github.com/SpotlightGOV/pbflags => ` + root + `
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
 
-	"connectrpc.com/connect"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/flagmeta"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
-	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
+	"github.com/SpotlightGOV/pbflags/pbflags"
 	nf "testeval/notificationsflags"
 )
 
-// mockEvaluator implements FlagEvaluatorServiceClient for testing.
+// mockEvaluator implements pbflags.Evaluator for testing.
 type mockEvaluator struct {
-	pbflagsv1connect.UnimplementedFlagEvaluatorServiceHandler
-	responses map[string]*pbflagsv1.EvaluateResponse
+	results map[string]*pbflags.Result
 }
 
-func (m *mockEvaluator) Evaluate(_ context.Context, req *connect.Request[pbflagsv1.EvaluateRequest]) (*connect.Response[pbflagsv1.EvaluateResponse], error) {
-	resp, ok := m.responses[req.Msg.FlagId]
+func (m *mockEvaluator) With(_ ...pbflags.Dimension) pbflags.Evaluator { return m }
+
+func (m *mockEvaluator) Evaluate(_ context.Context, flagID string) (*pbflags.Result, error) {
+	r, ok := m.results[flagID]
 	if !ok {
-		return nil, connect.NewError(connect.CodeNotFound, nil)
+		return nil, errors.New("not found")
 	}
-	return connect.NewResponse(resp), nil
+	return r, nil
 }
 
-func (m *mockEvaluator) Health(_ context.Context, _ *connect.Request[pbflagsv1.HealthRequest]) (*connect.Response[pbflagsv1.HealthResponse], error) {
-	return connect.NewResponse(&pbflagsv1.HealthResponse{
-		Status: pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_SERVING,
-	}), nil
+func (m *mockEvaluator) BulkEvaluate(_ context.Context, flagIDs []string) ([]*pbflags.Result, error) {
+	results := make([]*pbflags.Result, len(flagIDs))
+	for i, id := range flagIDs {
+		r, ok := m.results[id]
+		if !ok {
+			results[i] = &pbflags.Result{}
+		} else {
+			results[i] = r
+		}
+	}
+	return results, nil
+}
+
+func result(v *pbflagsv1.FlagValue) *pbflags.Result {
+	return &pbflags.Result{Value: v, Source: pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL}
 }
 
 func TestBoolFlag(t *testing.T) {
-	mock := &mockEvaluator{responses: map[string]*pbflagsv1.EvaluateResponse{
-		nf.EmailEnabledID: {Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: false}}},
+	mock := &mockEvaluator{results: map[string]*pbflags.Result{
+		nf.EmailEnabledID: result(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: false}}),
 	}}
-	client := nf.NewNotificationsFlagsClient(mock)
+	client := nf.New(mock)
 	if got := client.EmailEnabled(context.Background()); got != false {
 		t.Errorf("EmailEnabled = %v, want false", got)
 	}
 }
 
 func TestStringFlag(t *testing.T) {
-	mock := &mockEvaluator{responses: map[string]*pbflagsv1.EvaluateResponse{
-		nf.DigestFrequencyID: {Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: "weekly"}}},
+	mock := &mockEvaluator{results: map[string]*pbflags.Result{
+		nf.DigestFrequencyID: result(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: "weekly"}}),
 	}}
-	client := nf.NewNotificationsFlagsClient(mock)
+	client := nf.New(mock)
 	if got := client.DigestFrequency(context.Background()); got != "weekly" {
 		t.Errorf("DigestFrequency = %q, want %q", got, "weekly")
 	}
 }
 
 func TestInt64Flag(t *testing.T) {
-	mock := &mockEvaluator{responses: map[string]*pbflagsv1.EvaluateResponse{
-		nf.MaxRetriesID: {Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64Value{Int64Value: 10}}},
+	mock := &mockEvaluator{results: map[string]*pbflags.Result{
+		nf.MaxRetriesID: result(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64Value{Int64Value: 10}}),
 	}}
-	client := nf.NewNotificationsFlagsClient(mock)
+	client := nf.New(mock)
 	if got := client.MaxRetries(context.Background()); got != 10 {
 		t.Errorf("MaxRetries = %d, want 10", got)
 	}
 }
 
 func TestDoubleFlag(t *testing.T) {
-	mock := &mockEvaluator{responses: map[string]*pbflagsv1.EvaluateResponse{
-		nf.ScoreThresholdID: {Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleValue{DoubleValue: 0.95}}},
+	mock := &mockEvaluator{results: map[string]*pbflags.Result{
+		nf.ScoreThresholdID: result(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleValue{DoubleValue: 0.95}}),
 	}}
-	client := nf.NewNotificationsFlagsClient(mock)
+	client := nf.New(mock)
 	if got := client.ScoreThreshold(context.Background()); got != 0.95 {
 		t.Errorf("ScoreThreshold = %f, want 0.95", got)
 	}
 }
 
 func TestErrorReturnsDefaults(t *testing.T) {
-	// Empty mock — all Evaluate calls return NotFound error.
-	mock := &mockEvaluator{responses: map[string]*pbflagsv1.EvaluateResponse{}}
-	client := nf.NewNotificationsFlagsClient(mock)
+	mock := &mockEvaluator{results: map[string]*pbflags.Result{}}
+	client := nf.New(mock)
 	ctx := context.Background()
 
 	if got := client.EmailEnabled(ctx); got != nf.EmailEnabledDefault {
@@ -212,30 +223,21 @@ func TestErrorReturnsDefaults(t *testing.T) {
 	}
 }
 
-func TestStatus(t *testing.T) {
-	mock := &mockEvaluator{responses: map[string]*pbflagsv1.EvaluateResponse{}}
-	client := nf.NewNotificationsFlagsClient(mock)
-	if got := client.Status(context.Background()); got != pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_SERVING {
-		t.Errorf("Status = %v, want SERVING", got)
-	}
-}
-
-// TestNilValueNoWarning verifies that when the evaluator returns a response
+// TestNilValueNoWarning verifies that when the evaluator returns a result
 // with no FlagValue set (the normal DEFAULT/KILLED path), the client silently
 // returns the compiled default without logging a spurious "type mismatch"
-// warning. Regression test for pb-462.
+// warning.
 func TestNilValueNoWarning(t *testing.T) {
-	mock := &mockEvaluator{responses: map[string]*pbflagsv1.EvaluateResponse{
-		// Empty response — no FlagValue set, simulating SOURCE_DEFAULT.
-		nf.DigestFrequencyID: {},
-		nf.EmailEnabledID:    {},
-		nf.MaxRetriesID:      {},
-		nf.ScoreThresholdID:  {},
+	mock := &mockEvaluator{results: map[string]*pbflags.Result{
+		nf.DigestFrequencyID: {Source: pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT},
+		nf.EmailEnabledID:    {Source: pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT},
+		nf.MaxRetriesID:      {Source: pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT},
+		nf.ScoreThresholdID:  {Source: pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT},
 	}}
 
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	client := nf.NewNotificationsFlagsClient(mock, flagmeta.WithLogger(logger))
+	client := nf.New(mock, flagmeta.WithLogger(logger))
 	ctx := context.Background()
 
 	if got := client.DigestFrequency(ctx); got != nf.DigestFrequencyDefault {
@@ -259,14 +261,13 @@ func TestNilValueNoWarning(t *testing.T) {
 // TestTypeMismatchWarns verifies the warning DOES fire when the evaluator
 // returns a non-nil FlagValue of the wrong concrete type.
 func TestTypeMismatchWarns(t *testing.T) {
-	// Return a bool value for a string flag — genuine type mismatch.
-	mock := &mockEvaluator{responses: map[string]*pbflagsv1.EvaluateResponse{
-		nf.DigestFrequencyID: {Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}}},
+	mock := &mockEvaluator{results: map[string]*pbflags.Result{
+		nf.DigestFrequencyID: result(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}}),
 	}}
 
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	client := nf.NewNotificationsFlagsClient(mock, flagmeta.WithLogger(logger))
+	client := nf.New(mock, flagmeta.WithLogger(logger))
 
 	if got := client.DigestFrequency(context.Background()); got != nf.DigestFrequencyDefault {
 		t.Errorf("DigestFrequency = %q, want default %q", got, nf.DigestFrequencyDefault)

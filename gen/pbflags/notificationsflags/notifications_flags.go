@@ -6,10 +6,9 @@ import (
 	"context"
 	"log/slog"
 
-	"connectrpc.com/connect"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/flagmeta"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
-	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
+	"github.com/SpotlightGOV/pbflags/pbflags"
 )
 
 const FeatureID = "notifications"
@@ -50,28 +49,23 @@ type NotificationsFlags interface {
 	ScoreThreshold(ctx context.Context) float64
 	NotificationEmails(ctx context.Context) []string
 	RetryDelays(ctx context.Context) []int64
-
-	// Status returns the evaluator's current health state.
-	Status(ctx context.Context) pbflagsv1.EvaluatorStatus
 }
 
-// NewNotificationsFlagsClient creates a client backed by a FlagEvaluator connection.
+// New creates a NotificationsFlags client backed by a pbflags.Evaluator.
 // By default, evaluation errors are logged via slog.Default(). Use
 // flagmeta.WithLogger to override.
-func NewNotificationsFlagsClient(evaluator pbflagsv1connect.FlagEvaluatorServiceClient, opts ...flagmeta.Option) NotificationsFlags {
+func New(eval pbflags.Evaluator, opts ...flagmeta.Option) NotificationsFlags {
 	cfg := flagmeta.Apply(opts...)
-	return &notificationsFlagsClient{evaluator: evaluator, logger: cfg.Logger}
+	return &notificationsFlagsClient{eval: eval, logger: cfg.Logger}
 }
 
 type notificationsFlagsClient struct {
-	evaluator pbflagsv1connect.FlagEvaluatorServiceClient
-	logger    *slog.Logger
+	eval   pbflags.Evaluator
+	logger *slog.Logger
 }
 
 func (c *notificationsFlagsClient) EmailEnabled(ctx context.Context) bool {
-	resp, err := c.evaluator.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{
-		FlagId: EmailEnabledID,
-	}))
+	result, err := c.eval.Evaluate(ctx, EmailEnabledID)
 	if err != nil {
 		c.logger.ErrorContext(ctx, "flag evaluation failed",
 			"flag_id", EmailEnabledID,
@@ -79,7 +73,7 @@ func (c *notificationsFlagsClient) EmailEnabled(ctx context.Context) bool {
 		)
 		return EmailEnabledDefault
 	}
-	val := resp.Msg.GetValue().GetValue()
+	val := result.Value.GetValue()
 	if val == nil {
 		return EmailEnabledDefault
 	}
@@ -90,13 +84,11 @@ func (c *notificationsFlagsClient) EmailEnabled(ctx context.Context) bool {
 		)
 		return EmailEnabledDefault
 	}
-	return resp.Msg.GetValue().GetBoolValue()
+	return result.Value.GetBoolValue()
 }
 
 func (c *notificationsFlagsClient) DigestFrequency(ctx context.Context) string {
-	resp, err := c.evaluator.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{
-		FlagId: DigestFrequencyID,
-	}))
+	result, err := c.eval.Evaluate(ctx, DigestFrequencyID)
 	if err != nil {
 		c.logger.ErrorContext(ctx, "flag evaluation failed",
 			"flag_id", DigestFrequencyID,
@@ -104,7 +96,7 @@ func (c *notificationsFlagsClient) DigestFrequency(ctx context.Context) string {
 		)
 		return DigestFrequencyDefault
 	}
-	val := resp.Msg.GetValue().GetValue()
+	val := result.Value.GetValue()
 	if val == nil {
 		return DigestFrequencyDefault
 	}
@@ -115,13 +107,11 @@ func (c *notificationsFlagsClient) DigestFrequency(ctx context.Context) string {
 		)
 		return DigestFrequencyDefault
 	}
-	return resp.Msg.GetValue().GetStringValue()
+	return result.Value.GetStringValue()
 }
 
 func (c *notificationsFlagsClient) MaxRetries(ctx context.Context) int64 {
-	resp, err := c.evaluator.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{
-		FlagId: MaxRetriesID,
-	}))
+	result, err := c.eval.Evaluate(ctx, MaxRetriesID)
 	if err != nil {
 		c.logger.ErrorContext(ctx, "flag evaluation failed",
 			"flag_id", MaxRetriesID,
@@ -129,7 +119,7 @@ func (c *notificationsFlagsClient) MaxRetries(ctx context.Context) int64 {
 		)
 		return MaxRetriesDefault
 	}
-	val := resp.Msg.GetValue().GetValue()
+	val := result.Value.GetValue()
 	if val == nil {
 		return MaxRetriesDefault
 	}
@@ -140,13 +130,11 @@ func (c *notificationsFlagsClient) MaxRetries(ctx context.Context) int64 {
 		)
 		return MaxRetriesDefault
 	}
-	return resp.Msg.GetValue().GetInt64Value()
+	return result.Value.GetInt64Value()
 }
 
 func (c *notificationsFlagsClient) ScoreThreshold(ctx context.Context) float64 {
-	resp, err := c.evaluator.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{
-		FlagId: ScoreThresholdID,
-	}))
+	result, err := c.eval.Evaluate(ctx, ScoreThresholdID)
 	if err != nil {
 		c.logger.ErrorContext(ctx, "flag evaluation failed",
 			"flag_id", ScoreThresholdID,
@@ -154,7 +142,7 @@ func (c *notificationsFlagsClient) ScoreThreshold(ctx context.Context) float64 {
 		)
 		return ScoreThresholdDefault
 	}
-	val := resp.Msg.GetValue().GetValue()
+	val := result.Value.GetValue()
 	if val == nil {
 		return ScoreThresholdDefault
 	}
@@ -165,13 +153,11 @@ func (c *notificationsFlagsClient) ScoreThreshold(ctx context.Context) float64 {
 		)
 		return ScoreThresholdDefault
 	}
-	return resp.Msg.GetValue().GetDoubleValue()
+	return result.Value.GetDoubleValue()
 }
 
 func (c *notificationsFlagsClient) NotificationEmails(ctx context.Context) []string {
-	resp, err := c.evaluator.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{
-		FlagId: NotificationEmailsID,
-	}))
+	result, err := c.eval.Evaluate(ctx, NotificationEmailsID)
 	if err != nil {
 		c.logger.ErrorContext(ctx, "flag evaluation failed",
 			"flag_id", NotificationEmailsID,
@@ -179,7 +165,7 @@ func (c *notificationsFlagsClient) NotificationEmails(ctx context.Context) []str
 		)
 		return NotificationEmailsDefault()
 	}
-	val := resp.Msg.GetValue().GetValue()
+	val := result.Value.GetValue()
 	if val == nil {
 		return NotificationEmailsDefault()
 	}
@@ -190,13 +176,11 @@ func (c *notificationsFlagsClient) NotificationEmails(ctx context.Context) []str
 		)
 		return NotificationEmailsDefault()
 	}
-	return resp.Msg.GetValue().GetStringListValue().GetValues()
+	return result.Value.GetStringListValue().GetValues()
 }
 
 func (c *notificationsFlagsClient) RetryDelays(ctx context.Context) []int64 {
-	resp, err := c.evaluator.Evaluate(ctx, connect.NewRequest(&pbflagsv1.EvaluateRequest{
-		FlagId: RetryDelaysID,
-	}))
+	result, err := c.eval.Evaluate(ctx, RetryDelaysID)
 	if err != nil {
 		c.logger.ErrorContext(ctx, "flag evaluation failed",
 			"flag_id", RetryDelaysID,
@@ -204,7 +188,7 @@ func (c *notificationsFlagsClient) RetryDelays(ctx context.Context) []int64 {
 		)
 		return RetryDelaysDefault()
 	}
-	val := resp.Msg.GetValue().GetValue()
+	val := result.Value.GetValue()
 	if val == nil {
 		return RetryDelaysDefault()
 	}
@@ -215,16 +199,7 @@ func (c *notificationsFlagsClient) RetryDelays(ctx context.Context) []int64 {
 		)
 		return RetryDelaysDefault()
 	}
-	return resp.Msg.GetValue().GetInt64ListValue().GetValues()
-}
-
-func (c *notificationsFlagsClient) Status(ctx context.Context) pbflagsv1.EvaluatorStatus {
-	resp, err := c.evaluator.Health(ctx, connect.NewRequest(&pbflagsv1.HealthRequest{}))
-	if err != nil {
-		c.logger.ErrorContext(ctx, "health check failed", "error", err)
-		return pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_UNSPECIFIED
-	}
-	return resp.Msg.Status
+	return result.Value.GetInt64ListValue().GetValues()
 }
 
 // Defaults returns a NotificationsFlags that always returns the compiled
@@ -260,10 +235,6 @@ func (defaultNotificationsFlags) RetryDelays(_ context.Context) []int64 {
 	return RetryDelaysDefault()
 }
 
-func (defaultNotificationsFlags) Status(_ context.Context) pbflagsv1.EvaluatorStatus {
-	return pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_UNSPECIFIED
-}
-
 // TestNotificationsFlags is a mutable implementation of NotificationsFlags for use in tests.
 // Each method delegates to its corresponding Func field, which is pre-populated
 // with the compiled default. Override individual fields to stub specific flags.
@@ -274,7 +245,6 @@ type TestNotificationsFlags struct {
 	ScoreThresholdFunc     func(context.Context) float64
 	NotificationEmailsFunc func(context.Context) []string
 	RetryDelaysFunc        func(context.Context) []int64
-	StatusFunc             func(context.Context) pbflagsv1.EvaluatorStatus
 }
 
 // Testing returns a mutable NotificationsFlags whose func fields are pre-populated
@@ -299,9 +269,6 @@ func Testing() *TestNotificationsFlags {
 		},
 		RetryDelaysFunc: func(_ context.Context) []int64 {
 			return RetryDelaysDefault()
-		},
-		StatusFunc: func(_ context.Context) pbflagsv1.EvaluatorStatus {
-			return pbflagsv1.EvaluatorStatus_EVALUATOR_STATUS_UNSPECIFIED
 		},
 	}
 }
@@ -328,10 +295,6 @@ func (t *TestNotificationsFlags) NotificationEmails(ctx context.Context) []strin
 
 func (t *TestNotificationsFlags) RetryDelays(ctx context.Context) []int64 {
 	return t.RetryDelaysFunc(ctx)
-}
-
-func (t *TestNotificationsFlags) Status(ctx context.Context) pbflagsv1.EvaluatorStatus {
-	return t.StatusFunc(ctx)
 }
 
 // FlagDescriptors provides structured metadata about each flag in this feature.

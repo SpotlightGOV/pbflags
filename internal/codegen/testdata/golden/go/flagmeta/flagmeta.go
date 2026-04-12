@@ -70,7 +70,4 @@ type FlagDescriptor struct {
 	DefaultStrings []string
 	DefaultInt64s  []int64
 	DefaultDoubles []float64
-
-	HasEntityID bool   // True if the flag method takes a layer ID parameter.
-	LayerType   string // Layer name (e.g., "user", "entity") or empty for global.
 }
