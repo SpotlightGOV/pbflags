@@ -3,7 +3,6 @@
 package e2e
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -17,13 +16,8 @@ import (
 	"github.com/playwright-community/playwright-go"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jackc/pgx/v5"
-
-	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/internal/admin"
 	"github.com/SpotlightGOV/pbflags/internal/admin/web"
-	"github.com/SpotlightGOV/pbflags/internal/evaluator"
-	defsync "github.com/SpotlightGOV/pbflags/internal/sync"
 	"github.com/SpotlightGOV/pbflags/internal/testdb"
 )
 
@@ -33,75 +27,29 @@ type testEnv struct {
 	baseURL string
 	pw      *playwright.Playwright
 	browser playwright.Browser
-}
-
-// testDefs returns a set of flag definitions for E2E tests.
-// Uses a unique feature name to avoid collisions with other tests.
-func testDefs(prefix string) []evaluator.FlagDef {
-	return []evaluator.FlagDef{
-		{FlagID: prefix + "/1", FeatureID: prefix, FieldNum: 1, Name: "enabled", FlagType: pbflagsv1.FlagType_FLAG_TYPE_BOOL, Layer: "user", Default: boolVal(true)},
-		{FlagID: prefix + "/2", FeatureID: prefix, FieldNum: 2, Name: "greeting", FlagType: pbflagsv1.FlagType_FLAG_TYPE_STRING, Layer: "", Default: stringVal("hello")},
-		{FlagID: prefix + "/3", FeatureID: prefix, FieldNum: 3, Name: "max_items", FlagType: pbflagsv1.FlagType_FLAG_TYPE_INT64, Layer: "", Default: int64Val(10)},
-		{FlagID: prefix + "/4", FeatureID: prefix, FieldNum: 4, Name: "threshold", FlagType: pbflagsv1.FlagType_FLAG_TYPE_DOUBLE, Layer: "", Default: doubleVal(0.5)},
-	}
-}
-
-func boolVal(v bool) *pbflagsv1.FlagValue {
-	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: v}}
-}
-func stringVal(v string) *pbflagsv1.FlagValue {
-	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: v}}
-}
-func int64Val(v int64) *pbflagsv1.FlagValue {
-	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64Value{Int64Value: v}}
-}
-func doubleVal(v float64) *pbflagsv1.FlagValue {
-	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleValue{DoubleValue: v}}
-}
-
-// seedFlags inserts a feature and its flags into the database.
-func seedFlags(t *testing.T, pool *pgxpool.Pool, prefix string) {
-	t.Helper()
-	ctx := context.Background()
-
-	_, err := pool.Exec(ctx, `INSERT INTO feature_flags.features (feature_id) VALUES ($1) ON CONFLICT DO NOTHING`, prefix)
-	require.NoError(t, err)
-
-	_, err = pool.Exec(ctx, `
-		INSERT INTO feature_flags.flags (flag_id, feature_id, field_number, flag_type, layer, state) VALUES
-			($1, $5, 1, 'BOOL',   'USER',   'DEFAULT'),
-			($2, $5, 2, 'STRING', 'GLOBAL', 'DEFAULT'),
-			($3, $5, 3, 'INT64',  'GLOBAL', 'DEFAULT'),
-			($4, $5, 4, 'DOUBLE', 'GLOBAL', 'DEFAULT')
-		ON CONFLICT DO NOTHING`,
-		prefix+"/1", prefix+"/2", prefix+"/3", prefix+"/4", prefix)
-	require.NoError(t, err)
-}
-
-// syncDefs uses the sync package to write flag definitions to the database.
-func syncDefs(t *testing.T, pool *pgxpool.Pool, defs []evaluator.FlagDef) {
-	t.Helper()
-	ctx := context.Background()
-	conn, err := pgx.ConnectConfig(ctx, pool.Config().ConnConfig)
-	require.NoError(t, err)
-	defer conn.Close(ctx)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	_, err = defsync.SyncDefinitions(ctx, conn, defs, logger)
-	require.NoError(t, err)
+	tf      *testdb.TestFeature // per-test isolated feature
 }
 
 // setupEnv starts a PostgreSQL test container, a web admin server, and
 // a Playwright browser. The returned testEnv is cleaned up automatically.
+// e2eSpecs returns the standard set of flag specs for E2E tests.
+func e2eSpecs() []testdb.FlagSpec {
+	return []testdb.FlagSpec{
+		{FlagType: "BOOL", Layer: "USER"},     // flag 1: supports per-entity overrides
+		{FlagType: "STRING", Layer: "GLOBAL"}, // flag 2
+		{FlagType: "INT64", Layer: "GLOBAL"},  // flag 3
+		{FlagType: "DOUBLE", Layer: "GLOBAL"}, // flag 4
+	}
+}
+
 func setupEnv(t *testing.T) *testEnv {
 	t.Helper()
 
 	_, pool := testdb.Require(t)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	// Build a minimal flag set, sync to DB, then create a store.
-	prefix := "e2e_svc"
-	defs := testDefs(prefix)
-	syncDefs(t, pool, defs)
+	// Create an isolated feature per test via CreateTestFeature.
+	tf := testdb.CreateTestFeature(t, pool, e2eSpecs())
 
 	store := admin.NewStore(pool, logger)
 
@@ -143,6 +91,7 @@ func setupEnv(t *testing.T) *testEnv {
 		baseURL: baseURL,
 		pw:      pw,
 		browser: browser,
+		tf:      tf,
 	}
 }
 

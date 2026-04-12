@@ -29,7 +29,6 @@ import (
 
 func TestDashboardLoads(t *testing.T) {
 	env := setupEnv(t)
-	seedFlags(t, env.pool, "e2e_svc")
 
 	page := env.newPage(t)
 	_, err := page.Goto(env.baseURL)
@@ -42,7 +41,7 @@ func TestDashboardLoads(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check feature name is visible.
-	featureName := page.Locator("[data-feature='e2e_svc']")
+	featureName := page.Locator("[data-feature='" + env.tf.FeatureID + "']")
 	err = featureName.WaitFor(playwright.LocatorWaitForOptions{
 		State: playwright.WaitForSelectorStateAttached,
 	})
@@ -57,7 +56,6 @@ func TestDashboardLoads(t *testing.T) {
 
 func TestDashboardExpandCollapseFeature(t *testing.T) {
 	env := setupEnv(t)
-	seedFlags(t, env.pool, "e2e_svc")
 
 	page := env.newPage(t)
 	_, err := page.Goto(env.baseURL)
@@ -91,7 +89,6 @@ func TestDashboardExpandCollapseFeature(t *testing.T) {
 
 func TestNavigateToFlagDetail(t *testing.T) {
 	env := setupEnv(t)
-	seedFlags(t, env.pool, "e2e_svc")
 
 	page := env.newPage(t)
 	_, err := page.Goto(env.baseURL)
@@ -123,15 +120,14 @@ func TestNavigateToFlagDetail(t *testing.T) {
 	flagID := page.Locator(".flag-id-sub")
 	text, err := flagID.First().TextContent()
 	require.NoError(t, err)
-	assert.Contains(t, text, "e2e_svc/")
+	assert.Contains(t, text, env.tf.FeatureID+"/")
 }
 
 func TestKillAndUnkillFlag(t *testing.T) {
 	env := setupEnv(t)
-	seedFlags(t, env.pool, "e2e_svc")
 
 	page := env.newPage(t)
-	_, err := page.Goto(env.baseURL + "/flags/e2e_svc/2")
+	_, err := page.Goto(env.baseURL + "/flags/" + env.tf.FlagID(2))
 	require.NoError(t, err)
 
 	// Wait for flag detail to load.
@@ -177,11 +173,10 @@ func TestKillAndUnkillFlag(t *testing.T) {
 
 func TestUpdateStringFlagValue(t *testing.T) {
 	env := setupEnv(t)
-	seedFlags(t, env.pool, "e2e_svc")
 
 	page := env.newPage(t)
 	// Navigate to the string flag detail page.
-	_, err := page.Goto(env.baseURL + "/flags/e2e_svc/2")
+	_, err := page.Goto(env.baseURL + "/flags/" + env.tf.FlagID(2))
 	require.NoError(t, err)
 
 	// Wait for the value input form.
@@ -225,11 +220,10 @@ func TestUpdateStringFlagValue(t *testing.T) {
 
 func TestAddAndRemoveOverride(t *testing.T) {
 	env := setupEnv(t)
-	seedFlags(t, env.pool, "e2e_svc")
 
 	page := env.newPage(t)
 	// Navigate to the bool flag (user layer — supports overrides).
-	_, err := page.Goto(env.baseURL + "/flags/e2e_svc/1")
+	_, err := page.Goto(env.baseURL + "/flags/" + env.tf.FlagID(1))
 	require.NoError(t, err)
 
 	// Wait for overrides section.
@@ -283,11 +277,10 @@ func TestAddAndRemoveOverride(t *testing.T) {
 
 func TestAuditLogPage(t *testing.T) {
 	env := setupEnv(t)
-	seedFlags(t, env.pool, "e2e_svc")
 
 	page := env.newPage(t)
 	// First make a state change so there's an audit entry.
-	_, err := page.Goto(env.baseURL + "/flags/e2e_svc/2")
+	_, err := page.Goto(env.baseURL + "/flags/" + env.tf.FlagID(2))
 	require.NoError(t, err)
 
 	valueInput := page.Locator(".detail-value-input")
@@ -325,7 +318,6 @@ func TestAuditLogPage(t *testing.T) {
 
 func TestDashboardSearch(t *testing.T) {
 	env := setupEnv(t)
-	seedFlags(t, env.pool, "e2e_svc")
 
 	page := env.newPage(t)
 	_, err := page.Goto(env.baseURL)
@@ -340,7 +332,7 @@ func TestDashboardSearch(t *testing.T) {
 
 	// Type in the search box — use DispatchEvent to ensure oninput fires.
 	searchInput := page.Locator("#filter-search")
-	err = searchInput.Fill("e2e_svc")
+	err = searchInput.Fill(env.tf.FeatureID)
 	require.NoError(t, err)
 	err = searchInput.DispatchEvent("input", nil)
 	require.NoError(t, err)
@@ -367,7 +359,6 @@ func TestDashboardSearch(t *testing.T) {
 
 func TestDashboardStateFilter(t *testing.T) {
 	env := setupEnv(t)
-	seedFlags(t, env.pool, "e2e_svc")
 
 	page := env.newPage(t)
 	_, err := page.Goto(env.baseURL)
@@ -408,11 +399,10 @@ func TestDashboardStateFilter(t *testing.T) {
 
 func TestBreadcrumbNavigation(t *testing.T) {
 	env := setupEnv(t)
-	seedFlags(t, env.pool, "e2e_svc")
 
 	page := env.newPage(t)
 	// Navigate to a flag detail page.
-	_, err := page.Goto(env.baseURL + "/flags/e2e_svc/1")
+	_, err := page.Goto(env.baseURL + "/flags/" + env.tf.FlagID(1))
 	require.NoError(t, err)
 
 	breadcrumb := page.Locator(".breadcrumb")
@@ -437,7 +427,6 @@ func TestBreadcrumbNavigation(t *testing.T) {
 
 func TestKillFlagFromDashboard(t *testing.T) {
 	env := setupEnv(t)
-	seedFlags(t, env.pool, "e2e_svc")
 
 	page := env.newPage(t)
 	_, err := page.Goto(env.baseURL)
@@ -469,11 +458,10 @@ func TestKillFlagFromDashboard(t *testing.T) {
 
 func TestBulkImportOverrides(t *testing.T) {
 	env := setupEnv(t)
-	seedFlags(t, env.pool, "e2e_svc")
 
 	page := env.newPage(t)
 	// Navigate to the bool flag (user layer — supports overrides).
-	_, err := page.Goto(env.baseURL + "/flags/e2e_svc/1")
+	_, err := page.Goto(env.baseURL + "/flags/" + env.tf.FlagID(1))
 	require.NoError(t, err)
 
 	// Wait for overrides section.
@@ -546,7 +534,6 @@ func TestBulkImportOverrides(t *testing.T) {
 
 func TestHTMXPartialSwap(t *testing.T) {
 	env := setupEnv(t)
-	seedFlags(t, env.pool, "e2e_svc")
 
 	page := env.newPage(t)
 	_, err := page.Goto(env.baseURL)
