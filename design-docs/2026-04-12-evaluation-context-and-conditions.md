@@ -53,21 +53,23 @@ and the database stores **operational state**.
 
 ## Goals (v1)
 
-1. Define **evaluation context** in proto — typed dimensions that conditions
-   can inspect, replacing the current layers enum.
-2. Introduce a **YAML config format** for defining flag default values and
+1. Define **evaluation context** in proto — typed dimensions (string, enum,
+   bool, int64) that conditions can inspect, replacing the current layers
+   enum. Generated dimension constructors preserve compile-time type safety.
+2. Introduce a **YAML config format** for defining flag values and
    conditions alongside proto definitions.
 3. Evaluate **conditions** using CEL (Common Expression Language) — safe,
    sandboxed, type-checked at sync time.
-4. **Per-flag dimension tracking** — automatic cache key optimization based
-   on which context dimensions each flag's conditions actually reference.
+4. **Per-flag dimension tracking** with cardinality classification —
+   automatic cache key optimization based on which context dimensions each
+   flag's conditions reference and how they reference them (bounded enum vs.
+   finite literal set vs. unbounded).
 5. **Scoped evaluator API** — construct an evaluator with context that
    naturally fits application scopes (process → request → handler).
 6. Generated client methods take only `context.Context` (Go) or are
    zero-arg (Java) — no layer parameters.
-7. Flags without config conditions fall back to existing DB-based evaluation
-   for backwards compatibility during migration.
-8. Deprecate the current layers system.
+7. **Clean-cut migration** from layers to context dimensions. One consumer
+   (Spotlight), coordinated. No dual-mode period.
 
 ## Non-Goals (v1)
 
@@ -76,8 +78,6 @@ and the database stores **operational state**.
 - **Experiments** (randomized assignment with logging). Deferred. Depends
   on the launch slicing model.
 - **UI-based condition editing**. v1 uses a CLI for config management.
-- **Cardinality lint rules**. The per-flag dimension tracking provides the
-  data; enforcement rules can be added later.
 - **Client-side / frontend flag evaluation**. Orthogonal; see
   `research/client-side-flags.md`.
 
@@ -101,10 +101,17 @@ application constructs a context by binding dimensions at the appropriate
 scope — process-level dimensions are set once, request-level dimensions are
 added per request. Conditions evaluate against the combined context.
 
-Dimensions are always string-valued on the wire. CEL expressions handle
-any necessary type coercion. Missing (unset) dimensions have the zero
-value (empty string), and conditions must be written to handle this — e.g.,
-`ctx.plan == "enterprise"` naturally evaluates to false when `plan` is unset.
+Dimensions support proto scalar types — `string`, `enum`, `bool`, `int64`.
+Generated dimension constructors enforce these types at compile time (e.g.,
+`dims.Plan(dims.PlanEnterprise)` for an enum dimension, not
+`dims.Plan("enterprise")`). On the wire, all dimension values are
+serialized as strings in a `map<string, string>`. The type safety boundary
+is at the generated constructor, not the wire protocol.
+
+Missing (unset) dimensions have the zero value for their type (empty
+string, 0, false). Conditions should be written to handle this — e.g.,
+`ctx.plan == "enterprise"` naturally evaluates to false when `plan` is
+unset.
 
 ### Conditions
 
@@ -114,7 +121,7 @@ condition whose predicate matches the evaluation context determines the flag
 value.
 
 ```yaml
-defaults:
+flags:
   digest_frequency:
     conditions:
       - when: 'ctx.plan == "enterprise"'
@@ -172,9 +179,25 @@ Customers define an `EvaluationContext` message annotated with a new
 ```protobuf
 import "pbflags/options.proto";
 
+// Enum dimensions get typed constructors and sync-time value validation.
+enum PlanLevel {
+  PLAN_LEVEL_UNSPECIFIED = 0;
+  PLAN_LEVEL_FREE = 1;
+  PLAN_LEVEL_PRO = 2;
+  PLAN_LEVEL_ENTERPRISE = 3;
+}
+
+enum DeviceType {
+  DEVICE_TYPE_UNSPECIFIED = 0;
+  DEVICE_TYPE_DESKTOP = 1;
+  DEVICE_TYPE_MOBILE = 2;
+  DEVICE_TYPE_TABLET = 3;
+}
+
 message EvaluationContext {
   option (pbflags.context) = true;
 
+  // String dimensions — identifiers with unbounded cardinality.
   string user_id = 1 [(pbflags.dimension) = {
     description: "Authenticated user identifier"
     hashable: true  // Can be used as a launch/experiment ramp dimension
@@ -185,14 +208,16 @@ message EvaluationContext {
     hashable: true
   }];
 
-  string plan = 3 [(pbflags.dimension) = {
+  // Enum dimensions — bounded cardinality, compile-time safe constructors.
+  PlanLevel plan = 3 [(pbflags.dimension) = {
     description: "Subscription tier"
   }];
 
-  string device_type = 4 [(pbflags.dimension) = {
+  DeviceType device_type = 4 [(pbflags.dimension) = {
     description: "Client device class"
   }];
 
+  // String dimensions with low but unbounded cardinality.
   string region = 5 [(pbflags.dimension) = {
     description: "Deployment region"
   }];
@@ -225,9 +250,25 @@ extend google.protobuf.FieldOptions {
 }
 ```
 
+**Supported dimension types:**
+
+| Proto type | CEL type | Generated constructor | Wire value |
+|------------|----------|----------------------|------------|
+| `string` | `string` | `func User(id string) Dimension` | raw string |
+| `enum` | `string` | `func Plan(p PlanLevel) Dimension` | lowercase name (`"enterprise"`) |
+| `bool` | `bool` | `func IsInternal(b bool) Dimension` | `"true"` / `"false"` |
+| `int64` | `int` | `func OrgSize(n int64) Dimension` | decimal string |
+
+Enum dimensions are represented as strings in CEL (the lowercase,
+prefix-stripped enum value name). The sync tool validates that CEL
+expressions compare enum dimensions only against declared enum values.
+This gives compile-time safety at the call site (typed constructor) and
+sync-time safety in conditions (validated enum values) while keeping the
+wire protocol simple (`map<string, string>`).
+
 **Codegen validation:** Exactly one message in the input files must carry
-`(pbflags.context)`. All fields must be `string` type (context values are
-always strings on the wire). Duplicate field names are a proto-level error.
+`(pbflags.context)`. Fields must be `string`, `bool`, `int64`, or a proto
+`enum` type. Duplicate field names are a proto-level error.
 
 ### Config: YAML format
 
@@ -237,19 +278,19 @@ One config file per feature. The file is named after the feature ID:
 # flags/notifications.yaml
 feature: notifications
 
-defaults:
-  # Static default (no conditions).
+flags:
+  # Static value (no conditions).
   email_enabled:
     value: true
 
-  # Conditional default.
+  # Conditional value — evaluated top to bottom, first match wins.
   digest_frequency:
     conditions:
       - when: 'ctx.plan == "enterprise"'
         value: "daily"
       - otherwise: "weekly"
 
-  # Multiple conditions, evaluated top to bottom.
+  # Multiple conditions.
   max_retries:
     conditions:
       - when: 'ctx.plan == "enterprise"'
@@ -268,22 +309,31 @@ defaults:
       - otherwise: ["ops@example.com"]
 ```
 
+The top-level key is `flags:`, not `defaults:` — the section defines the
+full behavior chain for each flag, including conditions. Launches and
+experiments will be added as sibling sections in the future.
+
 **Validation rules** (enforced by `pbflags-sync` at sync time):
 
 - `feature` must match a feature ID in the proto descriptor.
-- Each key under `defaults` must match a field name in the feature message.
+- Each key under `flags` must match a field name in the feature message.
 - Each `value` must be type-compatible with the proto field type.
 - Each `when` expression must be a valid CEL expression that type-checks
   against the `EvaluationContext` message.
 - CEL expressions must reference only declared dimension names (via `ctx.*`).
+- Enum dimension comparisons must use declared enum values (e.g.,
+  `ctx.plan == "enterprise"` is valid only if `PLAN_LEVEL_ENTERPRISE`
+  exists in the `PlanLevel` enum).
 - A flag may have either a static `value` or `conditions`, not both.
 - Condition chains should have an `otherwise` clause. The sync tool warns
   if one is missing (evaluation falls through to the proto compiled default,
   which may be surprising).
+- Every flag defined in the proto must have an entry in the config file.
+  The sync tool errors if a flag has no config entry (no ambiguous halfway
+  state between config-driven and DB-driven flags).
 
 **Config file location:** Passed to `pbflags-sync` via a new `--config`
-flag. If omitted, no conditions are loaded and flags evaluate using existing
-DB state (backwards compatibility).
+flag. Required — all flags must have config entries.
 
 ```bash
 pbflags-sync \
@@ -309,9 +359,16 @@ safe, sandboxed expression evaluation in configuration and policy.
   Security Rules, Google Cloud IAM conditions.
 
 **CEL environment:** The sync tool builds a CEL type environment from the
-proto-defined `EvaluationContext`. Each dimension becomes a string-typed
-variable accessible via `ctx.<dimension_name>`. The type checker verifies
-that expressions only reference declared dimensions and use valid operators.
+proto-defined `EvaluationContext`. Each dimension becomes a variable
+accessible via `ctx.<dimension_name>` with the type derived from the proto
+field:
+
+- `string` fields → CEL `string`
+- `enum` fields → CEL `string` (lowercase prefix-stripped value, e.g.,
+  `"enterprise"` for `PLAN_LEVEL_ENTERPRISE`). The sync tool validates
+  compared values against the enum's declared values.
+- `bool` fields → CEL `bool`
+- `int64` fields → CEL `int`
 
 **Restricted subset (v1):** Start with comparison and containment operators.
 Expand to computed values and type coercion only when a concrete need
@@ -325,6 +382,8 @@ arises.
 | Boolean logic | `ctx.plan == "pro" && ctx.device_type == "mobile"` |
 | Negation | `!(ctx.environment == "production")` |
 | String presence | `ctx.user_id != ""` (dimension is set) |
+| Bool dimension | `ctx.is_internal` |
+| Int comparison | `ctx.org_size > 100` |
 
 ### Sync: compilation pipeline
 
@@ -354,8 +413,17 @@ and database write:
    - Compiled conditions + referenced dimensions (new)
 ```
 
-**Dimension extraction** works by walking the CEL AST and collecting all
-`ctx.<name>` identifier references. For a condition chain like:
+**Dimension extraction and classification** works by walking the CEL AST
+and collecting all `ctx.<name>` identifier references, then classifying
+each dimension by how it's used:
+
+| Classification | Pattern | Example | Cache impact |
+|---------------|---------|---------|--------------|
+| **Bounded** | Enum dimension, or compared against known-finite values | `ctx.plan == "enterprise"` | Include in cache key. Cardinality bounded by enum size. |
+| **Finite filter** | Unbounded dimension compared against string literals only (equality or `in`) | `ctx.user_id == "user-99"`, `ctx.user_id in ["u-1", "u-2"]` | Evaluate inline. Cache key uses match result (true/false), not the raw dimension value. Effective cardinality: 2. |
+| **Unbounded** | Unbounded dimension referenced in any other pattern | `ctx.user_id != ""` (presence check) | Include in cache key. Sync emits a warning. Evaluator uses LRU cap. |
+
+For a condition chain like:
 
 ```yaml
 conditions:
@@ -366,17 +434,29 @@ conditions:
   - otherwise: false
 ```
 
-The referenced dimensions for this flag are `["plan", "user_id"]` — the
-union across all conditions.
+`plan` is classified as **bounded** (enum), `user_id` as **finite filter**
+(only appears in an `in` check against literals). The cache key for this
+flag is `"notifications/1|plan=enterprise|user_id:match=true"` — not
+`"notifications/1|plan=enterprise|user_id=user-123"`. This avoids
+unbounded cache growth from allowlist-style conditions that replace
+per-entity overrides.
+
+The classification metadata is stored alongside the compiled conditions
+in the database.
+
+**CEL version stamp:** The sync tool records the CEL library version used
+for compilation alongside the conditions. The evaluator checks this version
+at load time. See "CEL compile-failure handling" in the evaluator section.
 
 ### DB: schema changes
 
-Two new columns on the existing `flags` table:
+New columns on the existing `flags` table:
 
 ```sql
 ALTER TABLE feature_flags.flags
     ADD COLUMN conditions JSONB DEFAULT NULL,
-    ADD COLUMN referenced_dimensions TEXT[] DEFAULT '{}';
+    ADD COLUMN dimension_metadata JSONB DEFAULT NULL,
+    ADD COLUMN cel_version VARCHAR(50) DEFAULT NULL;
 ```
 
 The `conditions` column stores the compiled condition chain as a JSON array:
@@ -392,8 +472,20 @@ A `null` cel field represents the `otherwise` catch-all. The `value` object
 uses the same structure as the existing `default_value` column for
 consistency.
 
-`referenced_dimensions` stores the dimension names extracted from the CEL
-AST, used by the evaluator for cache key construction.
+`dimension_metadata` stores per-dimension classification and cache
+key behavior, computed by the sync tool's AST analysis:
+
+```json
+{
+  "plan": {"classification": "bounded", "cache_key": true},
+  "user_id": {"classification": "finite_filter", "cache_key": false,
+              "literal_set": ["user-1", "user-2"]}
+}
+```
+
+`cel_version` records the CEL library version used by the sync tool when
+compiling the conditions (e.g., `"cel-go/0.22.1"`). The evaluator checks
+this at load time to detect version skew.
 
 **Why columns, not a separate table:** The condition chain is a property of
 a flag — it's always loaded alongside the flag definition and never queried
@@ -404,18 +496,16 @@ a separate table can be introduced later.
 
 ### Evaluator: condition evaluation and caching
 
-**Evaluation precedence** (updated from the current chain):
+**Evaluation precedence** (replaces the current chain):
 
 1. **KILLED** → compiled default (unchanged)
 2. **Conditions** → evaluate condition chain against context, first match wins
-3. **Static config default** → the `value` from config (no conditions)
-4. **DB global value** → existing `state: ENABLED` + `value` from DB
-   (backwards compat for flags without config)
-5. **Compiled default** → from proto (ultimate safety net)
+3. **Static config value** → the `value` from config (no conditions)
+4. **Compiled default** → from proto (ultimate safety net)
 
-Steps 2–3 only apply when the flag has a config entry. Flags without config
-entries follow the existing path (steps 4–5), preserving full backwards
-compatibility during migration.
+Every flag has a config entry (enforced by sync). There is no fallback to
+the old DB-value-based evaluation. This eliminates the ambiguous halfway
+state where some flags are config-driven and others are DB-driven.
 
 **Condition evaluation flow:**
 
@@ -424,57 +514,90 @@ Evaluator receives: (flag_id, context map<string,string>)
 
 1. Check kill set → if killed, return compiled default
 2. Load flag's condition chain (cached, refreshed with definitions)
-3. If flag has conditions:
-   a. Build cache key: flag_id + referenced dimension values only
-      e.g., "notifications/2|plan=enterprise" (only plan is referenced)
-   b. Check evaluation cache → return if hit
-   c. Iterate conditions:
-      - Evaluate CEL program with context
-      - First match → cache result, return value
-      - No match and no otherwise → return compiled default
-4. If flag has no conditions:
-   a. Existing evaluation path (DB global value / compiled default)
+3. Build cache key using dimension metadata:
+   - Bounded dimensions: include "dim=value" in key
+   - Finite-filter dimensions: evaluate literal-set membership,
+     include "dim:match=true|false" in key
+   - Unbounded dimensions: include "dim=value" in key (LRU-capped)
+   e.g., "notifications/2|plan=enterprise|user_id:match=false"
+4. Check evaluation cache → return if hit
+5. Iterate conditions in order:
+   - Evaluate CEL program with context
+   - First match → cache result, return value
+   - No match and no otherwise → return compiled default
 ```
 
 **Cache key construction:**
 
 ```go
-func cacheKey(flagID string, ctx map[string]string, dims []string) string {
-    // dims is pre-sorted and pre-computed at definition load time
+func cacheKey(flagID string, ctx map[string]string, meta DimensionMetadata) string {
     key := flagID
-    for _, dim := range dims {
-        key += "|" + dim + "=" + ctx[dim]
+    for _, dim := range meta.Sorted() {
+        switch dim.Classification {
+        case Bounded, Unbounded:
+            key += "|" + dim.Name + "=" + ctx[dim.Name]
+        case FiniteFilter:
+            matched := dim.LiteralSet.Contains(ctx[dim.Name])
+            key += "|" + dim.Name + ":match=" + strconv.FormatBool(matched)
+        }
     }
     return key
 }
 ```
 
 A flag whose conditions only reference `plan` (3 enum values) has at most
-3 cache entries — regardless of how many users exist. A flag with no
-conditions (static default) has a cache key of just its flag ID — one entry,
-same as today.
+3 cache entries. A flag with a `ctx.user_id in [...]` allowlist condition
+has at most 2 × (other dimension cardinality) entries — the allowlist
+membership is collapsed to a boolean, not expanded per user. A flag with no
+conditions (static value) has a cache key of just its flag ID — one entry.
+
+**Cache cardinality guard:** The evaluation cache uses an LRU eviction
+policy with a configurable max size (default: 10,000 entries). This bounds
+memory usage even if a flag references an unbounded dimension in an
+unrecognized pattern. The sync tool warns when this could happen:
+
+```
+warning: flag "notifications/5" references unbounded dimension "user_id"
+  in pattern "ctx.user_id != \"\"" (not a finite filter).
+  Cache key will include user_id values — consider using equality/membership
+  checks against literals, or review caching impact.
+```
 
 **CEL program compilation:** CEL programs are compiled once when the flag
 definition is loaded (at startup and on definition refresh). The compiled
-`cel.Program` objects are reused across evaluations. Compilation is the
-expensive step; evaluation is fast.
+`cel.Program` objects are reused across evaluations.
+
+**CEL compile-failure handling:** If a CEL program fails to compile at load
+time (e.g., due to version skew between the sync tool and evaluator), the
+evaluator:
+
+1. Logs an error identifying the flag and the compilation error.
+2. Falls back to the compiled default for the affected flag.
+3. Reports degraded health via the `Health` RPC (`EVALUATOR_STATUS_DEGRADED`).
+4. Continues serving all other flags normally.
+
+This ensures a CEL version mismatch degrades gracefully (one flag gets its
+compiled default) rather than failing catastrophically (evaluator refuses
+to start). The `cel_version` column lets operators diagnose the issue: if
+the evaluator's CEL runtime is older than what sync used, the evaluator
+needs to be updated before redeploying the affected config.
 
 **Wire protocol changes:**
 
 ```protobuf
 message EvaluateRequest {
   string flag_id = 1;
-  string entity_id = 2;              // deprecated, backwards compat
-  map<string, string> context = 3;   // new: evaluation context dimensions
+  reserved 2;                         // was: entity_id
+  map<string, string> context = 3;    // evaluation context dimensions
 }
 ```
 
-The evaluator checks `context` first. If empty, it falls back to
-`entity_id` for backwards compatibility with old clients. Generated clients
-always populate `context`.
+`entity_id` is removed (reserved), not deprecated. Since we have one
+consumer and are doing a clean-cut migration, there's no need for a
+backwards-compatibility period. Generated clients always populate `context`.
 
-`BulkEvaluateRequest` gets the same `context` field. Each flag in the
-bulk request is evaluated against the same context.
+`BulkEvaluateRequest` gets the same treatment. Each flag in the bulk
+request is evaluated against the same context.
 
 ### Client API: scoped evaluator pattern
 
@@ -508,13 +631,13 @@ func flagsMiddleware(global pbflags.Evaluator) func(http.Handler) http.Handler {
             if user != nil {
                 scoped = global.With(
                     dims.User(user.ID),
-                    dims.Plan(user.Plan),
-                    dims.DeviceType(detectDevice(r)),
+                    dims.Plan(dims.PlanLevel(user.Plan)),
+                    dims.Device(detectDevice(r)),
                 )
             } else {
                 scoped = global.With(
                     dims.SessionID(sessionIDFromCookie(r)),
-                    dims.DeviceType(detectDevice(r)),
+                    dims.Device(detectDevice(r)),
                 )
             }
 
@@ -596,17 +719,47 @@ package dims
 
 import "github.com/.../pbflags"
 
-func User(id string) pbflags.Dimension     { return pbflags.Dimension{Name: "user_id", Value: id} }
-func SessionID(id string) pbflags.Dimension { return pbflags.Dimension{Name: "session_id", Value: id} }
-func Plan(p string) pbflags.Dimension      { return pbflags.Dimension{Name: "plan", Value: p} }
-func DeviceType(d string) pbflags.Dimension { return pbflags.Dimension{Name: "device_type", Value: d} }
-func Region(r string) pbflags.Dimension    { return pbflags.Dimension{Name: "region", Value: r} }
-func Environment(e string) pbflags.Dimension { return pbflags.Dimension{Name: "environment", Value: e} }
+// String dimensions — accept any string.
+func User(id string) pbflags.Dimension       { return pbflags.Dimension{Name: "user_id", Value: id} }
+func SessionID(id string) pbflags.Dimension   { return pbflags.Dimension{Name: "session_id", Value: id} }
+func Region(r string) pbflags.Dimension       { return pbflags.Dimension{Name: "region", Value: r} }
+func Environment(e string) pbflags.Dimension  { return pbflags.Dimension{Name: "environment", Value: e} }
+
+// Enum dimensions — typed constructors, compile-time safe.
+type PlanLevel string
+const (
+    PlanFree       PlanLevel = "free"
+    PlanPro        PlanLevel = "pro"
+    PlanEnterprise PlanLevel = "enterprise"
+)
+func Plan(p PlanLevel) pbflags.Dimension { return pbflags.Dimension{Name: "plan", Value: string(p)} }
+
+type DeviceType string
+const (
+    DeviceDesktop DeviceType = "desktop"
+    DeviceMobile  DeviceType = "mobile"
+    DeviceTablet  DeviceType = "tablet"
+)
+func Device(d DeviceType) pbflags.Dimension { return pbflags.Dimension{Name: "device_type", Value: string(d)} }
 ```
 
-Function names are derived from the proto field name using the same
-convention as layer ID constructors today: `user_id` → `User`,
-`session_id` → `SessionID`, `device_type` → `DeviceType`.
+String dimensions accept any string value (`func User(id string)`). Enum
+dimensions generate a Go string type with named constants, so callers write
+`dims.Plan(dims.PlanEnterprise)` — passing an arbitrary string is a
+compile error. Function names are derived from the proto field name using
+the same convention as layer ID constructors today.
+
+For Java, enum dimensions generate a Java enum with a `toDimension()`
+method:
+
+```java
+public enum PlanLevel {
+    FREE("free"), PRO("pro"), ENTERPRISE("enterprise");
+    // ...
+}
+
+public static Dimension plan(PlanLevel p) { return new Dimension("plan", p.value()); }
+```
 
 **Testing helpers** adapt accordingly:
 
@@ -660,13 +813,13 @@ Evaluator requestEvaluator(
     if (user != null) {
         return global.with(
             Dims.user(user.id()),
-            Dims.plan(user.plan()),
-            Dims.deviceType(DeviceDetector.detect(request))
+            Dims.plan(PlanLevel.valueOf(user.plan())),
+            Dims.device(DeviceDetector.detect(request))
         );
     } else {
         return global.with(
             Dims.sessionId(Sessions.idFrom(request)),
-            Dims.deviceType(DeviceDetector.detect(request))
+            Dims.device(DeviceDetector.detect(request))
         );
     }
 }
@@ -716,6 +869,49 @@ public class Evaluator {
 }
 ```
 
+### Admin UI: role change for configured flags
+
+The shift from DB-driven to config-driven flag behavior changes what the
+admin UI is for. Today the admin UI is where you set flag values. In the
+new model, flag values come from config (git). The admin UI becomes an
+**operational control plane** — where you kill things and monitor state.
+
+**What the admin UI shows for configured flags:**
+
+| Panel | Current behavior | New behavior |
+|-------|-----------------|--------------|
+| Flag value | Editable (set global value) | **Read-only.** Displays the condition chain from config (rendered as a table of conditions → values). Shows which config file and commit defined it. |
+| Kill switch | Toggle KILLED state | **Unchanged.** Still the fast operational lever. |
+| Overrides | Add/edit per-entity overrides | **Removed.** Overrides are now conditions in config. UI links to the config file for editing. |
+| State (ENABLED/DEFAULT) | Toggle between ENABLED and DEFAULT | **Removed.** State is always defined by the config's condition chain. |
+| Audit log | Logs DB state changes | **Extended.** Logs kill/unkill actions (DB) and references config deployments (git SHA from sync). |
+
+**Environment-specific behavior:** Differences between environments are
+expressed as conditions on the `environment` dimension in config:
+
+```yaml
+flags:
+  expensive_feature:
+    conditions:
+      - when: 'ctx.environment == "production" && ctx.plan == "enterprise"'
+        value: true
+      - when: 'ctx.environment != "production"'
+        value: true   # enabled everywhere except prod-non-enterprise
+      - otherwise: false
+```
+
+This replaces the current pattern of manually configuring different values
+per environment's database. All environments get the same config file; the
+conditions make environment-specific behavior explicit and reviewable.
+
+**Audit across git + DB:** Two audit streams, each authoritative for its
+domain:
+
+- **Config changes** (conditions, values): git history. The admin UI
+  shows the current git SHA that was last synced and links to the commit.
+- **Operational changes** (kills, future ramp/experiment actions): DB
+  audit log. Same as today.
+
 ### Generated code changes
 
 **New packages generated:**
@@ -737,86 +933,58 @@ public class Evaluator {
 |---------|--------|
 | `layers` | Replaced by `dims`. |
 
-### Migration from layers
+### Migration: clean cut from layers
 
-The current layers system is deprecated in this design. Migration path:
+pbflags currently has one active consumer (Spotlight). A clean break is
+simpler and safer than a dual-mode transition — the risk is not external
+compatibility, it's avoiding an ambiguous halfway state where generated
+code, YAML config, DB state, and evaluator behavior disagree about which
+model owns a flag.
 
-**1. Proto changes:**
+**Migration sequence:**
 
-Replace the `Layer` enum with an `EvaluationContext` message. Each
-non-global layer becomes a hashable dimension:
+| Step | What changes | Verifiable state |
+|------|-------------|-----------------|
+| 1. **Proto** | Remove `Layer` enum. Add `EvaluationContext` message with dimensions (existing layers become hashable string dimensions, plus any new typed dimensions). Remove `layer` field from `FlagOptions`. | Proto compiles, codegen runs. |
+| 2. **Codegen** | Codegen produces `dims` package (not `layers`). Generated feature interfaces use `pbflags.Evaluator` constructor, `context.Context`-only getters. | Generated code compiles. |
+| 3. **Consumer** | Update Spotlight to scoped evaluator pattern: construct global evaluator, bind request-scoped dimensions in middleware, remove all layer ID parameters from flag callsites. | Consumer compiles and passes unit tests (using `Testing()` / `Defaults()`). |
+| 4. **Config export** | Run migration tool: export existing DB state (global values, per-entity overrides) as YAML config files. Global values become static `value:` entries. Per-entity overrides become `ctx.user_id == "..."` or `ctx.entity_id == "..."` conditions. Review generated YAML for correctness. | Config files exist for every flag. `pbflags config validate` passes. |
+| 5. **Sync + evaluator** | Deploy updated `pbflags-sync` (reads config, compiles CEL, writes conditions to DB) and updated evaluator (evaluates conditions). DB migration adds `conditions`, `dimension_metadata`, `cel_version` columns. | Sync succeeds. Evaluator starts and serves. |
+| 6. **Verify** | Smoke test: for each flag with overrides, verify the condition-based evaluation matches the previous override-based evaluation for the same entities. | Flag values match pre-migration behavior. |
+| 7. **Cleanup** | Drop `flag_overrides` table. Drop `flags.layer` column. Remove `flags.state` and `flags.value` columns (behavior now fully in `conditions`). Remove `(pbflags.layers)` extension from `options.proto`. | Schema clean. No dead columns. |
 
-```protobuf
-// Before:
-enum Layer {
-  option (pbflags.layers) = true;
-  LAYER_UNSPECIFIED = 0;
-  LAYER_GLOBAL = 1;
-  LAYER_USER = 2;
-  LAYER_ENTITY = 3;
-}
-
-// After:
-message EvaluationContext {
-  option (pbflags.context) = true;
-  string user_id = 1 [(pbflags.dimension) = { hashable: true }];
-  string entity_id = 2 [(pbflags.dimension) = { hashable: true }];
-  // ... additional dimensions
-}
-```
-
-The `layer` field on `FlagOptions` is deprecated. Flags no longer declare a
-layer — the dimensions they vary on are determined by their conditions.
-
-**2. Existing overrides → conditions:**
-
-Per-entity overrides currently in the database are replaced by conditions
-in config files:
+**Export tool:** `pbflags config export` reads the current DB state and
+generates YAML config files:
 
 ```yaml
-# Before: override set in admin UI
-#   flag: notifications/1
-#   entity_id: user-99
-#   value: false
+# Auto-generated from DB state. Review before committing.
+feature: notifications
 
-# After: condition in config
-defaults:
+flags:
+  # Was: state=ENABLED, value=true, layer=user
+  # Overrides: user-99 → false
   email_enabled:
     conditions:
       - when: 'ctx.user_id == "user-99"'
         value: false
       - otherwise: true
+
+  # Was: state=ENABLED, value="daily", layer=global
+  digest_frequency:
+    value: "daily"
 ```
 
-A migration tool can export existing overrides from the database as YAML
-condition entries to bootstrap the config files.
+The export tool translates the old model into the new one mechanically.
+The generated YAML is a starting point — the team reviews it and may
+refactor conditions (e.g., replacing individual user overrides with
+attribute-based conditions) before committing.
 
-**3. Client code migration:**
-
-```go
-// Before:
-flags.EmailEnabled(ctx, layers.User("user-123"))
-
-// After (evaluator already has user_id bound):
-flags.EmailEnabled(ctx)
-```
-
-**4. Database cleanup:**
-
-Once all flags have config conditions and all consumers are on the new
-generated code, the `flag_overrides` table and `flags.layer` column can be
-deprecated and eventually removed.
-
-**Migration order:**
-
-1. Add `EvaluationContext` proto and new `options.proto` extensions.
-2. Update codegen to generate `dims` package and new client signatures.
-3. Update consumer code (Spotlight) to use scoped evaluator pattern.
-4. Write config files for existing flags. Export overrides to conditions.
-5. Update `pbflags-sync` to compile and load config.
-6. Update evaluator to evaluate conditions.
-7. Deploy, verify conditions match existing behavior.
-8. Remove `Layer` enum, `layers` package, `flag_overrides` table.
+**What makes this safe:** Steps 1–3 are code-only changes that don't
+touch the running system. Step 4 produces config files that can be
+reviewed before deployment. Step 5 is the atomic cutover — sync and
+evaluator deploy together, and the evaluator's new precedence chain
+takes over. Step 6 verifies before cleanup. At no point are two models
+active simultaneously.
 
 ## Future work
 
@@ -900,17 +1068,18 @@ The per-flag dimension metadata enables future lint rules:
 
 | Phase | Work |
 |-------|------|
-| **1. Proto extensions** | Add `context` (51003) and `dimension` (51004) extensions to `options.proto`. Add `context` field (3) to `EvaluateRequest` and `BulkEvaluateRequest`. |
-| **2. Context discovery** | New `contextutil` package (parallel to `layerutil`) that discovers the `EvaluationContext` message and extracts dimension metadata. Codegen validation: exactly one context message, all fields are strings. |
-| **3. Dims codegen** | Generate `dims` package from context message (replaces `layers`). One constructor function per dimension. |
+| **1. Proto extensions** | Add `context` (51003) and `dimension` (51004) extensions to `options.proto`. Reserve `entity_id` field (2) and add `context` field (3) to `EvaluateRequest` and `BulkEvaluateRequest`. Remove `layers` extension and `FlagOptions.layer`. |
+| **2. Context discovery** | New `contextutil` package (parallel to `layerutil`) that discovers the `EvaluationContext` message and extracts dimension metadata. Codegen validation: exactly one context message, fields are string/enum/bool/int64. |
+| **3. Dims codegen** | Generate `dims` package from context message (replaces `layers`). String dimensions get `func(string)` constructors. Enum dimensions get typed string constants and typed constructors. |
 | **4. Evaluator interface** | New `pbflags.Evaluator` interface with `With()` and `Evaluate()`. Implementation wraps `FlagEvaluatorServiceClient`, merges dimensions, populates `EvaluateRequest.context`. `ContextWith` / `FromContext` for Go `context.Context` integration. |
-| **5. Feature codegen** | Update generated interfaces: remove layer params, constructor takes `pbflags.Evaluator`. Update `Defaults()`, `Testing()`, `FlagDescriptors`. |
-| **6. Consumer migration** | Update Spotlight to use scoped evaluator pattern. This is a breaking API change, coordinated with the single consumer. |
-| **7. Config parser** | YAML parser + validator. Matches feature/field names to proto descriptor. Validates value types. |
-| **8. CEL integration** | Build CEL type environment from `EvaluationContext` proto. Parse and type-check CEL expressions. AST walker for dimension extraction. |
-| **9. Sync: config compilation** | `pbflags-sync --config=flags/` parses YAML, compiles CEL, writes `conditions` and `referenced_dimensions` to flags table. DB migration for new columns. |
-| **10. Evaluator: conditions** | Load compiled conditions with flag definitions. Compile CEL programs at load time. Evaluate condition chain on cache miss. Cache by `(flag_id, referenced_dim_values)`. |
-| **11. Backwards compat** | Flags without config conditions use existing DB value path. `entity_id` on the wire falls back if `context` is empty. |
-| **12. Deprecation** | Deprecate `(pbflags.layers)`, `FlagOptions.layer`, `layers` package in codegen. Warn at sync time if layers enum is still present. |
-| **13. CLI** | `pbflags config validate` — check YAML + CEL against proto. `pbflags config show <flag>` — render effective config for a flag. |
-| **14. Override export** | Tool to export existing per-entity overrides from DB as YAML condition entries, bootstrapping config files for migration. |
+| **5. Feature codegen** | Update generated interfaces: remove layer params, constructor takes `pbflags.Evaluator`. Update `Defaults()`, `Testing()`, `FlagDescriptors`. Remove `layers` package generation. |
+| **6. Consumer migration** | Update Spotlight to scoped evaluator pattern. Breaking API change, coordinated. |
+| **7. Config parser** | YAML parser + validator. Matches feature/field names to proto descriptor. Validates value types. Validates enum dimension values against declared enums. Enforces every proto flag has a config entry. |
+| **8. CEL integration** | Build CEL type environment from `EvaluationContext` proto (typed dimensions, enum value validation). Parse and type-check CEL expressions. AST walker for dimension extraction and classification (bounded/finite-filter/unbounded). |
+| **9. DB migration** | Add `conditions` (JSONB), `dimension_metadata` (JSONB), `cel_version` (VARCHAR) columns to `flags` table. |
+| **10. Sync: config compilation** | `pbflags-sync --config=flags/` parses YAML, compiles CEL, classifies dimensions, writes conditions + metadata + version to flags table. Emits warnings for unbounded dimension references. |
+| **11. Evaluator: conditions** | Load compiled conditions with flag definitions. Compile CEL programs at load time (with graceful failure → compiled default + degraded health). Evaluate condition chain on cache miss. Cache by dimension-classified key. LRU eviction with configurable cap. |
+| **12. Config export tool** | `pbflags config export` reads existing DB state (global values, overrides) and generates YAML config files. Translates per-entity overrides to conditions. |
+| **13. CLI** | `pbflags config validate` — check YAML + CEL against proto. `pbflags config show <flag>` — render effective condition chain for a flag. |
+| **14. Admin UI updates** | Flag value panel becomes read-only (displays condition chain). Remove override management. Show sync git SHA. Link to config file for editing. |
+| **15. Cleanup** | Drop `flag_overrides` table. Drop `flags.layer`, `flags.state`, `flags.value` columns. Remove `layerutil` package. Remove `(pbflags.layers)` extension. |
