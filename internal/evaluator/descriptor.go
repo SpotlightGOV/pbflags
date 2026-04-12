@@ -52,16 +52,19 @@ func ParseDescriptorFile(path string) ([]FlagDef, error) {
 	return ParseDescriptors(data)
 }
 
-// ParseDescriptors extracts flag definitions from a serialized FileDescriptorSet.
-func ParseDescriptors(data []byte) ([]FlagDef, error) {
+// ParseDescriptorSet parses a serialized FileDescriptorSet and returns the
+// file and type registries. This is useful when callers need access to the
+// proto descriptors beyond just flag definitions (e.g., discovering the
+// EvaluationContext message).
+func ParseDescriptorSet(data []byte) (*protoregistry.Files, *protoregistry.Types, error) {
 	fds := &descriptorpb.FileDescriptorSet{}
 	if err := proto.Unmarshal(data, fds); err != nil {
-		return nil, fmt.Errorf("unmarshal descriptor set: %w", err)
+		return nil, nil, fmt.Errorf("unmarshal descriptor set: %w", err)
 	}
 
 	files, err := protodesc.NewFiles(fds)
 	if err != nil {
-		return nil, fmt.Errorf("build file registry: %w", err)
+		return nil, nil, fmt.Errorf("build file registry: %w", err)
 	}
 
 	types := new(protoregistry.Types)
@@ -69,6 +72,15 @@ func ParseDescriptors(data []byte) ([]FlagDef, error) {
 		registerAllTypes(types, fd)
 		return true
 	})
+	return files, types, nil
+}
+
+// ParseDescriptors extracts flag definitions from a serialized FileDescriptorSet.
+func ParseDescriptors(data []byte) ([]FlagDef, error) {
+	files, types, err := ParseDescriptorSet(data)
+	if err != nil {
+		return nil, err
+	}
 
 	featureExt, err := types.FindExtensionByNumber(
 		(&descriptorpb.MessageOptions{}).ProtoReflect().Descriptor().FullName(),

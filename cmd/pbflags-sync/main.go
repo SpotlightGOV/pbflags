@@ -28,6 +28,7 @@ func main() {
 	fs := flag.NewFlagSet("pbflags-sync", flag.ExitOnError)
 	database := fs.String("database", "", "PostgreSQL connection string (or PBFLAGS_DATABASE)")
 	descriptors := fs.String("descriptors", "", "path to descriptors.pb (or PBFLAGS_DESCRIPTORS)")
+	configDir := fs.String("config", "", "directory of YAML flag config files (or PBFLAGS_CONFIG)")
 	fs.Parse(args)
 
 	if *database == "" {
@@ -35,6 +36,9 @@ func main() {
 	}
 	if *descriptors == "" {
 		*descriptors = os.Getenv("PBFLAGS_DESCRIPTORS")
+	}
+	if *configDir == "" {
+		*configDir = os.Getenv("PBFLAGS_CONFIG")
 	}
 
 	if *database == "" {
@@ -46,20 +50,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := run(context.Background(), *database, *descriptors); err != nil {
+	if err := run(context.Background(), *database, *descriptors, *configDir); err != nil {
 		slog.Error("sync failed", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, dsn, descriptorPath string) error {
+func run(ctx context.Context, dsn, descriptorPath, configDir string) error {
 	slog.Info("running database migrations")
 	if err := db.Migrate(ctx, dsn); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 	slog.Info("migrations complete")
 
-	defs, err := evaluator.ParseDescriptorFile(descriptorPath)
+	descriptorData, err := os.ReadFile(descriptorPath)
+	if err != nil {
+		return fmt.Errorf("read descriptors: %w", err)
+	}
+
+	defs, err := evaluator.ParseDescriptors(descriptorData)
 	if err != nil {
 		return fmt.Errorf("parse descriptors: %w", err)
 	}
@@ -86,5 +95,17 @@ func run(ctx context.Context, dsn, descriptorPath string) error {
 		"flags_upserted", result.FlagsUpserted,
 		"flags_archived", result.FlagsArchived,
 	)
+
+	if configDir != "" {
+		condResult, condErr := defsync.SyncConditions(ctx, conn, configDir, descriptorData, defs, logger)
+		if condErr != nil {
+			return fmt.Errorf("sync conditions: %w", condErr)
+		}
+		for _, w := range condResult.Warnings {
+			slog.Warn(w)
+		}
+		slog.Info("conditions sync complete", "flags_updated", condResult.FlagsUpdated)
+	}
+
 	return nil
 }
