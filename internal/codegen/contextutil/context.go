@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/reflect/protoregistry"
 )
 
 const contextExtNum = 51003   // (pbflags.context) on MessageOptions
@@ -94,14 +95,42 @@ func DiscoverContext(plugin *protogen.Plugin) (*ContextDef, error) {
 	return parseContext(found[0])
 }
 
-// hasContextOption checks if the message has option (pbflags.context) set.
-func hasContextOption(msg *protogen.Message) bool {
-	opts := msg.Desc.Options()
+// DiscoverContextFromFiles scans a file registry for a message annotated with
+// option (pbflags.context). Returns the message descriptor, or an error if
+// none or multiple are found. This is the runtime equivalent of
+// DiscoverContext for use outside of protoc plugins (e.g., pbflags-sync).
+func DiscoverContextFromFiles(files *protoregistry.Files) (protoreflect.MessageDescriptor, error) {
+	var found []protoreflect.MessageDescriptor
+	files.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+		for i := 0; i < fd.Messages().Len(); i++ {
+			msg := fd.Messages().Get(i)
+			if HasContextOption(msg.Options()) {
+				found = append(found, msg)
+			}
+		}
+		return true
+	})
+
+	if len(found) == 0 {
+		return nil, fmt.Errorf("no message with (pbflags.context) option found in descriptors")
+	}
+	if len(found) > 1 {
+		names := make([]string, len(found))
+		for i, m := range found {
+			names[i] = string(m.FullName())
+		}
+		return nil, fmt.Errorf("multiple messages annotated with (pbflags.context): %s", strings.Join(names, ", "))
+	}
+	return found[0], nil
+}
+
+// HasContextOption checks if the given message options contain the
+// (pbflags.context) extension (field number 51003).
+func HasContextOption(opts protoreflect.ProtoMessage) bool {
 	if opts == nil {
 		return false
 	}
-
-	rm := opts.(interface{ ProtoReflect() protoreflect.Message }).ProtoReflect()
+	rm := opts.ProtoReflect()
 
 	// Try resolved extensions first.
 	var found bool
@@ -118,6 +147,11 @@ func hasContextOption(msg *protogen.Message) bool {
 
 	// Fall back to unknown fields.
 	return hasContextInUnknown(rm.GetUnknown())
+}
+
+// hasContextOption checks if the message has option (pbflags.context) set.
+func hasContextOption(msg *protogen.Message) bool {
+	return HasContextOption(msg.Desc.Options())
 }
 
 // hasContextInUnknown parses (pbflags.context) from unknown fields.

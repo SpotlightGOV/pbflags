@@ -457,6 +457,7 @@ func TestToFloat64EdgeCases(t *testing.T) {
 		{"float64", float64(3.14), 3.14},
 		{"int", int(7), 7.0},
 		{"int64", int64(9000000000), 9000000000.0},
+		{"uint64", uint64(42), 42.0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

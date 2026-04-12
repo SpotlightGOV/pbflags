@@ -13,13 +13,11 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/encoding/protowire"
-	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/reflect/protoregistry"
 	"gopkg.in/yaml.v3"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/internal/celenv"
+	"github.com/SpotlightGOV/pbflags/internal/codegen/contextutil"
 	"github.com/SpotlightGOV/pbflags/internal/configfile"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 )
@@ -64,7 +62,7 @@ func SyncConditions(
 		return ConditionResult{}, fmt.Errorf("parse descriptor set: %w", err)
 	}
 
-	contextMsg, err := discoverContextMessage(files)
+	contextMsg, err := contextutil.DiscoverContextFromFiles(files)
 	if err != nil {
 		return ConditionResult{}, err
 	}
@@ -91,18 +89,39 @@ func SyncConditions(
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	var result ConditionResult
+	processedFeatures := map[string]bool{}
 
 	for _, entry := range entries {
 		if entry.IsDir() || !isYAML(entry.Name()) {
 			continue
 		}
 		path := filepath.Join(configDir, entry.Name())
-		n, warns, err := processConfigFile(ctx, tx, path, idx, compiler, boundedDims, celVersion, logger)
+		featureID, n, warns, err := processConfigFile(ctx, tx, path, idx, compiler, boundedDims, celVersion, logger)
 		if err != nil {
 			return ConditionResult{}, fmt.Errorf("config %s: %w", entry.Name(), err)
 		}
+		processedFeatures[featureID] = true
 		result.FlagsUpdated += n
 		result.Warnings = append(result.Warnings, warns...)
+	}
+
+	// Clear stale conditions for features that no longer have config files.
+	for featureID := range idx {
+		if processedFeatures[featureID] {
+			continue
+		}
+		tag, err := tx.Exec(ctx,
+			`UPDATE feature_flags.flags
+			 SET conditions = NULL, dimension_metadata = NULL, cel_version = NULL, updated_at = now()
+			 WHERE feature_id = $1 AND conditions IS NOT NULL`,
+			featureID,
+		)
+		if err != nil {
+			return ConditionResult{}, fmt.Errorf("clear stale conditions for %q: %w", featureID, err)
+		}
+		if tag.RowsAffected() > 0 {
+			logger.Info("cleared stale conditions", "feature", featureID, "flags", tag.RowsAffected())
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -121,20 +140,20 @@ func processConfigFile(
 	boundedDims map[string]bool,
 	celVersion string,
 	logger *slog.Logger,
-) (int, []string, error) {
+) (featureID string, updated int, warnings []string, err error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return 0, nil, err
+		return "", 0, nil, err
 	}
 
-	featureID, err := peekFeature(data)
+	featureID, err = peekFeature(data)
 	if err != nil {
-		return 0, nil, err
+		return "", 0, nil, err
 	}
 
 	featureFlags, ok := idx[featureID]
 	if !ok {
-		return 0, nil, fmt.Errorf("feature %q not found in proto descriptors", featureID)
+		return featureID, 0, nil, fmt.Errorf("feature %q not found in proto descriptors", featureID)
 	}
 
 	flagTypes := make(map[string]pbflagsv1.FlagType, len(featureFlags))
@@ -142,35 +161,41 @@ func processConfigFile(
 		flagTypes[name] = info.FlagType
 	}
 
-	cfg, warnings, err := configfile.Parse(data, flagTypes)
+	var cfg *configfile.Config
+	cfg, warnings, err = configfile.Parse(data, flagTypes)
 	if err != nil {
-		return 0, nil, fmt.Errorf("parse: %w", err)
+		return featureID, 0, nil, fmt.Errorf("parse: %w", err)
 	}
 
 	logger.Info("processing config", "feature", featureID, "flags", len(cfg.Flags))
 
-	updated := 0
 	for flagName, entry := range cfg.Flags {
 		info := featureFlags[flagName]
 
 		condJSON, dimJSON, warns, compileErr := compileFlag(flagName, entry, compiler, boundedDims)
 		if compileErr != nil {
-			return 0, nil, fmt.Errorf("flag %q: %w", flagName, compileErr)
+			return featureID, 0, nil, fmt.Errorf("flag %q: %w", flagName, compileErr)
 		}
 		warnings = append(warnings, warns...)
 
+		// Only set cel_version when conditions are present; static-value
+		// flags get NULL for all three condition columns.
+		var cv *string
+		if condJSON != nil {
+			cv = &celVersion
+		}
 		if _, err := tx.Exec(ctx,
 			`UPDATE feature_flags.flags
 			 SET conditions = $2, dimension_metadata = $3, cel_version = $4, updated_at = now()
 			 WHERE flag_id = $1`,
-			info.FlagID, condJSON, dimJSON, celVersion,
+			info.FlagID, condJSON, dimJSON, cv,
 		); err != nil {
-			return 0, nil, fmt.Errorf("update flag %q: %w", info.FlagID, err)
+			return featureID, 0, nil, fmt.Errorf("update flag %q: %w", info.FlagID, err)
 		}
 		updated++
 	}
 
-	return updated, warnings, nil
+	return featureID, updated, warnings, nil
 }
 
 // conditionEntry is the JSON representation of a single condition stored in the
@@ -249,85 +274,6 @@ func peekFeature(data []byte) (string, error) {
 		return "", fmt.Errorf("missing feature field in config")
 	}
 	return peek.Feature, nil
-}
-
-const contextExtNum protoreflect.FieldNumber = 51003
-
-func discoverContextMessage(files *protoregistry.Files) (protoreflect.MessageDescriptor, error) {
-	var found protoreflect.MessageDescriptor
-	files.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
-		for i := 0; i < fd.Messages().Len(); i++ {
-			msg := fd.Messages().Get(i)
-			if hasContextExtension(msg) {
-				found = msg
-				return false
-			}
-		}
-		return true
-	})
-	if found == nil {
-		return nil, fmt.Errorf("no message with (pbflags.context) option found in descriptors")
-	}
-	return found, nil
-}
-
-func hasContextExtension(msg protoreflect.MessageDescriptor) bool {
-	opts := msg.Options()
-	if opts == nil {
-		return false
-	}
-	rm := opts.ProtoReflect()
-
-	// Check resolved extensions first.
-	var found bool
-	rm.Range(func(fd protoreflect.FieldDescriptor, _ protoreflect.Value) bool {
-		if fd.Number() == contextExtNum && fd.IsExtension() {
-			found = true
-			return false
-		}
-		return true
-	})
-	if found {
-		return true
-	}
-
-	// Fall back to unknown fields (unresolved extensions).
-	b := rm.GetUnknown()
-	for len(b) > 0 {
-		num, typ, n := protowire.ConsumeTag(b)
-		if n < 0 {
-			return false
-		}
-		b = b[n:]
-		if num == contextExtNum && typ == protowire.BytesType {
-			return true
-		}
-		n = skipWireField(b, typ)
-		if n < 0 {
-			return false
-		}
-		b = b[n:]
-	}
-	return false
-}
-
-func skipWireField(b []byte, typ protowire.Type) int {
-	switch typ {
-	case protowire.VarintType:
-		_, n := protowire.ConsumeVarint(b)
-		return n
-	case protowire.Fixed32Type:
-		_, n := protowire.ConsumeFixed32(b)
-		return n
-	case protowire.Fixed64Type:
-		_, n := protowire.ConsumeFixed64(b)
-		return n
-	case protowire.BytesType:
-		_, n := protowire.ConsumeBytes(b)
-		return n
-	default:
-		return -1
-	}
 }
 
 func getCELVersion() string {

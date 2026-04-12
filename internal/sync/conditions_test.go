@@ -17,6 +17,7 @@ import (
 	example "github.com/SpotlightGOV/pbflags/gen/example"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/internal/celenv"
+	"github.com/SpotlightGOV/pbflags/internal/codegen/contextutil"
 	"github.com/SpotlightGOV/pbflags/internal/configfile"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 	"github.com/SpotlightGOV/pbflags/internal/testdb"
@@ -56,7 +57,7 @@ func TestDiscoverContextMessage(t *testing.T) {
 		t.Fatalf("parse descriptor set: %v", err)
 	}
 
-	msg, err := discoverContextMessage(files)
+	msg, err := contextutil.DiscoverContextFromFiles(files)
 	if err != nil {
 		t.Fatalf("discoverContextMessage: %v", err)
 	}

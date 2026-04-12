@@ -368,6 +368,8 @@ func toFloat64(v any) (float64, error) {
 		return float64(n), nil
 	case int64:
 		return float64(n), nil
+	case uint64:
+		return float64(n), nil
 	default:
 		return 0, fmt.Errorf("expected number, got %T(%v)", v, v)
 	}
