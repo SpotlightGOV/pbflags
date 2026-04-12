@@ -2,6 +2,7 @@ package pbflags
 
 import (
 	"context"
+	"reflect"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
@@ -32,17 +33,32 @@ type Evaluator interface {
 type contextKey struct{}
 
 // ContextWith stores an Evaluator in a context.Context.
+// Panics if eval is nil.
 func ContextWith(ctx context.Context, eval Evaluator) context.Context {
+	if isNilEvaluator(eval) {
+		panic("pbflags.ContextWith: eval must not be nil")
+	}
 	return context.WithValue(ctx, contextKey{}, eval)
 }
 
 // FromContext retrieves the Evaluator from a context.Context.
-// Returns a no-op evaluator (all compiled defaults) if none is set.
+// Returns a no-op evaluator (all compiled defaults) if none is set
+// or if the stored value is a typed-nil.
 func FromContext(ctx context.Context) Evaluator {
-	if eval, ok := ctx.Value(contextKey{}).(Evaluator); ok {
+	eval, ok := ctx.Value(contextKey{}).(Evaluator)
+	if ok && !isNilEvaluator(eval) {
 		return eval
 	}
 	return noopEvaluator{}
+}
+
+// isNilEvaluator returns true for interface-nil and typed-nil Evaluator values.
+func isNilEvaluator(eval Evaluator) bool {
+	if eval == nil {
+		return true
+	}
+	v := reflect.ValueOf(eval)
+	return v.Kind() == reflect.Ptr && v.IsNil()
 }
 
 // noopEvaluator returns zero-value results for all evaluations.

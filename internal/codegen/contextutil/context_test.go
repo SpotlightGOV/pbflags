@@ -29,6 +29,9 @@ func projectRoot(t *testing.T) string {
 // buildDescriptorSet compiles the example proto and returns the FileDescriptorSet bytes.
 func buildDescriptorSet(t *testing.T, root string) []byte {
 	t.Helper()
+	if _, err := exec.LookPath("buf"); err != nil {
+		t.Skip("buf not found on PATH")
+	}
 	out := filepath.Join(t.TempDir(), "descriptors.pb")
 	cmd := exec.Command("buf", "build", "-o", out)
 	cmd.Dir = root
