@@ -288,6 +288,16 @@ not strings. Type safety is end-to-end: compile-time at the call site
 (proto enum type), proto-native on the wire, and proto-native in CEL
 evaluation.
 
+**Cardinality by type:** Enum and bool dimensions are inherently bounded
+(known finite values). String and int64 dimensions are **unbounded by
+default** — their cache classification comes from expression shape analysis
+at sync time, not from the field type. A condition like
+`ctx.org_size > 100` is a threshold partition (effectively 2 outcomes) but
+the sync tool classifies it as unbounded unless it can prove the expression
+produces a finite set of distinct results. The `bounded: true` annotation
+is available for both string and int64 dimensions when the developer knows
+the value space is finite.
+
 **Codegen validation:** Exactly one message in the input files must carry
 `(pbflags.context)`. Fields must be `string`, `bool`, `int64`, or a proto
 `enum` type. Duplicate field names are a proto-level error.
@@ -448,9 +458,40 @@ each dimension by how it's used:
 
 | Classification | Pattern | Example | Cache impact |
 |---------------|---------|---------|--------------|
-| **Bounded** | Enum dimension, or compared against known-finite values | `ctx.plan == PlanLevel.ENTERPRISE` | Include in cache key. Cardinality bounded by enum size. |
-| **Finite filter** | Unbounded dimension compared against string literals only (equality or `in`) | `ctx.user_id == "user-99"`, `ctx.user_id in ["u-1", "u-2"]` | Evaluate inline. Cache key uses match result (true/false), not the raw dimension value. Effective cardinality: 2. |
-| **Unbounded** | Unbounded dimension referenced in any other pattern | `ctx.user_id != ""` (presence check) | Include in cache key. Sync emits a warning. Evaluator uses LRU cap. |
+| **Bounded** | Enum or bool dimension | `ctx.plan == PlanLevel.ENTERPRISE` | Include in cache key. Cardinality bounded by enum/bool size. |
+| **Finite filter** | String or int64 dimension compared against literals only (equality or `in`) | `ctx.user_id == "user-99"`, `ctx.user_id in ["u-1", "u-2"]` | Cache key encodes the matched bucket, not the raw value. Cardinality = number of distinct literal groups + 1 (no match). See below. |
+| **Unbounded** | String or int64 dimension referenced in any other pattern | `ctx.user_id != ""` (presence check), `ctx.org_size > 100` | Include raw value in cache key. Sync emits a warning. Evaluator uses LRU cap. |
+
+**Finite-filter cache keys — correctness.** A naive boolean collapse
+(`match=true|false`) is incorrect when different literals produce different
+values. Consider:
+
+```yaml
+conditions:
+  - when: 'ctx.user_id == "u1"'
+    value: "alpha"
+  - when: 'ctx.user_id == "u2"'
+    value: "beta"
+  - otherwise: "control"
+```
+
+If the cache key collapsed to `user_id:match=true`, then `u1` and `u2`
+would share a cache entry despite having different values — whoever
+evaluates first poisons the cache for the other.
+
+The sync tool detects whether all literal matches for a dimension produce
+the same value:
+
+- **Uniform outcome:** All literals map to the same value → binary
+  collapse is safe. Cache key: `dim:match=true|false`. Cardinality: 2.
+  Example: `ctx.user_id in ["u1", "u2"] → value: true` (single condition).
+- **Distinct outcomes:** Different literals map to different values →
+  cache key includes the matched literal. Cache key:
+  `dim:match=u1`, `dim:match=u2`, `dim:match=none`. Cardinality: number
+  of distinct literals + 1.
+
+Both cases are bounded by the number of literals in the condition chain,
+not by the dimension's full cardinality.
 
 For a condition chain like:
 
@@ -464,11 +505,9 @@ conditions:
 ```
 
 `plan` is classified as **bounded** (enum), `user_id` as **finite filter**
-(only appears in an `in` check against literals). The cache key for this
-flag is `"notifications/1|plan=3|user_id:match=true"` — not
-`"notifications/1|plan=3|user_id=user-123"`. This avoids
-unbounded cache growth from allowlist-style conditions that replace
-per-entity overrides.
+with uniform outcome (single value `true` for all matches). The cache key
+is `"notifications/1|plan=3|user_id:match=true"` — binary collapse is
+safe here because all matched users get the same value.
 
 The classification metadata is stored alongside the compiled conditions
 in the database.
@@ -492,7 +531,7 @@ The `conditions` column stores the compiled condition chain as a JSON array:
 
 ```json
 [
-  {"cel": "ctx.plan == \"enterprise\"", "value": {"string_value": "daily"}},
+  {"cel": "ctx.plan == PlanLevel.ENTERPRISE", "value": {"string_value": "daily"}},
   {"cel": null, "value": {"string_value": "weekly"}}
 ]
 ```
@@ -501,13 +540,13 @@ A `null` cel field represents the `otherwise` catch-all. The `value` object
 uses the same structure as the existing `default_value` column for
 consistency.
 
-`dimension_metadata` stores per-dimension classification and cache
-key behavior, computed by the sync tool's AST analysis:
+`dimension_metadata` stores per-dimension classification and cache key
+behavior, computed by the sync tool's AST analysis:
 
 ```json
 {
-  "plan": {"classification": "bounded", "cache_key": true},
-  "user_id": {"classification": "finite_filter", "cache_key": false,
+  "plan": {"classification": "bounded"},
+  "user_id": {"classification": "finite_filter_uniform",
               "literal_set": ["user-1", "user-2"]}
 }
 ```
@@ -546,8 +585,8 @@ Evaluator receives: (flag_id, Any context)
 3. Load flag's condition chain (cached, refreshed with definitions)
 4. Build cache key using dimension metadata:
    - Bounded dimensions: include "dim=value" in key
-   - Finite-filter dimensions: evaluate literal-set membership,
-     include "dim:match=true|false" in key
+   - Finite-filter (uniform): include "dim:match=true|false" in key
+   - Finite-filter (distinct): include "dim:match=<literal>|none" in key
    - Unbounded dimensions: include "dim=value" in key (LRU-capped)
    e.g., "notifications/2|plan=2|user_id:match=false"
 5. Check evaluation cache → return if hit
@@ -564,13 +603,21 @@ func cacheKey(flagID string, ctx protoreflect.Message, meta DimensionMetadata) s
     key := flagID
     for _, dim := range meta.Sorted() {
         fd := ctx.Descriptor().Fields().ByName(protoreflect.Name(dim.Name))
-        val := ctx.Get(fd)
+        val := formatValue(fd, ctx.Get(fd))
         switch dim.Classification {
         case Bounded, Unbounded:
-            key += "|" + dim.Name + "=" + formatValue(fd, val)
-        case FiniteFilter:
-            matched := dim.LiteralSet.Contains(formatValue(fd, val))
+            key += "|" + dim.Name + "=" + val
+        case FiniteFilterUniform:
+            // All matched literals produce the same value — safe to collapse.
+            matched := dim.LiteralSet.Contains(val)
             key += "|" + dim.Name + ":match=" + strconv.FormatBool(matched)
+        case FiniteFilterDistinct:
+            // Different literals produce different values — encode which one matched.
+            if dim.LiteralSet.Contains(val) {
+                key += "|" + dim.Name + ":match=" + val
+            } else {
+                key += "|" + dim.Name + ":match=none"
+            }
         }
     }
     return key
@@ -578,10 +625,12 @@ func cacheKey(flagID string, ctx protoreflect.Message, meta DimensionMetadata) s
 ```
 
 A flag whose conditions only reference `plan` (3 enum values) has at most
-3 cache entries. A flag with a `ctx.user_id in [...]` allowlist condition
-has at most 2 × (other dimension cardinality) entries — the allowlist
-membership is collapsed to a boolean, not expanded per user. A flag with no
-conditions (static value) has a cache key of just its flag ID — one entry.
+3 cache entries. A flag with a uniform allowlist (`ctx.user_id in [...]` →
+single value) has at most 2 × (other dimension cardinality) entries. A flag
+with distinct per-user conditions has at most (number of literals + 1) ×
+(other dimension cardinality) entries — bounded by the literals in config,
+not by the user population. A flag with no conditions (static value) has a
+cache key of just its flag ID — one entry.
 
 **Cache cardinality guard:** The evaluation cache uses an LRU eviction
 policy with a configurable max size (default: 10,000 entries). This bounds
@@ -1026,7 +1075,7 @@ model owns a flag.
 | 4. **Config export** | Run migration tool: export existing DB state (global values, per-entity overrides) as YAML config files. Global values become static `value:` entries. Per-entity overrides become `ctx.user_id == "..."` or `ctx.entity_id == "..."` conditions. Review generated YAML for correctness. | Config files exist for every flag. `pbflags config validate` passes. |
 | 5. **Sync + evaluator** | Deploy updated `pbflags-sync` (reads config, compiles CEL, writes conditions to DB) and updated evaluator (evaluates conditions). DB migration adds `conditions`, `dimension_metadata`, `cel_version` columns. | Sync succeeds. Evaluator starts and serves. |
 | 6. **Verify** | Smoke test: for each flag with overrides, verify the condition-based evaluation matches the previous override-based evaluation for the same entities. | Flag values match pre-migration behavior. |
-| 7. **Cleanup** | Drop `flag_overrides` table. Drop `flags.layer` column. Remove `flags.state` and `flags.value` columns (behavior now fully in `conditions`). Remove `(pbflags.layers)` extension from `options.proto`. | Schema clean. No dead columns. |
+| 7. **Cleanup** | Drop `flag_overrides` table. Drop `flags.layer` and `flags.value` columns. Narrow `flags.state` to kill-only semantics (rename to `killed_at TIMESTAMP NULL` — NULL = live, non-NULL = killed with timestamp for audit). Remove `(pbflags.layers)` extension from `options.proto`. | Schema clean. Kill state preserved. |
 
 **Export tool:** `pbflags config export` reads the current DB state and
 generates YAML config files:
@@ -1172,7 +1221,7 @@ The per-flag dimension metadata enables future lint rules:
 |-------|------|
 | **1. Proto extensions** | Add `context` (51003) and `dimension` (51004) extensions to `options.proto`. Reserve `entity_id` field (2) and add `context` field (3) to `EvaluateRequest` and `BulkEvaluateRequest`. Remove `layers` extension and `FlagOptions.layer`. |
 | **2. Context discovery** | New `contextutil` package (parallel to `layerutil`) that discovers the `EvaluationContext` message and extracts dimension metadata. Codegen validation: exactly one context message, fields are string/enum/bool/int64. |
-| **3. Dims codegen** | Generate `dims` package from context message (replaces `layers`). String dimensions get `func(string)` constructors. Enum dimensions get typed string constants and typed constructors. |
+| **3. Dims codegen** | Generate `dims` package from context message (replaces `layers`). String dimensions get `func(string)` constructors. Enum dimensions get constructors accepting the proto-generated enum type (e.g., `func Plan(p pb.PlanLevel) Dimension`). |
 | **4. Evaluator interface** | New `pbflags.Evaluator` interface with `With()` and `Evaluate()`. Implementation wraps `FlagEvaluatorServiceClient`, merges dimensions, populates `EvaluateRequest.context`. `ContextWith` / `FromContext` for Go `context.Context` integration. |
 | **5. Feature codegen** | Update generated interfaces: remove layer params, constructor takes `pbflags.Evaluator`. Update `Defaults()`, `Testing()`, `FlagDescriptors`. Remove `layers` package generation. |
 | **6. Consumer migration** | Update Spotlight to scoped evaluator pattern. Breaking API change, coordinated. |
@@ -1184,4 +1233,4 @@ The per-flag dimension metadata enables future lint rules:
 | **12. Config export tool** | `pbflags config export` reads existing DB state (global values, overrides) and generates YAML config files. Translates per-entity overrides to conditions. |
 | **13. CLI** | `pbflags config validate` — check YAML + CEL against proto. `pbflags config show <flag>` — render effective condition chain for a flag. |
 | **14. Admin UI updates** | Flag value panel becomes read-only (displays condition chain). Remove override management. Show sync git SHA. Link to config file for editing. |
-| **15. Cleanup** | Drop `flag_overrides` table. Drop `flags.layer`, `flags.state`, `flags.value` columns. Remove `layerutil` package. Remove `(pbflags.layers)` extension. |
+| **15. Cleanup** | Drop `flag_overrides` table. Drop `flags.layer`, `flags.value` columns. Narrow `flags.state` to kill-only: rename to `killed_at TIMESTAMP NULL` (NULL = live, non-NULL = killed). `GetKilledFlags` reads from this column. Remove `layerutil` package. Remove `(pbflags.layers)` extension. |
