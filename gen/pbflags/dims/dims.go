@@ -8,13 +8,13 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 )
 
-// UserId sets the user_id dimension (Authenticated user identifier).
-func UserId(v string) pbflags.Dimension {
+// UserID sets the user_id dimension (Authenticated user identifier).
+func UserID(v string) pbflags.Dimension {
 	return pbflags.StringDimension("user_id", v)
 }
 
-// SessionId sets the session_id dimension (Browser session (unauthenticated users)).
-func SessionId(v string) pbflags.Dimension {
+// SessionID sets the session_id dimension (Browser session (unauthenticated users)).
+func SessionID(v string) pbflags.Dimension {
 	return pbflags.StringDimension("session_id", v)
 }
 

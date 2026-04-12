@@ -1013,10 +1013,58 @@ func goTypeInfo(kind protoreflect.Kind, isList bool) (goType, getterName, oneofT
 	}
 }
 
+// goInitialisms is the set of common initialisms that should be uppercased
+// per Go naming conventions (e.g., "id" → "ID", not "Id").
+// Source: https://github.com/golang/lint/blob/master/lint.go
+var goInitialisms = map[string]string{
+	"acl":   "ACL",
+	"api":   "API",
+	"ascii": "ASCII",
+	"cpu":   "CPU",
+	"css":   "CSS",
+	"dns":   "DNS",
+	"eof":   "EOF",
+	"guid":  "GUID",
+	"html":  "HTML",
+	"http":  "HTTP",
+	"https": "HTTPS",
+	"id":    "ID",
+	"ip":    "IP",
+	"json":  "JSON",
+	"lhs":   "LHS",
+	"qps":   "QPS",
+	"ram":   "RAM",
+	"rhs":   "RHS",
+	"rpc":   "RPC",
+	"sla":   "SLA",
+	"smtp":  "SMTP",
+	"sql":   "SQL",
+	"ssh":   "SSH",
+	"tcp":   "TCP",
+	"tls":   "TLS",
+	"ttl":   "TTL",
+	"udp":   "UDP",
+	"ui":    "UI",
+	"uid":   "UID",
+	"uri":   "URI",
+	"url":   "URL",
+	"utf8":  "UTF8",
+	"uuid":  "UUID",
+	"vm":    "VM",
+	"xml":   "XML",
+	"xmpp":  "XMPP",
+	"xss":   "XSS",
+}
+
 func toPascalCase(s string) string {
 	parts := strings.Split(s, "_")
 	for i, p := range parts {
-		if len(p) > 0 {
+		if len(p) == 0 {
+			continue
+		}
+		if upper, ok := goInitialisms[strings.ToLower(p)]; ok {
+			parts[i] = upper
+		} else {
 			parts[i] = strings.ToUpper(p[:1]) + p[1:]
 		}
 	}
