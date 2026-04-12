@@ -23,7 +23,7 @@ pre-commit:
     buf-format:
       priority: 1
       glob: "*.proto"
-      run: buf format -w {staged_files}
+      run: for f in {staged_files}; do buf format -w "$f"; done
       stage_fixed: true
 
     java-format:
