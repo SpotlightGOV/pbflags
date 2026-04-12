@@ -62,26 +62,6 @@ func setupIntegration(t *testing.T) *testEnv {
 	}
 }
 
-func seedFlag(t *testing.T, pool *pgxpool.Pool, featureID, flagID, flagType, layer string, fieldNum int, value *pbflagsv1.FlagValue) {
-	t.Helper()
-	ctx := context.Background()
-	_, err := pool.Exec(ctx, `
-		INSERT INTO feature_flags.features (feature_id) VALUES ($1) ON CONFLICT DO NOTHING`, featureID)
-	require.NoError(t, err)
-
-	var valBytes []byte
-	if value != nil {
-		valBytes, err = proto.Marshal(value)
-		require.NoError(t, err)
-	}
-
-	_, err = pool.Exec(ctx, `
-		INSERT INTO feature_flags.flags (flag_id, feature_id, field_number, flag_type, layer, value)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT DO NOTHING`, flagID, featureID, fieldNum, flagType, layer, valBytes)
-	require.NoError(t, err)
-}
-
 func setFlagState(t *testing.T, pool *pgxpool.Pool, flagID, state string, value *pbflagsv1.FlagValue) {
 	t.Helper()
 	var valBytes []byte
