@@ -21,7 +21,7 @@ version: v2
 plugins:
   - local: protoc-gen-pbflags
     out: gen/flags
-    strategy: all  # required — plugin needs all files to find the Layer enum
+    strategy: all  # required — plugin needs all files to find the EvaluationContext message
     opt:
       - lang=go
       - package_prefix=github.com/yourorg/yourrepo/gen/flags
@@ -29,7 +29,7 @@ inputs:
   - directory: proto
 ```
 
-`strategy: all` is required because the plugin needs to see all files in a single invocation to discover the `Layer` enum.
+`strategy: all` is required because the plugin needs to see all files in a single invocation to discover the `EvaluationContext` message.
 
 ### Install and generate
 
@@ -56,40 +56,58 @@ For each feature message (e.g., `Notifications`), the codegen produces a package
 
 ```go
 type NotificationsFlags interface {
-    // One method per flag, with typed return value and optional layer parameter.
-    EmailEnabled(ctx context.Context, id layers.UserID) bool
+    // One method per flag — just context in, typed value out.
+    EmailEnabled(ctx context.Context) bool
     DigestFrequency(ctx context.Context) string
-
-    // Status returns the evaluator connection health.
-    Status(ctx context.Context) pbflagsv1.EvaluatorStatus
+    MaxRetries(ctx context.Context) int64
+    ScoreThreshold(ctx context.Context) float64
+    NotificationEmails(ctx context.Context) []string
 }
 ```
 
-- Flags with a non-global layer take a typed layer ID parameter (e.g., `layers.UserID`).
-- Global flags take no entity parameter.
+- All methods take only `context.Context` — evaluation dimensions are bound on the evaluator, not passed per-call.
 - Return types are native Go types: `bool`, `string`, `int64`, `float64`, or their slice variants for list flags.
 
-### Setup
+### Evaluator and dimensions
 
-```go
-evaluator := pbflagsv1connect.NewFlagEvaluatorServiceClient(
-    http.DefaultClient,
-    "http://localhost:9201",
-)
-notifications := notificationsflags.NewNotificationsFlagsClient(evaluator)
-```
-
-Returns compiled defaults on any evaluation error (never panics).
-
-Minimal imports:
+Create an evaluator with `pbflags.Connect`, then scope it with dimensions from the generated `dims` package:
 
 ```go
 import (
     "net/http"
 
-    "github.com/yourorg/yourrepo/gen/flags/v1/pbflagsv1connect"
+    pb "github.com/yourorg/yourrepo/gen/flags/proto"
+    "github.com/yourorg/yourrepo/gen/flags/dims"
+    "github.com/yourorg/yourrepo/gen/flags/notificationsflags"
+    "github.com/SpotlightGOV/pbflags/pbflags"
 )
+
+// Create a base evaluator.
+eval := pbflags.Connect(http.DefaultClient, "http://localhost:9201", &pb.EvaluationContext{})
+
+// Add dimensions — With() returns a new evaluator (immutable).
+scoped := eval.With(dims.UserID("user-123"), dims.Plan(pb.PlanLevel_PLAN_LEVEL_PRO))
+
+// Create a typed feature client from the scoped evaluator.
+notifications := notificationsflags.New(scoped)
 ```
+
+Returns compiled defaults on any evaluation error (never panics).
+
+### Context integration
+
+Store and retrieve evaluators via `context.Context` for use in middleware / request handlers:
+
+```go
+// In middleware — attach the evaluator to the request context.
+ctx = pbflags.ContextWith(ctx, eval.With(dims.UserID(currentUser(ctx))))
+
+// In a handler — retrieve it.
+notifications := notificationsflags.New(pbflags.FromContext(ctx))
+enabled := notifications.EmailEnabled(ctx)
+```
+
+`FromContext` returns a no-op evaluator (compiled defaults) if none is set, so it is always safe to call.
 
 ### `Defaults()` — offline defaults
 
@@ -104,10 +122,10 @@ type Server struct {
     flags notificationsflags.NotificationsFlags  // never nil
 }
 
-func NewServer(evaluator pbflagsv1connect.FlagEvaluatorServiceClient) *Server {
+func NewServer(eval pbflags.Evaluator) *Server {
     flags := notificationsflags.Defaults()
-    if evaluator != nil {
-        flags = notificationsflags.NewNotificationsFlagsClient(evaluator)
+    if eval != nil {
+        flags = notificationsflags.New(eval)
     }
     return &Server{flags: flags}
 }
@@ -119,7 +137,7 @@ func NewServer(evaluator pbflagsv1connect.FlagEvaluatorServiceClient) *Server {
 
 ```go
 flags := notificationsflags.Testing()
-flags.EmailEnabledFunc = func(_ context.Context, _ layers.UserID) bool {
+flags.EmailEnabledFunc = func(_ context.Context) bool {
     return false  // override just this flag
 }
 // Other flags still return compiled defaults
@@ -133,8 +151,8 @@ Returns a mutable struct with func fields pre-populated with compiled defaults. 
 
 ```go
 for _, d := range notificationsflags.FlagDescriptors {
-    fmt.Printf("Flag %s (%s): type=%v list=%v layer=%q\n",
-        d.ID, d.FieldName, d.Type, d.IsList, d.LayerType)
+    fmt.Printf("Flag %s (%s): type=%v list=%v\n",
+        d.ID, d.FieldName, d.Type, d.IsList)
 }
 ```
 
@@ -143,20 +161,17 @@ A `[]flagmeta.FlagDescriptor` slice providing structured metadata about every fl
 - `ID`, `FieldName` — flag identification
 - `Type` (`FlagTypeBool`, `FlagTypeString`, `FlagTypeInt64`, `FlagTypeDouble`) and `IsList`
 - Typed default fields (`DefaultBool`, `DefaultString`, `DefaultStrings`, etc.)
-- `HasEntityID` and `LayerType` — layer/entity scoping info
 
-### Typed layer IDs
+### Evaluation context dimensions
 
-The codegen also produces a `layers/` package with typed ID wrappers for each non-global layer:
+The codegen produces a `dims` package with typed dimension constructors derived from your `EvaluationContext` proto message:
 
 ```go
-import "github.com/yourorg/yourrepo/gen/flags/layers"
+import "github.com/yourorg/yourrepo/gen/flags/dims"
 
-layers.User("user-123")    // layers.UserID
-layers.Entity("org-456")   // layers.EntityID
-
-// Zero value = global evaluation (no per-entity override applied)
-layers.UserID{}
+dims.UserID("user-123")                           // string dimension
+dims.Plan(pb.PlanLevel_PLAN_LEVEL_PRO)             // enum dimension
+dims.IsInternal(true)                              // bool dimension
 ```
 
-Compile-time safety: you cannot pass a `UserID` where an `EntityID` is expected.
+Use these with `eval.With(...)` to bind dimensions before creating a feature client. Dimensions are immutable — `With()` always returns a new evaluator without modifying the parent.

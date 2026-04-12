@@ -2,7 +2,7 @@
 
 ## Proto as source of truth
 
-Flag definitions live in `.proto` files. This means flag schemas are versioned in source control, reviewed in pull requests, and validated at compile time. The database stores runtime state (values, overrides, kills), but the shape of the flag system — which flags exist, their types, their layers — is defined in proto.
+Flag definitions live in `.proto` files. This means flag schemas are versioned in source control, reviewed in pull requests, and validated at compile time. The database stores runtime state (values, overrides, kills), but the shape of the flag system — which flags exist, their types, their evaluation context dimensions — is defined in proto.
 
 This gives you a property most feature flag systems don't have: your flag definitions are as reviewable and auditable as your code.
 
@@ -28,67 +28,68 @@ The evaluator resolves flags using this precedence chain:
 
 The key insight is that the global kill switch always wins, overrides beat global state, and the compiled default is the ultimate safety net. Per-entity kills are not supported — use the global kill switch instead.
 
-## Layers
+## Evaluation context
 
-Layers define the override dimensions for your flag system. Each non-global layer represents a dimension along which flags can vary (e.g., per-user, per-entity, per-tenant). You define your layers as a proto enum annotated with `option (pbflags.layers) = true`:
+The evaluation context defines the dimensions along which flags can vary (e.g., per-user, per-plan, per-tenant). You define your context as a proto message annotated with `option (pbflags.context) = true`, where each field is a dimension annotated with `(pbflags.dimension)`:
 
 ```protobuf
-enum Layer {
-  option (pbflags.layers) = true;
-  LAYER_UNSPECIFIED = 0;
-  LAYER_GLOBAL = 1;
-  LAYER_USER = 2;
-  LAYER_ENTITY = 3;
+message EvaluationContext {
+  option (pbflags.context) = true;
+
+  string user_id = 1 [(pbflags.dimension) = { description: "Authenticated user" }];
+  PlanLevel plan = 2 [(pbflags.dimension) = { description: "Subscription plan" }];
+  bool is_internal = 3 [(pbflags.dimension) = { description: "Internal/dogfood user" }];
 }
 ```
 
-The codegen generates a **typed ID wrapper** for each non-global layer. These types enforce at compile time that callers pass the correct kind of identifier for each flag:
+The codegen generates a **typed dimension constructor** for each field. These types enforce at compile time that callers supply the correct kind of value for each dimension:
 
 ```go
-// Can't pass an EntityID where a UserID is expected — compiler error.
-emailEnabled := notifications.EmailEnabled(ctx, layers.User("user-123"))
-lookbackDays := incidentConfig.LookbackDays(ctx, layers.Entity("govt-body-456"))
+// Can't pass a Plan where a UserID is expected — compiler error.
+eval := pbflags.Connect(httpClient, url, &pb.EvaluationContext{})
+emailEnabled := nf.EmailEnabled(ctx, eval.With(dims.UserID("user-123")))
+lookbackDays := ic.LookbackDays(ctx, eval.With(dims.UserID("user-123"), dims.Plan(pb.PlanLevel_PLAN_LEVEL_PRO)))
 
-// Zero value evaluates global state (no per-entity override applied).
-globalDefault := notifications.EmailEnabled(ctx, layers.UserID{})
+// No dimensions evaluates global state (no per-entity override applied).
+globalDefault := nf.EmailEnabled(ctx, eval)
 ```
 
-### How layers flow through the system
+### How dimensions flow through the system
 
-| Component | What it sees | Layer-aware? |
+| Component | What it sees | Dimension-aware? |
 |---|---|---|
-| Proto definition | `layer: "user"` | Source of truth |
-| Generated client | Typed parameter (`layers.UserID`) | Yes — enforces correct ID type |
-| Wire protocol | `entity_id` (opaque string) | No — layer-agnostic |
-| Evaluator | `IsGlobalLayer()` | Minimal — only global vs. non-global |
-| Database | `flags.layer` VARCHAR, `flag_overrides(flag_id, entity_id)` | Stores layer name; overrides keyed by opaque entity ID |
-| Admin UI | Displays layer name, shows override section for non-global | Displays only |
+| Proto definition | `(pbflags.dimension)` on context fields | Source of truth |
+| Generated client | Typed constructors (`dims.UserID`, `dims.Plan`) | Yes — enforces correct value types |
+| Wire protocol | `EvaluationContext` message fields | Structured — carries typed dimensions |
+| Evaluator | Context fields | Resolves overrides against matching dimensions |
+| Database | `flags.dimension` VARCHAR, `flag_overrides(flag_id, entity_id)` | Stores dimension name; overrides keyed by opaque entity ID |
+| Admin UI | Displays dimension name, shows override section for non-global | Displays only |
 
-The wire protocol and evaluator are intentionally layer-agnostic. Type safety is enforced in the generated client code, not on the wire.
+Type safety is enforced in both the generated client code and the wire protocol via the structured `EvaluationContext` message.
 
-### Changing a flag's layer
+### Changing a flag's dimension
 
-A flag's layer is part of its contract with consumers — changing it changes the generated client signature and can invalidate existing override data.
+A flag's dimension is part of its contract with consumers — changing it changes the generated client signature and can invalidate existing override data.
 
 | Transition | Allowed? | Why |
 |---|---|---|
-| Global → Layer | **Yes** | No existing overrides. Safe rollout — empty `entity_id` falls back to global state. |
-| Layer → Global | **No** | Orphaned overrides remain in the database. Cannot be deleted until rollout is complete, but if not deleted, silently reappear if the flag is later re-layered. |
-| Layer A → Layer B | **No** | Existing override rows were written with Layer A's ID semantics (e.g., user IDs). After the change, they're interpreted as Layer B IDs (e.g., entity IDs). If ID spaces overlap, overrides evaluate incorrectly. |
+| Global → Dimension | **Yes** | No existing overrides. Safe rollout — empty context falls back to global state. |
+| Dimension → Global | **No** | Orphaned overrides remain in the database. Cannot be deleted until rollout is complete, but if not deleted, silently reappear if the flag is later given a dimension. |
+| Dimension A → Dimension B | **No** | Existing override rows were written with Dimension A's ID semantics (e.g., user IDs). After the change, they're interpreted as Dimension B IDs (e.g., plan levels). If value spaces overlap, overrides evaluate incorrectly. |
 
 The lint tool (`pbflags-lint`) enforces these rules at pre-commit or release time.
 
-### Migrating a flag to a different layer
+### Migrating a flag to a different dimension
 
-When you need to change a flag's layer, define a new flag instead of modifying the existing one:
+When you need to change a flag's dimension, define a new flag instead of modifying the existing one:
 
-1. **Add a new flag** in the same feature message with the desired layer and a new field number.
+1. **Add a new flag** in the same feature message with the desired dimension and a new field number.
 2. **Regenerate code.** Both flags are available simultaneously.
 3. **Set up overrides** on the new flag for the appropriate entities.
 4. **Update application code** to read the new flag. Deploy.
 5. **Archive the old flag.** Remove the field from the proto (or mark it `reserved`). Run `pbflags-sync` to archive it.
 
-This avoids any window of incorrect evaluation — both flags coexist during the transition, each with correct override data for its layer.
+This avoids any window of incorrect evaluation — both flags coexist during the transition, each with correct override data for its dimension.
 
 ## Lint tool
 
@@ -107,9 +108,9 @@ Exit codes: `0` = clean, `1` = breaking changes found, `2` = tool error.
 | Rule | Description |
 |---|---|
 | `type_changed` | A flag's type changed (e.g., bool to string) |
-| `layer_changed` | A flag's layer changed in a forbidden direction |
+| `dimension_changed` | A flag's dimension changed in a forbidden direction |
 
-Flag removal is normal lifecycle and is **not** flagged — the evaluator gracefully handles archived flags. Stateless checks (invalid layer names, missing layers enum, etc.) are enforced by codegen at build time.
+Flag removal is normal lifecycle and is **not** flagged — the evaluator gracefully handles archived flags. Stateless checks (invalid dimension names, missing context message, etc.) are enforced by codegen at build time.
 
 ### Pre-commit integration
 

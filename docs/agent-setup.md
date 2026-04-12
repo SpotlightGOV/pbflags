@@ -52,13 +52,14 @@ syntax = "proto3";
 package myproject.flags;
 import "pbflags/options.proto";
 
-// Required: exactly one enum with this annotation.
-// Add one entry per override dimension (user, tenant, etc).
-enum Layer {
-  option (pbflags.layers) = true;
-  LAYER_UNSPECIFIED = 0;
-  LAYER_GLOBAL = 1;
-  LAYER_USER = 2;
+// Required: exactly one message with this annotation.
+// Each field is an override dimension (user, plan, etc).
+message EvaluationContext {
+  option (pbflags.context) = true;
+
+  string user_id = 1 [(pbflags.dimension) = { description: "Authenticated user" }];
+  PlanLevel plan = 2 [(pbflags.dimension) = { description: "Subscription plan" }];
+  bool is_internal = 3 [(pbflags.dimension) = { description: "Internal/dogfood user" }];
 }
 
 message MyFeature {
@@ -71,17 +72,18 @@ message MyFeature {
   bool enabled = 1 [(pbflags.flag) = {
     description: "Enable the feature"
     default: { bool_value: { value: false } }
-    layer: "user"  // per-user override; omit for global-only
+    dimension: "user_id"  // per-user override; omit for global-only
   }];
 }
 ```
 
 Key rules:
-- Exactly one `Layer` enum with `option (pbflags.layers) = true` across all proto files
+- Exactly one `EvaluationContext` message with `option (pbflags.context) = true` across all proto files
+- Each dimension is a field on that message annotated with `(pbflags.dimension)`
 - Each feature is a `message` with `option (pbflags.feature)`
 - Each flag is a field with `option (pbflags.flag)`
 - Supported types: `bool`, `string`, `int64`, `double` (and `repeated` variants)
-- `layer` is optional; omit for global-only flags
+- `dimension` is optional; omit for global-only flags
 - Flag identity is `feature_id/field_number` — field numbers are immutable
 
 ## 5. Configure codegen
@@ -124,7 +126,7 @@ inputs:
 
 Add `java_dagger=true` to `opt` if the project uses Dagger.
 
-**Important:** `strategy: all` is required — the plugin needs all files in a single invocation to discover the Layer enum.
+**Important:** `strategy: all` is required — the plugin needs all files in a single invocation to discover the `EvaluationContext` message.
 
 ## 6. Generate
 
@@ -134,7 +136,7 @@ buf generate --template buf.gen.flags.yaml
 
 This produces one package per feature message. For Go, expect:
 - `gen/flags/<feature>flags/` — interface, client, defaults, testing stub
-- `gen/flags/layers/` — typed layer ID wrappers
+- `gen/flags/dims/` — typed dimension constructors
 
 ## 7. Build descriptors for the server
 
@@ -153,21 +155,31 @@ import (
     "context"
     "net/http"
 
+    "github.com/SpotlightGOV/pbflags"
     "<MODULE>/gen/flags/<feature>flags"
-    "<MODULE>/gen/flags/layers"
-    "<MODULE>/gen/flags/v1/pbflagsv1connect"
+    "<MODULE>/gen/flags/dims"
+    pb "<MODULE>/gen/flags/<proto_package>"
 )
 
-evaluator := pbflagsv1connect.NewFlagEvaluatorServiceClient(
-    http.DefaultClient,
-    "http://localhost:9201", // "localhost:9201" also accepted
-)
-<feature> := <feature>flags.New<Feature>FlagsClient(evaluator)
-val := <feature>.<FlagName>(context.Background(), layers.User("user-123"))
+eval := pbflags.Connect(http.DefaultClient, "http://localhost:9201", &pb.EvaluationContext{})
+<feature> := <feature>flags.New(eval)
+val := <feature>.<FlagName>(context.Background(), eval.With(dims.UserID("user-123")))
+
+// Multiple dimensions:
+val := <feature>.<FlagName>(ctx, eval.With(
+    dims.UserID("user-123"),
+    dims.Plan(pb.PlanLevel_PLAN_LEVEL_PRO),
+    dims.IsInternal(true),
+))
+
+// Context propagation:
+ctx = pbflags.ContextWith(ctx, eval.With(dims.UserID("user-123")))
+// ... later, in a handler or service:
+val := <feature>.<FlagName>(ctx, pbflags.FromContext(ctx))
 
 // Without an evaluator (compiled defaults only):
 <feature> := <feature>flags.Defaults()
-val := <feature>.<FlagName>(context.Background(), layers.UserID{})
+val := <feature>.<FlagName>(context.Background(), eval)
 ```
 
 Evaluation errors (network failures, type mismatches) are logged via `slog.Default()` and the compiled default is returned. To use a custom logger:
@@ -175,20 +187,21 @@ Evaluation errors (network failures, type mismatches) are logged via `slog.Defau
 ```go
 import "<MODULE>/gen/flags/flagmeta"
 
-<feature> := <feature>flags.New<Feature>FlagsClient(evaluator, flagmeta.WithLogger(myLogger))
+<feature> := <feature>flags.New(eval, flagmeta.WithLogger(myLogger))
 ```
 
 ### Java
 
 ```java
 import com.yourorg.flags.generated.<Feature>Flags;
-import com.yourorg.flags.generated.layers.UserID;
-import org.spotlightgov.pbflags.FlagEvaluatorClient;
+import com.yourorg.flags.generated.dims.Dims;
+import org.spotlightgov.pbflags.PbFlags;
+import org.spotlightgov.pbflags.Evaluator;
 
 // All formats accepted: "localhost:9201", "http://localhost:9201", "https://host:9201"
-FlagEvaluatorClient evaluator = new FlagEvaluatorClient("localhost:9201");
-<Feature>Flags <feature> = <Feature>Flags.forEvaluator(evaluator);
-boolean val = <feature>.<flagName>().get(UserID.of("user-123"));
+Evaluator eval = PbFlags.connect("localhost:9201");
+<Feature>Flags <feature> = <Feature>Flags.create(eval);
+boolean val = <feature>.<flagName>().get(eval.with(Dims.userId("user-123")));
 ```
 
 For Java consumers, add the runtime dependency using the same release version as the pbflags binaries/plugin you are integrating:
@@ -217,14 +230,14 @@ If the consumer project needs the production topology instead of standalone mode
 
 - `buf generate --template buf.gen.flags.yaml` succeeds
 - `buf build proto -o descriptors.pb` succeeds
-- The generated `layers/` package or classes exist
+- The generated `dims/` package or classes exist
 - `pbflags-admin --standalone --descriptors=descriptors.pb ...` starts cleanly
 - A sample flag read returns the compiled default before any admin changes
 
 ## Common mistakes
 
-- **Missing `strategy: all`** in buf.gen.yaml — the plugin silently generates nothing if it can't find the Layer enum.
+- **Missing `strategy: all`** in buf.gen.yaml — the plugin silently generates nothing if it can't find the `EvaluationContext` message.
 - **Wrong `package_prefix`** — must match the Go module path exactly, including the output directory.
-- **Forgetting `buf dep update`** after upgrading pbflags — the Layer annotation won't be found with stale BSR deps.
+- **Forgetting `buf dep update`** after upgrading pbflags — the context/dimension annotations won't be found with stale BSR deps.
 - **Forgetting `buf build ... -o descriptors.pb`** — code generation alone is not enough; the server reads the descriptor set.
 - **`protoc-gen-pbflags` not on `PATH`** — `buf generate` cannot invoke a `local:` plugin unless the binary is discoverable.

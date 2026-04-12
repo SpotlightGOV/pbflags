@@ -26,11 +26,25 @@ If you are an AI agent integrating pbflags into a consumer project, start with [
 syntax = "proto3";
 import "pbflags/options.proto";
 
-enum Layer {
-  option (pbflags.layers) = true;
-  LAYER_UNSPECIFIED = 0;
-  LAYER_GLOBAL = 1;
-  LAYER_USER = 2;
+enum PlanLevel {
+  PLAN_LEVEL_UNSPECIFIED = 0;
+  PLAN_LEVEL_FREE = 1;
+  PLAN_LEVEL_PRO = 2;
+  PLAN_LEVEL_ENTERPRISE = 3;
+}
+
+// Exactly one message must carry (pbflags.context).
+// Each field annotated with (pbflags.dimension) becomes a typed dimension
+// constructor in the generated `dims` package.
+message EvaluationContext {
+  option (pbflags.context) = {};
+
+  string user_id = 1 [(pbflags.dimension) = {
+    description: "Authenticated user identifier"
+    hashable: true
+  }];
+
+  PlanLevel plan = 2 [(pbflags.dimension) = {description: "Subscription tier"}];
 }
 
 message Notifications {
@@ -43,7 +57,6 @@ message Notifications {
   bool email_enabled = 1 [(pbflags.flag) = {
     description: "Enable email notifications"
     default: { bool_value: { value: true } }
-    layer: "user"
   }];
 
   string digest_frequency = 2 [(pbflags.flag) = {
@@ -105,19 +118,35 @@ docker compose -f docker/docker-compose.yml up
 import (
   "net/http"
 
-  "github.com/yourorg/yourrepo/gen/flags/layers"
+  pb "github.com/yourorg/yourrepo/gen/proto"
+  "github.com/yourorg/yourrepo/gen/flags/dims"
   "github.com/yourorg/yourrepo/gen/flags/notificationsflags"
-  "github.com/yourorg/yourrepo/gen/flags/v1/pbflagsv1connect"
+  "github.com/SpotlightGOV/pbflags/pbflags"
 )
 
-evaluator := pbflagsv1connect.NewFlagEvaluatorServiceClient(
-  http.DefaultClient,
-  "http://localhost:9201",
-)
-notifications := notificationsflags.NewNotificationsFlagsClient(evaluator)
+// Create an evaluator connected to the pbflags service.
+// The zero-value EvaluationContext is used as a prototype.
+eval := pbflags.Connect(http.DefaultClient, "http://localhost:9201", &pb.EvaluationContext{})
 
-emailEnabled := notifications.EmailEnabled(ctx, layers.User("user-123"))  // bool
-frequency := notifications.DigestFrequency(ctx)                            // string
+// Bind dimensions — With() is immutable, returning a new evaluator.
+eval = eval.With(dims.UserID("user-123"), dims.Plan(pb.PlanLevel_PLAN_LEVEL_PRO))
+
+// Create the typed feature client.
+notifications := notificationsflags.New(eval)
+
+emailEnabled := notifications.EmailEnabled(ctx)    // bool
+frequency := notifications.DigestFrequency(ctx)     // string
+```
+
+You can also propagate the evaluator through `context.Context`:
+
+```go
+// Middleware: store the evaluator in context.
+ctx = pbflags.ContextWith(ctx, eval)
+
+// Handler: retrieve it and create feature clients.
+eval := pbflags.FromContext(ctx)
+notifications := notificationsflags.New(eval)
 ```
 
 ## Language Support
@@ -142,7 +171,7 @@ As-built documentation lives in `docs/`. Design research and explorations live i
 | [Upgrading](docs/upgrading.md) | Upgrade procedures for standalone and multi-instance deployments |
 | [Go Client](docs/go.md) | Go codegen setup, buf configuration, generated API surface |
 | [Java Client](docs/java.md) | Java codegen setup, Dagger integration, testing utilities |
-| [Philosophy](docs/philosophy.md) | Design principles, evaluation precedence, layers, lint tool |
+| [Philosophy](docs/philosophy.md) | Design principles, evaluation context, dimensions, lint tool |
 | [Contributing](docs/contributing.md) | Dev setup, testing, releasing, migration rules |
 | [Troubleshooting](docs/troubleshooting.md) | Common errors and how to resolve them |
 | [Roadmap](docs/roadmap.md) | Planned features and sequencing |

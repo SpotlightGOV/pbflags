@@ -97,7 +97,7 @@ Simplifies single-binary deployments and development setups.
 Preview evaluation results without changing state.
 
 **Scope:**
-- New RPC: `DryRunEvaluate(feature_id, entity_id, hypothetical_state)`
+- New RPC: `DryRunEvaluate(feature_id, context, hypothetical_state)`
 - Returns: what the entity would see under the hypothetical configuration
 - Supports hypothetical: state changes, override additions, rollout percentages
 - No side effects — read-only operation
@@ -171,31 +171,18 @@ extension of the system based on where the industry has converged. Informed
 by competitive analysis against LaunchDarkly, Flipt, Unleash, and Flagsmith.
 Sequencing is meaningful: each item builds on the one before it.
 
-### 9. Attribute-Based Targeting and Segmentation
+### 9. ~~Attribute-Based Targeting and Segmentation~~ (Done)
 
-Replace per-entity overrides as the only targeting mechanism with a rule
-engine that evaluates structured attributes.
+Evaluation context has been implemented. The opaque `entity_id` string has
+been replaced by a structured `EvaluationContext` message with typed
+dimensions defined via `(pbflags.context)` and `(pbflags.dimension)` proto
+annotations. The wire protocol carries context via a `google.protobuf.Any`
+field on `EvaluateRequest`/`BulkEvaluateRequest`. Generated code produces a
+`dims` package with dimension constructors and a `pbflags` package with
+core types (`Evaluator`, `Connect`, `ContextWith`/`FromContext`).
 
-**Scope:**
-- Introduce an **evaluation context** to replace the opaque `entity_id` string:
-  structured key-value attributes (plan, region, role, email, custom properties)
-- Define **segments** as reusable audience slices with attribute constraints
-  (equals, contains, in, regex, numeric range) and match-all/match-any logic
-- Define **targeting rules** on flags that reference segments, evaluated
-  top-to-bottom with first-match-wins semantics
-- Precedence: kill > per-entity override > targeting rule > global state > default
-- Proto schema for rules, segments, and evaluation context
-- Admin API + UI for rule and segment CRUD
-- Audit logging for all rule/segment changes
-- Backward compatible: existing entity_id overrides continue to work
-
-**Why:** "Enable for users where `plan = enterprise`" is the fundamental
-capability that every competitor provides and pbflags currently lacks. Without
-targeting rules, operators must create per-entity overrides for every entity —
-which doesn't scale. This is the bridge from feature flags to feature
-management. Every subsequent item in this section depends on it.
-
-**Key files:** `proto/pbflags/v1/types.proto`, `internal/evaluator/evaluator.go`, new rule engine
+Segments, targeting rules, and rule-based evaluation are not yet implemented
+and remain future work.
 
 ### 10. Percentage-Based Rollouts
 
@@ -203,8 +190,8 @@ Gradual feature rollout by consistent entity hashing, integrated with the
 targeting rule engine.
 
 **Scope:**
-- Deterministic hashing: `hash(flag_key + entity_id) % 10000` for 0.01% granularity
-- Consistent — same entity always gets same result for same percentage
+- Deterministic hashing: `hash(flag_key + context_key) % 10000` for 0.01% granularity
+- Consistent — same context always gets same result for same percentage
 - Monotonic — increasing percentage never removes previously-included entities
 - Rollouts operate within targeting rules: "for segment X, roll out to 25%"
 - Support percentage distributions across multiple values/variants
@@ -218,7 +205,7 @@ targeting, this enables "roll out to 10% of enterprise users in US-EAST" —
 the bread and butter of progressive delivery.
 
 **Depends on:** Item 9 (targeting) — rollouts are a distribution within a
-targeting rule, and require the evaluation context for entity identity.
+targeting rule, and require the evaluation context (now implemented) for entity identity.
 
 **Key files:** `internal/evaluator/evaluator.go`, `proto/pbflags/v1/types.proto`, `db/migrations/`
 
@@ -229,7 +216,7 @@ Implement the OpenFeature provider interface for Go and Java.
 **Scope:**
 - Go: implement `openfeature.FeatureProvider` interface wrapping pbflags evaluator
 - Java: implement `dev.openfeature.sdk.FeatureProvider` wrapping `FlagEvaluator`
-- Map OpenFeature `EvaluationContext` to pbflags evaluation context (from item 9)
+- Map OpenFeature `EvaluationContext` to pbflags evaluation context (implemented in item 9)
 - Support OpenFeature hooks for logging and metrics
 - Publish as separate modules (`pbflags-openfeature-go`, `pbflags-openfeature-java`)
 
@@ -241,8 +228,9 @@ ecosystem. The evaluation context model from item 9 maps naturally to
 OpenFeature's `EvaluationContext`.
 
 **Depends on:** Item 10 (percentage rollouts) — OpenFeature's evaluation model
-assumes the backend supports contextual evaluation; without targeting and
-rollouts, the provider would be a thin wrapper with limited value.
+assumes the backend supports contextual evaluation; evaluation context is now
+in place but targeting rules and rollouts are needed for the provider to add
+meaningful value.
 
 **Key files:** New `clients/openfeature/` packages for Go and Java
 
@@ -359,7 +347,7 @@ A CLI enables scripting (CI/CD flag gates, incident runbooks).
 |-------|-------|--------|
 | **Soon** | 1-4 | Client-side story, security hardening |
 | **Later** | 5-8 | Testing, benchmarks, operator tooling |
-| **Future** | 9-16 | Feature management platform, not committed |
+| **Future** | ~~9~~ 10-16 | Feature management platform (evaluation context done), not committed |
 
 ---
 
