@@ -51,11 +51,12 @@ func (f *DBFetcher) FetchFlagState(ctx context.Context, flagID string) (*CachedF
 	var valueBytes []byte
 	var archivedAt *time.Time
 	var conditionsJSON []byte
+	var dimMetaJSON []byte
 
 	err := f.pool.QueryRow(ctx, `
-		SELECT state, value, archived_at, conditions
+		SELECT state, value, archived_at, conditions, dimension_metadata
 		FROM feature_flags.flags
-		WHERE flag_id = $1`, flagID).Scan(&stateStr, &valueBytes, &archivedAt, &conditionsJSON)
+		WHERE flag_id = $1`, flagID).Scan(&stateStr, &valueBytes, &archivedAt, &conditionsJSON, &dimMetaJSON)
 	if err == pgx.ErrNoRows {
 		f.tracker.RecordSuccess()
 		return nil, nil
@@ -75,6 +76,7 @@ func (f *DBFetcher) FetchFlagState(ctx context.Context, flagID string) (*CachedF
 	}
 	if f.condEval != nil && len(conditionsJSON) > 0 {
 		cs.Conditions = f.condEval.CompileConditions(flagID, conditionsJSON)
+		cs.DimMeta = ParseDimMeta(dimMetaJSON)
 	}
 	return cs, nil
 }

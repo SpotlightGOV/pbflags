@@ -17,6 +17,7 @@ type CachedFlagState struct {
 	Value      *pbflagsv1.FlagValue
 	Archived   bool
 	Conditions []CachedCondition // compiled condition chain (nil for static/unconfigured flags)
+	DimMeta    CachedDimMeta     // dimension classification metadata (nil for flags without conditions)
 }
 
 // CachedOverride holds a cached per-entity override.

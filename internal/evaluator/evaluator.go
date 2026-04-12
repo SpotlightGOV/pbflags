@@ -25,6 +25,7 @@ type Fetcher interface {
 // Note: per-entity kills are not supported; overrides can only be ENABLED or DEFAULT.
 type Evaluator struct {
 	cache           *CacheStore
+	condCache       *ConditionCache // nil when condition caching is not configured
 	fetcher         Fetcher
 	condEval        *ConditionEvaluator // nil when conditions are not configured
 	logger          *slog.Logger
@@ -55,6 +56,11 @@ func WithFetchTimeout(d time.Duration) EvaluatorOption {
 // WithConditionEvaluator enables CEL condition evaluation.
 func WithConditionEvaluator(ce *ConditionEvaluator) EvaluatorOption {
 	return func(e *Evaluator) { e.condEval = ce }
+}
+
+// WithConditionCache sets the cache for condition evaluation results.
+func WithConditionCache(cc *ConditionCache) EvaluatorOption {
+	return func(e *Evaluator) { e.condCache = cc }
 }
 
 // NewEvaluator creates an Evaluator.
@@ -148,13 +154,24 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 		return val, src
 	}
 
-	// 3. Conditions — evaluate CEL chain, first match wins.
+	// 3. Conditions — check cache, then evaluate CEL chain.
 	state := e.cache.GetFlagState(flagID)
 	if state == nil {
 		state, _ = e.fetcher.FetchFlagState(ctx, flagID)
 	}
 	if state != nil && len(state.Conditions) > 0 && e.condEval != nil && evalCtx != nil {
+		// Check condition result cache.
+		cacheKey := BuildCacheKey(flagID, state.DimMeta, evalCtx)
+		if e.condCache != nil {
+			if cached, ok := e.condCache.Get(cacheKey); ok {
+				return cached, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED
+			}
+		}
+
 		if condVal := e.condEval.EvaluateConditions(state.Conditions, evalCtx); condVal != nil {
+			if e.condCache != nil {
+				e.condCache.Set(cacheKey, condVal)
+			}
 			return condVal, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL
 		}
 	}
