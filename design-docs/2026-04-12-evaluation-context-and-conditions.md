@@ -644,6 +644,26 @@ warning: flag "notifications/5" references unbounded dimension "user_id"
   checks against literals, or review caching impact.
 ```
 
+**Bounded-output principle:** The finite-filter optimization generalizes
+to any mechanism that maps an unbounded input dimension to a bounded set
+of outcomes. The cache key includes the computed outcome, not the raw
+dimension value:
+
+| Mechanism | Input | Output (cache key) | Cardinality |
+|-----------|-------|--------------------|-------------|
+| Finite filter (uniform) | raw dimension value | `dim:match=true\|false` | ×2 |
+| Finite filter (distinct) | raw dimension value | `dim:match=<literal>\|none` | ×(literals + 1) |
+| Launch (future) | `hash(launch_id + dim_value) % 100` | `launch:<name>=in_ramp\|out` | ×2 |
+| Experiment (future) | `hash(experiment_id + dim_value) % 100` | `experiment:<name>=<variant>` | ×(variant count) |
+
+All four mechanisms are pure functions with finite output ranges. The hash
+computation for launches and experiments is deterministic and cheap — it
+runs at cache-key construction time, same as the finite-filter membership
+check. This means launches and experiments on unbounded dimensions (like
+`user_id`) do not add unbounded cardinality to the cache. A flag with one
+active launch and one 3-variant experiment multiplies cache cardinality by
+2 × 3 = 6, regardless of how many users exist.
+
 **CEL program compilation:** CEL programs are compiled once when the flag
 definition is loaded (at startup and on definition refresh). The compiled
 `cel.Program` objects are reused across evaluations.
@@ -1143,6 +1163,11 @@ Each launch gets its own independent slicing layer — entities are hashed
 into "in ramp" or "not in ramp" independently of any other launch or
 experiment.
 
+**Caching:** The hash result (in/out of ramp) is the cache key component,
+not the raw dimension value. A launch on `user_id` adds ×2 to cache
+cardinality regardless of user count. See "Bounded-output principle" in
+the evaluator caching section.
+
 **Dimension restrictions in launches and experiments:**
 
 `population` conditions in launches and experiments are restricted to
@@ -1204,6 +1229,11 @@ callback. The caller just sees the typed flag value.
 mutually exclusive within a layer). Additional experiment layers can be
 enabled if the customer can reason about interaction safety — but that's
 hard to reason about, so the default is conservative.
+
+**Caching:** The variant assignment is the cache key component, not the
+raw dimension value. A 3-variant experiment on `user_id` adds ×3 to cache
+cardinality regardless of user count. See "Bounded-output principle" in
+the evaluator caching section.
 
 ### Cardinality lint rules
 
