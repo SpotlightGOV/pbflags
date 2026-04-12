@@ -104,14 +104,15 @@ added per request. Conditions evaluate against the combined context.
 Dimensions support proto scalar types — `string`, `enum`, `bool`, `int64`.
 Generated dimension constructors enforce these types at compile time (e.g.,
 `dims.Plan(dims.PlanEnterprise)` for an enum dimension, not
-`dims.Plan("enterprise")`). On the wire, all dimension values are
-serialized as strings in a `map<string, string>`. The type safety boundary
-is at the generated constructor, not the wire protocol.
+`dims.Plan("enterprise")`). On the wire, the context is carried as the
+actual proto `EvaluationContext` message (inside a `google.protobuf.Any`),
+preserving full type fidelity across the wire. See "Wire protocol" in the
+design section.
 
-Missing (unset) dimensions have the zero value for their type (empty
-string, 0, false). Conditions should be written to handle this — e.g.,
-`ctx.plan == "enterprise"` naturally evaluates to false when `plan` is
-unset.
+Missing (unset) dimensions have the proto zero value for their type (empty
+string, 0, false, enum ordinal 0). Conditions should be written to handle
+this — e.g., `ctx.plan == PlanLevel.ENTERPRISE` naturally evaluates to
+false when `plan` is unset (zero value = `PLAN_LEVEL_UNSPECIFIED`).
 
 ### Conditions
 
@@ -124,9 +125,9 @@ value.
 flags:
   digest_frequency:
     conditions:
-      - when: 'ctx.plan == "enterprise"'
+      - when: 'ctx.plan == PlanLevel.ENTERPRISE'
         value: "daily"
-      - when: 'ctx.plan == "pro"'
+      - when: 'ctx.plan == PlanLevel.PRO'
         value: "daily"
       - otherwise: "weekly"
 ```
@@ -252,19 +253,18 @@ extend google.protobuf.FieldOptions {
 
 **Supported dimension types:**
 
-| Proto type | CEL type | Generated constructor | Wire value |
-|------------|----------|----------------------|------------|
-| `string` | `string` | `func User(id string) Dimension` | raw string |
-| `enum` | `string` | `func Plan(p PlanLevel) Dimension` | lowercase name (`"enterprise"`) |
-| `bool` | `bool` | `func IsInternal(b bool) Dimension` | `"true"` / `"false"` |
-| `int64` | `int` | `func OrgSize(n int64) Dimension` | decimal string |
+| Proto type | CEL type | Generated constructor | Wire representation |
+|------------|----------|----------------------|---------------------|
+| `string` | `string` | `func User(id string) Dimension` | proto string field |
+| `enum` | proto enum | `func Plan(p pb.PlanLevel) Dimension` | proto enum field (int32 ordinal) |
+| `bool` | `bool` | `func IsInternal(b bool) Dimension` | proto bool field |
+| `int64` | `int` | `func OrgSize(n int64) Dimension` | proto int64 field |
 
-Enum dimensions are represented as strings in CEL (the lowercase,
-prefix-stripped enum value name). The sync tool validates that CEL
-expressions compare enum dimensions only against declared enum values.
-This gives compile-time safety at the call site (typed constructor) and
-sync-time safety in conditions (validated enum values) while keeping the
-wire protocol simple (`map<string, string>`).
+Because the wire carries the actual `EvaluationContext` proto message
+(via `Any`), all types are represented natively — enum values are ordinals,
+not strings. Type safety is end-to-end: compile-time at the call site
+(proto enum type), proto-native on the wire, and proto-native in CEL
+evaluation.
 
 **Codegen validation:** Exactly one message in the input files must carry
 `(pbflags.context)`. Fields must be `string`, `bool`, `int64`, or a proto
@@ -286,16 +286,16 @@ flags:
   # Conditional value — evaluated top to bottom, first match wins.
   digest_frequency:
     conditions:
-      - when: 'ctx.plan == "enterprise"'
+      - when: 'ctx.plan == PlanLevel.ENTERPRISE'
         value: "daily"
       - otherwise: "weekly"
 
   # Multiple conditions.
   max_retries:
     conditions:
-      - when: 'ctx.plan == "enterprise"'
+      - when: 'ctx.plan == PlanLevel.ENTERPRISE'
         value: 10
-      - when: 'ctx.plan == "pro"'
+      - when: 'ctx.plan == PlanLevel.PRO'
         value: 5
       - otherwise: 3
 
@@ -321,9 +321,9 @@ experiments will be added as sibling sections in the future.
 - Each `when` expression must be a valid CEL expression that type-checks
   against the `EvaluationContext` message.
 - CEL expressions must reference only declared dimension names (via `ctx.*`).
-- Enum dimension comparisons must use declared enum values (e.g.,
-  `ctx.plan == "enterprise"` is valid only if `PLAN_LEVEL_ENTERPRISE`
-  exists in the `PlanLevel` enum).
+- Enum dimension comparisons must use registered enum constants (e.g.,
+  `ctx.plan == PlanLevel.ENTERPRISE`). Comparing an enum dimension to a
+  raw string is a type error.
 - A flag may have either a static `value` or `conditions`, not both.
 - Condition chains should have an `otherwise` clause. The sync tool warns
   if one is missing (evaluation falls through to the proto compiled default,
@@ -358,17 +358,23 @@ safe, sandboxed expression evaluation in configuration and policy.
 - Used in production at scale: Kubernetes admission webhooks, Firebase
   Security Rules, Google Cloud IAM conditions.
 
-**CEL environment:** The sync tool builds a CEL type environment from the
-proto-defined `EvaluationContext`. Each dimension becomes a variable
-accessible via `ctx.<dimension_name>` with the type derived from the proto
-field:
+**CEL environment:** The sync tool builds the CEL type environment directly
+from the `EvaluationContext` proto message descriptor using
+`cel.Types(contextDesc)`. This registers `ctx` as a proto message variable
+with full type information — field access, enum comparison, and type
+checking all work natively.
 
-- `string` fields → CEL `string`
-- `enum` fields → CEL `string` (lowercase prefix-stripped value, e.g.,
-  `"enterprise"` for `PLAN_LEVEL_ENTERPRISE`). The sync tool validates
-  compared values against the enum's declared values.
-- `bool` fields → CEL `bool`
-- `int64` fields → CEL `int`
+Enum constants are registered with prefix-stripped names for readability
+in config files:
+
+| Proto enum value | CEL constant |
+|-----------------|--------------|
+| `PLAN_LEVEL_ENTERPRISE` | `PlanLevel.ENTERPRISE` |
+| `DEVICE_TYPE_MOBILE` | `DeviceType.MOBILE` |
+
+This is the standard CEL convention for proto enums. The sync tool
+registers these constants automatically from the enum descriptors referenced
+by the `EvaluationContext` fields.
 
 **Restricted subset (v1):** Start with comparison and containment operators.
 Expand to computed values and type coercion only when a concrete need
@@ -376,10 +382,11 @@ arises.
 
 | Supported | Example |
 |-----------|---------|
-| Equality | `ctx.plan == "enterprise"` |
-| Inequality | `ctx.plan != "free"` |
+| Enum equality | `ctx.plan == PlanLevel.ENTERPRISE` |
+| Enum inequality | `ctx.plan != PlanLevel.FREE` |
+| String equality | `ctx.user_id == "user-99"` |
 | Containment | `ctx.region in ["us-east", "us-west"]` |
-| Boolean logic | `ctx.plan == "pro" && ctx.device_type == "mobile"` |
+| Boolean logic | `ctx.plan == PlanLevel.PRO && ctx.device_type == DeviceType.MOBILE` |
 | Negation | `!(ctx.environment == "production")` |
 | String presence | `ctx.user_id != ""` (dimension is set) |
 | Bool dimension | `ctx.is_internal` |
@@ -419,7 +426,7 @@ each dimension by how it's used:
 
 | Classification | Pattern | Example | Cache impact |
 |---------------|---------|---------|--------------|
-| **Bounded** | Enum dimension, or compared against known-finite values | `ctx.plan == "enterprise"` | Include in cache key. Cardinality bounded by enum size. |
+| **Bounded** | Enum dimension, or compared against known-finite values | `ctx.plan == PlanLevel.ENTERPRISE` | Include in cache key. Cardinality bounded by enum size. |
 | **Finite filter** | Unbounded dimension compared against string literals only (equality or `in`) | `ctx.user_id == "user-99"`, `ctx.user_id in ["u-1", "u-2"]` | Evaluate inline. Cache key uses match result (true/false), not the raw dimension value. Effective cardinality: 2. |
 | **Unbounded** | Unbounded dimension referenced in any other pattern | `ctx.user_id != ""` (presence check) | Include in cache key. Sync emits a warning. Evaluator uses LRU cap. |
 
@@ -427,7 +434,7 @@ For a condition chain like:
 
 ```yaml
 conditions:
-  - when: 'ctx.plan == "enterprise"'
+  - when: 'ctx.plan == PlanLevel.ENTERPRISE'
     value: true
   - when: 'ctx.user_id in ["user-1", "user-2"]'
     value: true
@@ -436,8 +443,8 @@ conditions:
 
 `plan` is classified as **bounded** (enum), `user_id` as **finite filter**
 (only appears in an `in` check against literals). The cache key for this
-flag is `"notifications/1|plan=enterprise|user_id:match=true"` — not
-`"notifications/1|plan=enterprise|user_id=user-123"`. This avoids
+flag is `"notifications/1|plan=3|user_id:match=true"` — not
+`"notifications/1|plan=3|user_id=user-123"`. This avoids
 unbounded cache growth from allowlist-style conditions that replace
 per-entity overrides.
 
@@ -510,19 +517,20 @@ state where some flags are config-driven and others are DB-driven.
 **Condition evaluation flow:**
 
 ```
-Evaluator receives: (flag_id, context map<string,string>)
+Evaluator receives: (flag_id, Any context)
 
-1. Check kill set → if killed, return compiled default
-2. Load flag's condition chain (cached, refreshed with definitions)
-3. Build cache key using dimension metadata:
+1. Deserialize Any → dynamicpb.Message (using loaded descriptor)
+2. Check kill set → if killed, return compiled default
+3. Load flag's condition chain (cached, refreshed with definitions)
+4. Build cache key using dimension metadata:
    - Bounded dimensions: include "dim=value" in key
    - Finite-filter dimensions: evaluate literal-set membership,
      include "dim:match=true|false" in key
    - Unbounded dimensions: include "dim=value" in key (LRU-capped)
-   e.g., "notifications/2|plan=enterprise|user_id:match=false"
-4. Check evaluation cache → return if hit
-5. Iterate conditions in order:
-   - Evaluate CEL program with context
+   e.g., "notifications/2|plan=2|user_id:match=false"
+5. Check evaluation cache → return if hit
+6. Iterate conditions in order:
+   - Evaluate CEL program with deserialized proto message
    - First match → cache result, return value
    - No match and no otherwise → return compiled default
 ```
@@ -530,14 +538,16 @@ Evaluator receives: (flag_id, context map<string,string>)
 **Cache key construction:**
 
 ```go
-func cacheKey(flagID string, ctx map[string]string, meta DimensionMetadata) string {
+func cacheKey(flagID string, ctx protoreflect.Message, meta DimensionMetadata) string {
     key := flagID
     for _, dim := range meta.Sorted() {
+        fd := ctx.Descriptor().Fields().ByName(protoreflect.Name(dim.Name))
+        val := ctx.Get(fd)
         switch dim.Classification {
         case Bounded, Unbounded:
-            key += "|" + dim.Name + "=" + ctx[dim.Name]
+            key += "|" + dim.Name + "=" + formatValue(fd, val)
         case FiniteFilter:
-            matched := dim.LiteralSet.Contains(ctx[dim.Name])
+            matched := dim.LiteralSet.Contains(formatValue(fd, val))
             key += "|" + dim.Name + ":match=" + strconv.FormatBool(matched)
         }
     }
@@ -585,19 +595,58 @@ needs to be updated before redeploying the affected config.
 **Wire protocol changes:**
 
 ```protobuf
+import "google/protobuf/any.proto";
+
 message EvaluateRequest {
   string flag_id = 1;
   reserved 2;                         // was: entity_id
-  map<string, string> context = 3;    // evaluation context dimensions
+  google.protobuf.Any context = 3;    // serialized EvaluationContext
 }
 ```
 
-`entity_id` is removed (reserved), not deprecated. Since we have one
-consumer and are doing a clean-cut migration, there's no need for a
-backwards-compatibility period. Generated clients always populate `context`.
+The `context` field carries the customer's `EvaluationContext` proto message
+wrapped in `Any`. This preserves full proto typing across the wire — enum
+fields carry their ordinal, bool fields are bools, etc.
 
-`BulkEvaluateRequest` gets the same treatment. Each flag in the bulk
-request is evaluated against the same context.
+The pbflags proto cannot import the customer's `EvaluationContext` directly
+(it's defined in the customer's proto package). `Any` is the standard proto
+pattern for this: it wraps any message as serialized bytes plus a type URL
+(e.g., `"type.googleapis.com/myapp.EvaluationContext"`).
+
+**Client side:** The generated client builds an `EvaluationContext` message
+from the accumulated dimensions and wraps it in `Any`:
+
+```go
+func (e *evaluator) Evaluate(ctx context.Context, flagID string) (*Result, error) {
+    anyCtx, _ := anypb.New(e.contextMessage())
+    req := &pbflagsv1.EvaluateRequest{FlagId: flagID, Context: anyCtx}
+    // ...
+}
+```
+
+**Evaluator side:** The evaluator already loads the customer's proto
+descriptor at startup (for flag definitions). It uses the same descriptor
+to find the `EvaluationContext` message type and deserialize the `Any`:
+
+```go
+// At startup: find context message descriptor (the one with pbflags.context)
+contextDesc := findContextMessage(descriptors)
+
+// Per request:
+dynMsg := dynamicpb.NewMessage(contextDesc)
+if err := req.Context.UnmarshalTo(dynMsg); err != nil { ... }
+
+// CEL evaluates directly against the proto message
+result, _, _ := program.Eval(map[string]interface{}{"ctx": dynMsg})
+```
+
+`dynamicpb.Message` implements `protoreflect.ProtoMessage`, which cel-go
+supports natively. Field access (`ctx.plan`), enum comparison
+(`ctx.plan == PlanLevel.ENTERPRISE`), and type checking all work against
+the dynamic message without any string conversion.
+
+`BulkEvaluateRequest` gets the same `Any context` field. Each flag in the
+bulk request is evaluated against the same deserialized context message.
 
 ### Client API: scoped evaluator pattern
 
@@ -703,13 +752,18 @@ type Evaluator interface {
     BulkEvaluate(ctx context.Context, flagIDs []string) ([]*Result, error)
 }
 
-// Dimension is a key-value pair in the evaluation context.
-// Constructed via the generated dims package.
-type Dimension struct {
-    Name  string
-    Value string
+// Dimension sets a field on the EvaluationContext proto message.
+// Constructed via the generated dims package — callers never build
+// these directly.
+type Dimension interface {
+    Apply(msg protoreflect.Message)
 }
 ```
+
+The `Dimension` interface uses `protoreflect.Message` so that the generated
+dims constructors can set typed fields directly on the proto message. The
+evaluator accumulates dimensions and applies them to build the
+`EvaluationContext` proto before serializing it into `Any` for the RPC.
 
 **Generated dims package** (replaces `layers` package):
 
@@ -717,48 +771,47 @@ type Dimension struct {
 // Generated from the EvaluationContext proto message.
 package dims
 
-import "github.com/.../pbflags"
+import (
+    "github.com/.../pbflags"
+    pb "github.com/.../examplepb"  // generated proto types
+    "google.golang.org/protobuf/reflect/protoreflect"
+)
 
 // String dimensions — accept any string.
-func User(id string) pbflags.Dimension       { return pbflags.Dimension{Name: "user_id", Value: id} }
-func SessionID(id string) pbflags.Dimension   { return pbflags.Dimension{Name: "session_id", Value: id} }
-func Region(r string) pbflags.Dimension       { return pbflags.Dimension{Name: "region", Value: r} }
-func Environment(e string) pbflags.Dimension  { return pbflags.Dimension{Name: "environment", Value: e} }
+func User(id string) pbflags.Dimension       { return stringDim("user_id", id) }
+func SessionID(id string) pbflags.Dimension   { return stringDim("session_id", id) }
+func Region(r string) pbflags.Dimension       { return stringDim("region", r) }
+func Environment(e string) pbflags.Dimension  { return stringDim("environment", e) }
 
-// Enum dimensions — typed constructors, compile-time safe.
-type PlanLevel string
-const (
-    PlanFree       PlanLevel = "free"
-    PlanPro        PlanLevel = "pro"
-    PlanEnterprise PlanLevel = "enterprise"
-)
-func Plan(p PlanLevel) pbflags.Dimension { return pbflags.Dimension{Name: "plan", Value: string(p)} }
-
-type DeviceType string
-const (
-    DeviceDesktop DeviceType = "desktop"
-    DeviceMobile  DeviceType = "mobile"
-    DeviceTablet  DeviceType = "tablet"
-)
-func Device(d DeviceType) pbflags.Dimension { return pbflags.Dimension{Name: "device_type", Value: string(d)} }
+// Enum dimensions — typed constructors using proto enum types.
+func Plan(p pb.PlanLevel) pbflags.Dimension   { return enumDim("plan", int32(p)) }
+func Device(d pb.DeviceType) pbflags.Dimension { return enumDim("device_type", int32(d)) }
 ```
 
-String dimensions accept any string value (`func User(id string)`). Enum
-dimensions generate a Go string type with named constants, so callers write
-`dims.Plan(dims.PlanEnterprise)` — passing an arbitrary string is a
-compile error. Function names are derived from the proto field name using
-the same convention as layer ID constructors today.
+String dimensions accept any string. Enum dimensions accept the
+proto-generated enum type (`pb.PlanLevel`, `pb.DeviceType`), so callers
+write `dims.Plan(pb.PlanLevel_PLAN_LEVEL_ENTERPRISE)` — the proto enum
+constants are the source of truth. This is full compile-time safety using
+the same types that proto already generates.
 
-For Java, enum dimensions generate a Java enum with a `toDimension()`
-method:
+The `stringDim` and `enumDim` helpers (in `pbflags` core) implement the
+`Dimension` interface by setting the named field on the proto message:
+
+```go
+// In pbflags core:
+type stringDim struct{ name, value string }
+func (d stringDim) Apply(msg protoreflect.Message) {
+    fd := msg.Descriptor().Fields().ByName(protoreflect.Name(d.name))
+    msg.Set(fd, protoreflect.ValueOfString(d.value))
+}
+```
+
+For Java, enum dimensions use the proto-generated enum type directly:
 
 ```java
-public enum PlanLevel {
-    FREE("free"), PRO("pro"), ENTERPRISE("enterprise");
-    // ...
+public static Dimension plan(PlanLevel p) {
+    return new EnumDimension("plan", p.getNumber());
 }
-
-public static Dimension plan(PlanLevel p) { return new Dimension("plan", p.value()); }
 ```
 
 **Testing helpers** adapt accordingly:
@@ -893,7 +946,7 @@ expressed as conditions on the `environment` dimension in config:
 flags:
   expensive_feature:
     conditions:
-      - when: 'ctx.environment == "production" && ctx.plan == "enterprise"'
+      - when: 'ctx.environment == "production" && ctx.plan == PlanLevel.ENTERPRISE'
         value: true
       - when: 'ctx.environment != "production"'
         value: true   # enabled everywhere except prod-non-enterprise
@@ -1000,7 +1053,7 @@ launches:
     flag: digest_frequency
     description: "Roll out daily digest to pro users"
     dimension: user_id
-    population: 'ctx.plan == "pro"'
+    population: 'ctx.plan == PlanLevel.PRO'
     treatment:
       conditions:
         - value: "daily"
@@ -1032,7 +1085,7 @@ experiments:
   notification-cadence:
     flag: digest_frequency
     dimension: user_id
-    population: 'ctx.plan == "pro"'
+    population: 'ctx.plan == PlanLevel.PRO'
     variants:
       control:
         weight: 50
