@@ -646,8 +646,14 @@ warning: flag "notifications/5" references unbounded dimension "user_id"
 
 **Bounded-output principle:** The finite-filter optimization generalizes
 to any mechanism that maps an unbounded input dimension to a bounded set
-of outcomes. The cache key includes the computed outcome, not the raw
-dimension value:
+of outcomes. More precisely, the evaluator may replace a raw context value
+in the cache key with a bounded derived value when that derived value is a
+safe cache projection: every context with the same derived value must
+produce the same flag value and the same evaluator-observable behavior for
+that flag.
+
+When a projection is safe, the cache key includes the computed outcome, not
+the raw dimension value:
 
 | Mechanism | Input | Output (cache key) | Cardinality |
 |-----------|-------|--------------------|-------------|
@@ -656,13 +662,19 @@ dimension value:
 | Launch (future) | `hash(launch_id + dim_value) % 100` | `launch:<name>=in_ramp\|out` | ×2 |
 | Experiment (future) | `hash(experiment_id + dim_value) % 100` | `experiment:<name>=<variant>` | ×(variant count) |
 
-All four mechanisms are pure functions with finite output ranges. The hash
-computation for launches and experiments is deterministic and cheap — it
-runs at cache-key construction time, same as the finite-filter membership
-check. This means launches and experiments on unbounded dimensions (like
-`user_id`) do not add unbounded cardinality to the cache. A flag with one
-active launch and one 3-variant experiment multiplies cache cardinality by
-2 × 3 = 6, regardless of how many users exist.
+All four mechanisms are pure functions with finite output ranges. The
+important correctness invariant is that the bounded output must define a
+cache equivalence class for the flag: two contexts that share the same cache
+projection must be interchangeable for evaluation. This is why a uniform
+finite filter can collapse to `match=true|false`, while a distinct
+finite filter must encode the matched literal.
+
+The hash computation for launches and experiments is deterministic and
+cheap — it runs at cache-key construction time, same as the finite-filter
+membership check. This means launches and experiments on unbounded
+dimensions (like `user_id`) do not add unbounded cardinality to the cache.
+A flag with one active launch and one 3-variant experiment multiplies cache
+cardinality by 2 × 3 = 6, regardless of how many users exist.
 
 **CEL program compilation:** CEL programs are compiled once when the flag
 definition is loaded (at startup and on definition refresh). The compiled
@@ -1182,10 +1194,17 @@ error: launch "daily-digest-for-pro" population references unbounded
   bounded: true) may appear in population conditions.
 ```
 
-This prevents unbounded cache growth in the launch/experiment evaluation
-path and ensures population membership is cheap to compute. If a string or
-int64 dimension truly has bounded cardinality (e.g., a small set of partner
-IDs), annotate it with `bounded: true` in the proto definition to opt in.
+This is a v1 restriction for population predicates, not a contradiction of
+the bounded-output principle. A launch may hash an unbounded dimension
+because the hash assignment is an explicitly modeled bounded projection.
+Population predicates are arbitrary CEL expressions; allowing them to
+reference unbounded dimensions would require the sync tool to prove and
+encode another safe cache projection for population membership. v1 avoids
+that complexity by requiring population predicates to use only dimensions
+whose raw values are already bounded and cheap to include in the cache key.
+If a string or int64 dimension truly has bounded cardinality (e.g., a small
+set of partner IDs), annotate it with `bounded: true` in the proto
+definition to opt in.
 
 The `dimension` field (hash target for ramp/assignment) is exempt from
 this restriction — hashing is inherently bounded (modulo 100).
