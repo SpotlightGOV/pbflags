@@ -195,6 +195,20 @@ enum DeviceType {
   DEVICE_TYPE_TABLET = 3;
 }
 
+enum Region {
+  REGION_UNSPECIFIED = 0;
+  REGION_US_EAST = 1;
+  REGION_US_WEST = 2;
+  REGION_EU_WEST = 3;
+}
+
+enum Environment {
+  ENVIRONMENT_UNSPECIFIED = 0;
+  ENVIRONMENT_DEVELOPMENT = 1;
+  ENVIRONMENT_STAGING = 2;
+  ENVIRONMENT_PRODUCTION = 3;
+}
+
 message EvaluationContext {
   option (pbflags.context) = true;
 
@@ -218,13 +232,13 @@ message EvaluationContext {
     description: "Client device class"
   }];
 
-  // String dimensions with low but unbounded cardinality.
-  string region = 5 [(pbflags.dimension) = {
+  // Enum dimensions with low cardinality.
+  Region region = 5 [(pbflags.dimension) = {
     description: "Deployment region"
   }];
 
-  string environment = 6 [(pbflags.dimension) = {
-    description: "Deployment environment (production, staging, etc.)"
+  Environment environment = 6 [(pbflags.dimension) = {
+    description: "Deployment environment"
   }];
 }
 ```
@@ -385,9 +399,9 @@ arises.
 | Enum equality | `ctx.plan == PlanLevel.ENTERPRISE` |
 | Enum inequality | `ctx.plan != PlanLevel.FREE` |
 | String equality | `ctx.user_id == "user-99"` |
-| Containment | `ctx.region in ["us-east", "us-west"]` |
+| Enum containment | `ctx.region in [Region.US_EAST, Region.US_WEST]` |
 | Boolean logic | `ctx.plan == PlanLevel.PRO && ctx.device_type == DeviceType.MOBILE` |
-| Negation | `!(ctx.environment == "production")` |
+| Negation | `!(ctx.environment == Environment.PRODUCTION)` |
 | String presence | `ctx.user_id != ""` (dimension is set) |
 | Bool dimension | `ctx.is_internal` |
 | Int comparison | `ctx.org_size > 100` |
@@ -664,8 +678,8 @@ eval := pbflags.Connect(httpClient, "http://localhost:9201")
 
 // Bind process-level dimensions (set once, shared across all requests).
 global := eval.With(
-    dims.Environment("production"),
-    dims.Region("us-east"),
+    dims.Env(pb.Environment_ENVIRONMENT_PRODUCTION),
+    dims.Reg(pb.Region_REGION_US_EAST),
 )
 
 
@@ -777,15 +791,15 @@ import (
     "google.golang.org/protobuf/reflect/protoreflect"
 )
 
-// String dimensions — accept any string.
+// String dimensions — identifiers with unbounded cardinality.
 func User(id string) pbflags.Dimension       { return stringDim("user_id", id) }
 func SessionID(id string) pbflags.Dimension   { return stringDim("session_id", id) }
-func Region(r string) pbflags.Dimension       { return stringDim("region", r) }
-func Environment(e string) pbflags.Dimension  { return stringDim("environment", e) }
 
 // Enum dimensions — typed constructors using proto enum types.
-func Plan(p pb.PlanLevel) pbflags.Dimension   { return enumDim("plan", int32(p)) }
-func Device(d pb.DeviceType) pbflags.Dimension { return enumDim("device_type", int32(d)) }
+func Plan(p pb.PlanLevel) pbflags.Dimension       { return enumDim("plan", int32(p)) }
+func Device(d pb.DeviceType) pbflags.Dimension     { return enumDim("device_type", int32(d)) }
+func Reg(r pb.Region) pbflags.Dimension            { return enumDim("region", int32(r)) }
+func Env(e pb.Environment) pbflags.Dimension       { return enumDim("environment", int32(e)) }
 ```
 
 String dimensions accept any string. Enum dimensions accept the
@@ -851,8 +865,8 @@ no evaluator is set, preserving the never-throw guarantee.
 @Provides @Singleton
 Evaluator globalEvaluator(HttpClient client) {
     return Evaluator.connect(client, "http://localhost:9201")
-        .with(Dims.environment("production"))
-        .with(Dims.region("us-east"));
+        .with(Dims.env(Environment.PRODUCTION))
+        .with(Dims.reg(Region.US_EAST));
 }
 
 
@@ -946,9 +960,9 @@ expressed as conditions on the `environment` dimension in config:
 flags:
   expensive_feature:
     conditions:
-      - when: 'ctx.environment == "production" && ctx.plan == PlanLevel.ENTERPRISE'
+      - when: 'ctx.environment == Environment.PRODUCTION && ctx.plan == PlanLevel.ENTERPRISE'
         value: true
-      - when: 'ctx.environment != "production"'
+      - when: 'ctx.environment != Environment.PRODUCTION'
         value: true   # enabled everywhere except prod-non-enterprise
       - otherwise: false
 ```
