@@ -44,21 +44,6 @@ func stringVal(v string) *pbflagsv1.FlagValue {
 	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: v}}
 }
 
-func seedAllFlags(t *testing.T, pool *pgxpool.Pool) {
-	t.Helper()
-	ctx := context.Background()
-	_, err := pool.Exec(ctx, `INSERT INTO feature_flags.features (feature_id) VALUES ('svc_notif') ON CONFLICT DO NOTHING`)
-	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `
-		INSERT INTO feature_flags.flags (flag_id, feature_id, field_number, flag_type, layer, state) VALUES
-			('svc_notif/1', 'svc_notif', 1, 'BOOL', 'USER', 'DEFAULT'),
-			('svc_notif/2', 'svc_notif', 2, 'STRING', 'GLOBAL', 'DEFAULT'),
-			('svc_notif/3', 'svc_notif', 3, 'INT64', 'GLOBAL', 'DEFAULT'),
-			('svc_notif/4', 'svc_notif', 4, 'DOUBLE', 'GLOBAL', 'DEFAULT')
-		ON CONFLICT DO NOTHING`)
-	require.NoError(t, err)
-}
-
 func setOverride(t *testing.T, pool *pgxpool.Pool, flagID, entityID, state string, value *pbflagsv1.FlagValue) {
 	t.Helper()
 	var valBytes []byte
@@ -72,6 +57,16 @@ func setOverride(t *testing.T, pool *pgxpool.Pool, flagID, entityID, state strin
 		ON CONFLICT (flag_id, entity_id) DO UPDATE SET state = EXCLUDED.state, value = EXCLUDED.value`,
 		flagID, entityID, state, valBytes)
 	require.NoError(t, err)
+}
+
+// notifSpecs returns the standard 4-flag spec used by most service tests.
+func notifSpecs() []testdb.FlagSpec {
+	return []testdb.FlagSpec{
+		{FlagType: "BOOL", Layer: "USER"},
+		{FlagType: "STRING", Layer: "GLOBAL"},
+		{FlagType: "INT64", Layer: "GLOBAL"},
+		{FlagType: "DOUBLE", Layer: "GLOBAL"},
+	}
 }
 
 func setupServiceEnv(t *testing.T) *serviceTestEnv {
@@ -148,22 +143,23 @@ func waitForKillPoll(env *serviceTestEnv) {
 }
 
 func TestBulkEvaluate(t *testing.T) {
+	t.Parallel()
 	env := setupServiceEnv(t)
-	seedAllFlags(t, env.pool)
+	tf := testdb.CreateTestFeature(t, env.pool, notifSpecs())
 
 	_, err := env.adminClient.UpdateFlagState(context.Background(), connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: "svc_notif/2", State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
+		FlagId: tf.FlagID(2), State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
 	}))
 	require.NoError(t, err)
 	_, err = env.adminClient.UpdateFlagState(context.Background(), connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: "svc_notif/3", State: pbflagsv1.State_STATE_KILLED, Actor: "test",
+		FlagId: tf.FlagID(3), State: pbflagsv1.State_STATE_KILLED, Actor: "test",
 	}))
 	require.NoError(t, err)
 	expireCache(env)
 	waitForKillPoll(env)
 
 	resp, err := env.evaluatorClient.BulkEvaluate(context.Background(), connect.NewRequest(&pbflagsv1.BulkEvaluateRequest{
-		FlagIds: []string{"svc_notif/1", "svc_notif/2", "svc_notif/3", "svc_notif/4"},
+		FlagIds: []string{tf.FlagID(1), tf.FlagID(2), tf.FlagID(3), tf.FlagID(4)},
 	}))
 	require.NoError(t, err)
 	require.Len(t, resp.Msg.Evaluations, 4)
@@ -173,25 +169,26 @@ func TestBulkEvaluate(t *testing.T) {
 		byID[e.FlagId] = e
 	}
 
-	assert.Nil(t, byID["svc_notif/1"].Value)                               // DEFAULT → nil (client has compiled defaults)
-	assert.Equal(t, "weekly", byID["svc_notif/2"].Value.GetStringValue()) // ENABLED with value
-	assert.Nil(t, byID["svc_notif/3"].Value)                              // KILLED → nil (client has compiled defaults)
-	assert.Nil(t, byID["svc_notif/4"].Value)                              // DEFAULT → nil (client has compiled defaults)
+	assert.Nil(t, byID[tf.FlagID(1)].Value)                               // DEFAULT -> nil (client has compiled defaults)
+	assert.Equal(t, "weekly", byID[tf.FlagID(2)].Value.GetStringValue())   // ENABLED with value
+	assert.Nil(t, byID[tf.FlagID(3)].Value)                               // KILLED -> nil (client has compiled defaults)
+	assert.Nil(t, byID[tf.FlagID(4)].Value)                               // DEFAULT -> nil (client has compiled defaults)
 }
 
 func TestBulkEvaluateWithEntityId(t *testing.T) {
+	t.Parallel()
 	env := setupServiceEnv(t)
-	seedAllFlags(t, env.pool)
+	tf := testdb.CreateTestFeature(t, env.pool, notifSpecs())
 
-	setOverride(t, env.pool, "svc_notif/1", "user-bulk", "ENABLED", boolVal(false))
+	setOverride(t, env.pool, tf.FlagID(1), "user-bulk", "ENABLED", boolVal(false))
 	_, err := env.adminClient.UpdateFlagState(context.Background(), connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: "svc_notif/2", State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
+		FlagId: tf.FlagID(2), State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
 	}))
 	require.NoError(t, err)
 	expireCache(env)
 
 	resp, err := env.evaluatorClient.BulkEvaluate(context.Background(), connect.NewRequest(&pbflagsv1.BulkEvaluateRequest{
-		FlagIds: []string{"svc_notif/1", "svc_notif/2"}, EntityId: "user-bulk",
+		FlagIds: []string{tf.FlagID(1), tf.FlagID(2)}, EntityId: "user-bulk",
 	}))
 	require.NoError(t, err)
 	require.Len(t, resp.Msg.Evaluations, 2)
@@ -201,69 +198,72 @@ func TestBulkEvaluateWithEntityId(t *testing.T) {
 		byID[e.FlagId] = e
 	}
 
-	assert.False(t, byID["svc_notif/1"].Value.GetBoolValue())
-	assert.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, byID["svc_notif/1"].Source)
-	assert.Equal(t, "weekly", byID["svc_notif/2"].Value.GetStringValue())
+	assert.False(t, byID[tf.FlagID(1)].Value.GetBoolValue())
+	assert.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, byID[tf.FlagID(1)].Source)
+	assert.Equal(t, "weekly", byID[tf.FlagID(2)].Value.GetStringValue())
 }
 
 func TestRootModeStateRPCs(t *testing.T) {
+	t.Parallel()
 	env := setupServiceEnv(t)
-	seedAllFlags(t, env.pool)
+	tf := testdb.CreateTestFeature(t, env.pool, notifSpecs())
 	ctx := context.Background()
 
 	_, err := env.adminClient.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: "svc_notif/2", State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
+		FlagId: tf.FlagID(2), State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
 	}))
 	require.NoError(t, err)
 	_, err = env.adminClient.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: "svc_notif/3", State: pbflagsv1.State_STATE_KILLED, Actor: "test",
+		FlagId: tf.FlagID(3), State: pbflagsv1.State_STATE_KILLED, Actor: "test",
 	}))
 	require.NoError(t, err)
-	setOverride(t, env.pool, "svc_notif/1", "user-100", "ENABLED", boolVal(false))
+	setOverride(t, env.pool, tf.FlagID(1), "user-100", "ENABLED", boolVal(false))
 
-	flagResp, err := env.evaluatorClient.GetFlagState(ctx, connect.NewRequest(&pbflagsv1.GetFlagStateRequest{FlagId: "svc_notif/2"}))
+	flagResp, err := env.evaluatorClient.GetFlagState(ctx, connect.NewRequest(&pbflagsv1.GetFlagStateRequest{FlagId: tf.FlagID(2)}))
 	require.NoError(t, err)
 	assert.Equal(t, pbflagsv1.State_STATE_ENABLED, flagResp.Msg.Flag.State)
 	assert.Equal(t, "weekly", flagResp.Msg.Flag.Value.GetStringValue())
 
 	killResp, err := env.evaluatorClient.GetKilledFlags(ctx, connect.NewRequest(&pbflagsv1.GetKilledFlagsRequest{}))
 	require.NoError(t, err)
-	assert.Contains(t, killResp.Msg.FlagIds, "svc_notif/3")
+	assert.Contains(t, killResp.Msg.FlagIds, tf.FlagID(3))
 
 	overResp, err := env.evaluatorClient.GetOverrides(ctx, connect.NewRequest(&pbflagsv1.GetOverridesRequest{EntityId: "user-100"}))
 	require.NoError(t, err)
 	require.Len(t, overResp.Msg.Overrides, 1)
-	assert.Equal(t, "svc_notif/1", overResp.Msg.Overrides[0].FlagId)
+	assert.Equal(t, tf.FlagID(1), overResp.Msg.Overrides[0].FlagId)
 	assert.False(t, overResp.Msg.Overrides[0].Value.GetBoolValue())
 }
 
 func TestGlobalLayerRejectsOverride(t *testing.T) {
+	t.Parallel()
 	env := setupServiceEnv(t)
-	seedAllFlags(t, env.pool)
+	tf := testdb.CreateTestFeature(t, env.pool, notifSpecs())
 
 	_, err := env.adminClient.SetFlagOverride(context.Background(), connect.NewRequest(&pbflagsv1.SetFlagOverrideRequest{
-		FlagId: "svc_notif/2", EntityId: "user-1",
+		FlagId: tf.FlagID(2), EntityId: "user-1",
 		State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("rejected"), Actor: "test",
 	}))
 	require.Error(t, err)
 }
 
 func TestServiceAuditLog(t *testing.T) {
+	t.Parallel()
 	env := setupServiceEnv(t)
-	seedAllFlags(t, env.pool)
+	tf := testdb.CreateTestFeature(t, env.pool, notifSpecs())
 	ctx := context.Background()
 
 	_, err := env.adminClient.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: "svc_notif/2", State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
+		FlagId: tf.FlagID(2), State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
 	}))
 	require.NoError(t, err)
 	_, err = env.adminClient.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: "svc_notif/2", State: pbflagsv1.State_STATE_KILLED, Actor: "test",
+		FlagId: tf.FlagID(2), State: pbflagsv1.State_STATE_KILLED, Actor: "test",
 	}))
 	require.NoError(t, err)
 
 	resp, err := env.adminClient.GetAuditLog(ctx, connect.NewRequest(&pbflagsv1.GetAuditLogRequest{
-		FlagId: "svc_notif/2", Limit: 10,
+		FlagId: tf.FlagID(2), Limit: 10,
 	}))
 	require.NoError(t, err)
 	require.Len(t, resp.Msg.Entries, 2)

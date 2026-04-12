@@ -91,10 +91,10 @@ Skip hooks for a one-off commit with `git commit --no-verify`.
 Tests use testcontainers to start PostgreSQL automatically (requires Docker). Run the full suite with:
 
 ```bash
-go test -count=1 -p 1 ./...
+go test -count=1 ./...
 ```
 
-Use `-p 1` — several packages share the same database and will deadlock without it.
+Each test creates its own uniquely-named feature and flags via `testdb.CreateTestFeature`, enabling full parallel execution across packages and within each package.
 
 E2E browser tests (Playwright, gated behind `e2e` build tag):
 
