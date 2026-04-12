@@ -20,16 +20,22 @@ import (
 // (for the Evaluator), KillFetcher (for the KillPoller), and StateServer
 // (for the Service to serve state RPCs in root mode).
 type DBFetcher struct {
-	pool    *pgxpool.Pool
-	tracker *HealthTracker
-	logger  *slog.Logger
-	metrics *Metrics
-	tracer  trace.Tracer
+	pool     *pgxpool.Pool
+	tracker  *HealthTracker
+	logger   *slog.Logger
+	metrics  *Metrics
+	tracer   trace.Tracer
+	condEval *ConditionEvaluator // nil when conditions are not configured
 }
 
 // NewDBFetcher creates a fetcher backed by direct database access.
-func NewDBFetcher(pool *pgxpool.Pool, tracker *HealthTracker, logger *slog.Logger, m *Metrics, tracer trace.Tracer) *DBFetcher {
-	return &DBFetcher{pool: pool, tracker: tracker, logger: logger, metrics: m, tracer: tracer}
+// condEval may be nil if condition evaluation is not configured.
+func NewDBFetcher(pool *pgxpool.Pool, tracker *HealthTracker, logger *slog.Logger, m *Metrics, tracer trace.Tracer, condEval ...*ConditionEvaluator) *DBFetcher {
+	f := &DBFetcher{pool: pool, tracker: tracker, logger: logger, metrics: m, tracer: tracer}
+	if len(condEval) > 0 {
+		f.condEval = condEval[0]
+	}
+	return f
 }
 
 // FetchFlagState implements Fetcher.
@@ -44,11 +50,12 @@ func (f *DBFetcher) FetchFlagState(ctx context.Context, flagID string) (*CachedF
 	var stateStr string
 	var valueBytes []byte
 	var archivedAt *time.Time
+	var conditionsJSON []byte
 
 	err := f.pool.QueryRow(ctx, `
-		SELECT state, value, archived_at
+		SELECT state, value, archived_at, conditions
 		FROM feature_flags.flags
-		WHERE flag_id = $1`, flagID).Scan(&stateStr, &valueBytes, &archivedAt)
+		WHERE flag_id = $1`, flagID).Scan(&stateStr, &valueBytes, &archivedAt, &conditionsJSON)
 	if err == pgx.ErrNoRows {
 		f.tracker.RecordSuccess()
 		return nil, nil
@@ -60,12 +67,16 @@ func (f *DBFetcher) FetchFlagState(ctx context.Context, flagID string) (*CachedF
 	f.tracker.RecordSuccess()
 
 	val := unmarshalValue(valueBytes)
-	return &CachedFlagState{
+	cs := &CachedFlagState{
 		FlagID:   flagID,
 		State:    dbParseState(stateStr),
 		Value:    val,
 		Archived: archivedAt != nil,
-	}, nil
+	}
+	if f.condEval != nil && len(conditionsJSON) > 0 {
+		cs.Conditions = f.condEval.CompileConditions(flagID, conditionsJSON)
+	}
+	return cs, nil
 }
 
 // FetchOverrides implements Fetcher.

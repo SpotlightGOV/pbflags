@@ -4,9 +4,21 @@ import (
 	"context"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
+
+// unmarshalEvalContext deserializes the evaluation context from an Any proto.
+// Returns nil (not an error) if there is no context or no condition evaluator.
+func (s *Service) unmarshalEvalContext(anyCtx *anypb.Any) (proto.Message, error) {
+	ce := s.evaluator.condEval
+	if ce == nil || anyCtx == nil {
+		return nil, nil
+	}
+	return ce.UnmarshalContext(anyCtx)
+}
 
 // StateServer serves flag state RPCs. In root mode this reads from DB
 // (via DBFetcher), in proxy mode it delegates to an upstream evaluator.
@@ -36,8 +48,12 @@ func NewService(eval *Evaluator, tracker *HealthTracker, cache *CacheStore, stat
 
 // Evaluate resolves a single flag value.
 func (s *Service) Evaluate(ctx context.Context, req *connect.Request[pbflagsv1.EvaluateRequest]) (*connect.Response[pbflagsv1.EvaluateResponse], error) {
-	// TODO(pb-cfx.16): deserialize req.Msg.Context and evaluate conditions.
-	value, source := s.evaluator.Evaluate(ctx, req.Msg.FlagId, "")
+	evalCtx, err := s.unmarshalEvalContext(req.Msg.Context)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	value, source := s.evaluator.EvaluateWithContext(ctx, req.Msg.FlagId, evalCtx)
 
 	return connect.NewResponse(&pbflagsv1.EvaluateResponse{
 		FlagId: req.Msg.FlagId,
@@ -53,10 +69,14 @@ func (s *Service) BulkEvaluate(ctx context.Context, req *connect.Request[pbflags
 		return connect.NewResponse(&pbflagsv1.BulkEvaluateResponse{}), nil
 	}
 
+	evalCtx, err := s.unmarshalEvalContext(req.Msg.Context)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
 	evaluations := make([]*pbflagsv1.EvaluateResponse, 0, len(flagIDs))
 	for _, flagID := range flagIDs {
-		// TODO(pb-cfx.16): deserialize req.Msg.Context and evaluate conditions.
-		value, source := s.evaluator.Evaluate(ctx, flagID, "")
+		value, source := s.evaluator.EvaluateWithContext(ctx, flagID, evalCtx)
 		evaluations = append(evaluations, &pbflagsv1.EvaluateResponse{
 			FlagId: flagID,
 			Value:  value,

@@ -12,10 +12,11 @@ import (
 
 // CachedFlagState holds cached state for a single flag.
 type CachedFlagState struct {
-	FlagID   string
-	State    pbflagsv1.State
-	Value    *pbflagsv1.FlagValue
-	Archived bool
+	FlagID     string
+	State      pbflagsv1.State
+	Value      *pbflagsv1.FlagValue
+	Archived   bool
+	Conditions []CachedCondition // compiled condition chain (nil for static/unconfigured flags)
 }
 
 // CachedOverride holds a cached per-entity override.

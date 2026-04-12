@@ -9,6 +9,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/proto"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
@@ -25,6 +26,7 @@ type Fetcher interface {
 type Evaluator struct {
 	cache           *CacheStore
 	fetcher         Fetcher
+	condEval        *ConditionEvaluator // nil when conditions are not configured
 	logger          *slog.Logger
 	metrics         *Metrics
 	tracer          trace.Tracer
@@ -48,6 +50,11 @@ func WithInlineKillCheck() EvaluatorOption {
 // Defaults to 500ms if not set.
 func WithFetchTimeout(d time.Duration) EvaluatorOption {
 	return func(e *Evaluator) { e.fetchTimeout = d }
+}
+
+// WithConditionEvaluator enables CEL condition evaluation.
+func WithConditionEvaluator(ce *ConditionEvaluator) EvaluatorOption {
+	return func(e *Evaluator) { e.condEval = ce }
 }
 
 // NewEvaluator creates an Evaluator.
@@ -112,6 +119,48 @@ func (e *Evaluator) Evaluate(ctx context.Context, flagID, entityID string) (valu
 		return e.evalFlagState(prefetched)
 	}
 	return e.resolveGlobal(ctx, flagID)
+}
+
+// EvaluateWithContext resolves a flag using the v1 evaluation precedence:
+// kill set → conditions (CEL) → static config value → compiled default.
+// evalCtx is the deserialized EvaluationContext proto (may be nil).
+func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, evalCtx proto.Message) (value *pbflagsv1.FlagValue, source pbflagsv1.EvaluationSource) {
+	ctx, span := e.tracer.Start(ctx, "Evaluator.EvaluateWithContext",
+		trace.WithAttributes(attribute.String("flag_id", flagID)))
+	defer func() {
+		span.SetAttributes(attribute.String("source", sourceLabel(source)))
+		span.End()
+		e.metrics.EvaluationsTotal.WithLabelValues(sourceLabel(source), "ok").Inc()
+	}()
+
+	// 1. Kill set check.
+	if e.cache.GetKillSet().IsKilled(flagID) {
+		e.metrics.CacheHitsTotal.WithLabelValues("kill_set").Inc()
+		return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED
+	}
+
+	// 2. Resolve flag state (cache → stale → fetch).
+	val, src := e.resolveGlobal(ctx, flagID)
+
+	// If killed or archived, return as-is (no condition evaluation).
+	if src == pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED ||
+		src == pbflagsv1.EvaluationSource_EVALUATION_SOURCE_ARCHIVED {
+		return val, src
+	}
+
+	// 3. Conditions — evaluate CEL chain, first match wins.
+	state := e.cache.GetFlagState(flagID)
+	if state == nil {
+		state, _ = e.fetcher.FetchFlagState(ctx, flagID)
+	}
+	if state != nil && len(state.Conditions) > 0 && e.condEval != nil && evalCtx != nil {
+		if condVal := e.condEval.EvaluateConditions(state.Conditions, evalCtx); condVal != nil {
+			return condVal, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL
+		}
+	}
+
+	// 4. Return whatever resolveGlobal determined (static value or default).
+	return val, src
 }
 
 func (e *Evaluator) resolveOverride(
