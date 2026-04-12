@@ -254,6 +254,14 @@ message DimensionOptions {
   // (launches, experiments). Typically true for stable identifiers
   // like user_id, false for attributes like plan or device_type.
   bool hashable = 2;
+  // Explicitly declare a string dimension as having bounded cardinality.
+  // Enum, bool, and int64 dimensions are inherently bounded. String
+  // dimensions are unbounded by default. Setting this to true allows
+  // the dimension to be referenced in launch/experiment population
+  // conditions without a sync error. Use for string dimensions with
+  // a known-finite value space that isn't worth modeling as an enum
+  // (e.g., a frequently-changing list of partner IDs).
+  bool bounded = 3;
 }
 
 extend google.protobuf.MessageOptions {
@@ -1085,6 +1093,33 @@ removed.
 Each launch gets its own independent slicing layer — entities are hashed
 into "in ramp" or "not in ramp" independently of any other launch or
 experiment.
+
+**Dimension restrictions in launches and experiments:**
+
+`population` conditions in launches and experiments are restricted to
+**bounded dimensions only** — enum, bool, int64, or string dimensions
+explicitly annotated with `bounded: true`. The sync tool rejects
+`population` conditions that reference unbounded string dimensions:
+
+```
+error: launch "daily-digest-for-pro" population references unbounded
+  dimension "user_id" in condition "ctx.user_id != \"\"".
+  Only bounded dimensions (enum, bool, int64, or string with
+  bounded: true) may appear in population conditions.
+```
+
+This prevents unbounded cache growth in the launch/experiment evaluation
+path and ensures population membership is cheap to compute. If a string
+dimension truly has bounded cardinality (e.g., a small set of partner IDs),
+annotate it with `bounded: true` in the proto definition to opt in.
+
+The `dimension` field (hash target for ramp/assignment) is exempt from
+this restriction — hashing is inherently bounded (modulo 100).
+
+Note: this restriction applies to launches and experiments only, not to
+base flag conditions. Base conditions can reference unbounded dimensions
+freely (subject to the sync warning and LRU cache cap described in the
+evaluator section).
 
 ### Experiments
 
