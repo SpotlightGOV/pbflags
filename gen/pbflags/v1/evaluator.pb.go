@@ -35,6 +35,7 @@ const (
 	EvaluationSource_EVALUATION_SOURCE_CACHED      EvaluationSource = 5 // Stale cache (server unreachable)
 	EvaluationSource_EVALUATION_SOURCE_ARCHIVED    EvaluationSource = 6 // Archived flag's last known value
 	EvaluationSource_EVALUATION_SOURCE_STALE       EvaluationSource = 7 // Stale value returned while background refresh in flight
+	EvaluationSource_EVALUATION_SOURCE_CONDITION   EvaluationSource = 8 // Matched a CEL condition from config
 )
 
 // Enum value maps for EvaluationSource.
@@ -48,6 +49,7 @@ var (
 		5: "EVALUATION_SOURCE_CACHED",
 		6: "EVALUATION_SOURCE_ARCHIVED",
 		7: "EVALUATION_SOURCE_STALE",
+		8: "EVALUATION_SOURCE_CONDITION",
 	}
 	EvaluationSource_value = map[string]int32{
 		"EVALUATION_SOURCE_UNSPECIFIED": 0,
@@ -58,6 +60,7 @@ var (
 		"EVALUATION_SOURCE_CACHED":      5,
 		"EVALUATION_SOURCE_ARCHIVED":    6,
 		"EVALUATION_SOURCE_STALE":       7,
+		"EVALUATION_SOURCE_CONDITION":   8,
 	}
 )
 
@@ -1017,7 +1020,7 @@ const file_pbflags_v1_evaluator_proto_rawDesc = "" +
 	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12\x1b\n" +
 	"\tentity_id\x18\x02 \x01(\tR\bentityId\x12'\n" +
 	"\x05state\x18\x03 \x01(\x0e2\x11.pbflags.v1.StateR\x05state\x12+\n" +
-	"\x05value\x18\x04 \x01(\v2\x15.pbflags.v1.FlagValueR\x05value*\x8b\x02\n" +
+	"\x05value\x18\x04 \x01(\v2\x15.pbflags.v1.FlagValueR\x05value*\xac\x02\n" +
 	"\x10EvaluationSource\x12!\n" +
 	"\x1dEVALUATION_SOURCE_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19EVALUATION_SOURCE_DEFAULT\x10\x01\x12\x1c\n" +
@@ -1026,7 +1029,8 @@ const file_pbflags_v1_evaluator_proto_rawDesc = "" +
 	"\x18EVALUATION_SOURCE_KILLED\x10\x04\x12\x1c\n" +
 	"\x18EVALUATION_SOURCE_CACHED\x10\x05\x12\x1e\n" +
 	"\x1aEVALUATION_SOURCE_ARCHIVED\x10\x06\x12\x1b\n" +
-	"\x17EVALUATION_SOURCE_STALE\x10\a*\x91\x01\n" +
+	"\x17EVALUATION_SOURCE_STALE\x10\a\x12\x1f\n" +
+	"\x1bEVALUATION_SOURCE_CONDITION\x10\b*\x91\x01\n" +
 	"\x0fEvaluatorStatus\x12 \n" +
 	"\x1cEVALUATOR_STATUS_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bEVALUATOR_STATUS_CONNECTING\x10\x01\x12\x1c\n" +

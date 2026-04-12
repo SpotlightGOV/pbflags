@@ -111,7 +111,7 @@ func (ce *ConditionEvaluator) EvaluateConditions(conditions []CachedCondition, e
 			ce.logger.Debug("CEL evaluation error", "error", err)
 			continue // skip failed condition, try next
 		}
-		if out.Value() == true {
+		if b, ok := out.Value().(bool); ok && b {
 			return cond.Value
 		}
 	}

@@ -140,6 +140,8 @@ func sourceLabel(source pbflagsv1.EvaluationSource) string {
 		return "archived"
 	case pbflagsv1.EvaluationSource_EVALUATION_SOURCE_STALE:
 		return "stale"
+	case pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CONDITION:
+		return "condition"
 	default:
 		return "unknown"
 	}

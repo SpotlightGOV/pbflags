@@ -28,12 +28,20 @@ type DBFetcher struct {
 	condEval *ConditionEvaluator // nil when conditions are not configured
 }
 
+// DBFetcherOption configures optional DBFetcher behavior.
+type DBFetcherOption func(*DBFetcher)
+
+// WithDBConditionEvaluator sets the condition evaluator for compiling
+// conditions loaded from the database.
+func WithDBConditionEvaluator(ce *ConditionEvaluator) DBFetcherOption {
+	return func(f *DBFetcher) { f.condEval = ce }
+}
+
 // NewDBFetcher creates a fetcher backed by direct database access.
-// condEval may be nil if condition evaluation is not configured.
-func NewDBFetcher(pool *pgxpool.Pool, tracker *HealthTracker, logger *slog.Logger, m *Metrics, tracer trace.Tracer, condEval ...*ConditionEvaluator) *DBFetcher {
+func NewDBFetcher(pool *pgxpool.Pool, tracker *HealthTracker, logger *slog.Logger, m *Metrics, tracer trace.Tracer, opts ...DBFetcherOption) *DBFetcher {
 	f := &DBFetcher{pool: pool, tracker: tracker, logger: logger, metrics: m, tracer: tracer}
-	if len(condEval) > 0 {
-		f.condEval = condEval[0]
+	for _, opt := range opts {
+		opt(f)
 	}
 	return f
 }

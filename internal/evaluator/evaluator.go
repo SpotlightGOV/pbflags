@@ -145,8 +145,8 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 		return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED
 	}
 
-	// 2. Resolve flag state (cache → stale → fetch).
-	val, src := e.resolveGlobal(ctx, flagID)
+	// 2. Resolve flag state (cache → stale → fetch) — reuses singleflight.
+	state, val, src := e.resolveGlobalWithState(ctx, flagID)
 
 	// If killed or archived, return as-is (no condition evaluation).
 	if src == pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED ||
@@ -155,12 +155,7 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 	}
 
 	// 3. Conditions — check cache, then evaluate CEL chain.
-	state := e.cache.GetFlagState(flagID)
-	if state == nil {
-		state, _ = e.fetcher.FetchFlagState(ctx, flagID)
-	}
 	if state != nil && len(state.Conditions) > 0 && e.condEval != nil && evalCtx != nil {
-		// Check condition result cache.
 		cacheKey := BuildCacheKey(flagID, state.DimMeta, evalCtx)
 		if e.condCache != nil {
 			if cached, ok := e.condCache.Get(cacheKey); ok {
@@ -172,7 +167,7 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 			if e.condCache != nil {
 				e.condCache.Set(cacheKey, condVal)
 			}
-			return condVal, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL
+			return condVal, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CONDITION
 		}
 	}
 
@@ -266,6 +261,39 @@ func (e *Evaluator) resolveGlobal(
 		e.cache.SetFlagState(fetched)
 	}
 	return e.evalFlagState(fetched)
+}
+
+// resolveGlobalWithState is like resolveGlobal but also returns the
+// CachedFlagState for use by EvaluateWithContext (avoids double-fetch).
+func (e *Evaluator) resolveGlobalWithState(
+	ctx context.Context,
+	flagID string,
+) (*CachedFlagState, *pbflagsv1.FlagValue, pbflagsv1.EvaluationSource) {
+	state := e.cache.GetFlagState(flagID)
+	if state != nil {
+		e.metrics.CacheHitsTotal.WithLabelValues("flags").Inc()
+		val, src := e.evalFlagState(state)
+		return state, val, src
+	}
+
+	e.metrics.CacheMissesTotal.WithLabelValues("flags").Inc()
+
+	if stale := e.cache.GetStaleFlagState(flagID); stale != nil {
+		e.backgroundRefreshFlag(flagID)
+		val, src := e.evalFlagStateWithSource(stale, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_STALE)
+		return stale, val, src
+	}
+
+	fetched, err := e.fetcher.FetchFlagState(ctx, flagID)
+	if err != nil {
+		e.logger.Debug("flag state fetch failed", "flag_id", flagID, "error", err)
+		return nil, nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT
+	}
+	if fetched != nil {
+		e.cache.SetFlagState(fetched)
+	}
+	val, src := e.evalFlagState(fetched)
+	return fetched, val, src
 }
 
 // evalFlagState evaluates an already-fetched flag state using GLOBAL as the
