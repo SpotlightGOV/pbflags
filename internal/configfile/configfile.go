@@ -346,6 +346,10 @@ func toInt64(v any) (int64, error) {
 	switch n := v.(type) {
 	case int:
 		return int64(n), nil
+	case int64:
+		return n, nil
+	case uint64:
+		return int64(n), nil
 	case float64:
 		if n != float64(int64(n)) {
 			return 0, fmt.Errorf("expected integer, got %v", n)
@@ -361,6 +365,8 @@ func toFloat64(v any) (float64, error) {
 	case float64:
 		return n, nil
 	case int:
+		return float64(n), nil
+	case int64:
 		return float64(n), nil
 	default:
 		return 0, fmt.Errorf("expected number, got %T(%v)", v, v)

@@ -424,6 +424,53 @@ flags:
 	}
 }
 
+func TestToInt64EdgeCases(t *testing.T) {
+	tests := []struct {
+		name string
+		in   any
+		want int64
+	}{
+		{"int", int(42), 42},
+		{"int64", int64(9000000000), 9000000000},
+		{"uint64", uint64(123), 123},
+		{"float64 integer", float64(7), 7},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := toInt64(tt.in)
+			if err != nil {
+				t.Fatalf("toInt64(%T(%v)): %v", tt.in, tt.in, err)
+			}
+			if got != tt.want {
+				t.Errorf("got %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestToFloat64EdgeCases(t *testing.T) {
+	tests := []struct {
+		name string
+		in   any
+		want float64
+	}{
+		{"float64", float64(3.14), 3.14},
+		{"int", int(7), 7.0},
+		{"int64", int64(9000000000), 9000000000.0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := toFloat64(tt.in)
+			if err != nil {
+				t.Fatalf("toFloat64(%T(%v)): %v", tt.in, tt.in, err)
+			}
+			if got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseIntAsDouble(t *testing.T) {
 	// YAML integer should be accepted for double flags.
 	yaml := `

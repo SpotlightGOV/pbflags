@@ -111,16 +111,16 @@ func TestClassifyFiniteFilterDistinct(t *testing.T) {
 	}
 }
 
-func TestClassifyUnbounded(t *testing.T) {
+func TestClassifyInequalityLiteral(t *testing.T) {
 	c := compiler(t)
 	md := (&example.EvaluationContext{}).ProtoReflect().Descriptor()
 	bounded := BoundedDimsFromDescriptor(md)
 
-	// Presence check is not a literal comparison → unbounded.
-	ast := compileAST(t, c, `ctx.user_id != ""`)
+	// != against a literal is a 2-bucket partition, not unbounded.
+	ast := compileAST(t, c, `ctx.user_id != "admin"`)
 	result := ClassifyDimensions(
 		[]*cel.Ast{ast},
-		[]*pbflagsv1.FlagValue{strVal("present")},
+		[]*pbflagsv1.FlagValue{strVal("restricted")},
 		bounded,
 	)
 
@@ -128,8 +128,70 @@ func TestClassifyUnbounded(t *testing.T) {
 	if m == nil {
 		t.Fatal("user_id not found")
 	}
-	if m.Classification != Unbounded {
-		t.Errorf("classification = %v, want unbounded", m.Classification)
+	if m.Classification == Unbounded {
+		t.Errorf("classification = unbounded, want finite filter (literal comparison against admin)")
+	}
+	if len(m.LiteralSet) != 1 || m.LiteralSet[0] != "admin" {
+		t.Errorf("literal set = %v, want [admin]", m.LiteralSet)
+	}
+}
+
+func TestClassifyComparisonOperators(t *testing.T) {
+	c := compiler(t)
+	md := (&example.EvaluationContext{}).ProtoReflect().Descriptor()
+	bounded := BoundedDimsFromDescriptor(md)
+
+	// All comparison operators against literals should be finite filter.
+	ops := []struct {
+		name string
+		expr string
+	}{
+		{"!=", `ctx.user_id != ""`},
+		{"<", `ctx.session_id < "M"`},
+		{"<=", `ctx.session_id <= "Z"`},
+		{">", `ctx.session_id > "A"`},
+		{">=", `ctx.session_id >= "B"`},
+	}
+
+	for _, op := range ops {
+		t.Run(op.name, func(t *testing.T) {
+			ast := compileAST(t, c, op.expr)
+			result := ClassifyDimensions(
+				[]*cel.Ast{ast},
+				[]*pbflagsv1.FlagValue{strVal("val")},
+				bounded,
+			)
+			for dim, m := range result {
+				if m.Classification == Unbounded {
+					t.Errorf("%s: dim %q classified as unbounded, want finite filter", op.expr, dim)
+				}
+			}
+		})
+	}
+}
+
+func TestClassifyUnbounded(t *testing.T) {
+	c := compiler(t)
+	md := (&example.EvaluationContext{}).ProtoReflect().Descriptor()
+	bounded := BoundedDimsFromDescriptor(md)
+
+	// Dim compared to another dim — no literal → unbounded.
+	ast := compileAST(t, c, `ctx.user_id == ctx.session_id`)
+	result := ClassifyDimensions(
+		[]*cel.Ast{ast},
+		[]*pbflagsv1.FlagValue{strVal("match")},
+		bounded,
+	)
+
+	for _, dim := range []string{"user_id", "session_id"} {
+		m := result[dim]
+		if m == nil {
+			t.Errorf("%s not found", dim)
+			continue
+		}
+		if m.Classification != Unbounded {
+			t.Errorf("%s classification = %v, want unbounded", dim, m.Classification)
+		}
 	}
 }
 

@@ -138,7 +138,7 @@ func walkDimRefs(nav celast.NavigableExpr, refs *[]condDimRef) {
 			for _, child := range children {
 				walkDimRefs(child, refs)
 			}
-		case "_==_":
+		case "_==_", "_!=_", "_<_", "_<=_", "_>_", "_>=_":
 			if len(children) == 2 {
 				if ref := matchEqLiteral(children[0], children[1]); ref != nil {
 					*refs = append(*refs, *ref)
