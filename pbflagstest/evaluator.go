@@ -103,7 +103,7 @@ func (e *InMemoryEvaluator) evaluate(flagID, entityID string) *pbflagsv1.Evaluat
 func (e *InMemoryEvaluator) Evaluate(_ context.Context, req *connect.Request[pbflagsv1.EvaluateRequest]) (*connect.Response[pbflagsv1.EvaluateResponse], error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	return connect.NewResponse(e.evaluate(req.Msg.GetFlagId(), req.Msg.GetEntityId())), nil
+	return connect.NewResponse(e.evaluate(req.Msg.GetFlagId(), "")), nil
 }
 
 // BulkEvaluate implements FlagEvaluatorServiceHandler.
@@ -126,10 +126,9 @@ func (e *InMemoryEvaluator) BulkEvaluate(_ context.Context, req *connect.Request
 		}
 	}
 
-	entityID := req.Msg.GetEntityId()
 	evals := make([]*pbflagsv1.EvaluateResponse, len(flagIDs))
 	for i, id := range flagIDs {
-		evals[i] = e.evaluate(id, entityID)
+		evals[i] = e.evaluate(id, "")
 	}
 	return connect.NewResponse(&pbflagsv1.BulkEvaluateResponse{Evaluations: evals}), nil
 }

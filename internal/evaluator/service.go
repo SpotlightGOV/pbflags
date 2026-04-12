@@ -36,7 +36,8 @@ func NewService(eval *Evaluator, tracker *HealthTracker, cache *CacheStore, stat
 
 // Evaluate resolves a single flag value.
 func (s *Service) Evaluate(ctx context.Context, req *connect.Request[pbflagsv1.EvaluateRequest]) (*connect.Response[pbflagsv1.EvaluateResponse], error) {
-	value, source := s.evaluator.Evaluate(ctx, req.Msg.FlagId, req.Msg.EntityId)
+	// TODO(pb-cfx.16): deserialize req.Msg.Context and evaluate conditions.
+	value, source := s.evaluator.Evaluate(ctx, req.Msg.FlagId, "")
 
 	return connect.NewResponse(&pbflagsv1.EvaluateResponse{
 		FlagId: req.Msg.FlagId,
@@ -54,7 +55,8 @@ func (s *Service) BulkEvaluate(ctx context.Context, req *connect.Request[pbflags
 
 	evaluations := make([]*pbflagsv1.EvaluateResponse, 0, len(flagIDs))
 	for _, flagID := range flagIDs {
-		value, source := s.evaluator.Evaluate(ctx, flagID, req.Msg.EntityId)
+		// TODO(pb-cfx.16): deserialize req.Msg.Context and evaluate conditions.
+		value, source := s.evaluator.Evaluate(ctx, flagID, "")
 		evaluations = append(evaluations, &pbflagsv1.EvaluateResponse{
 			FlagId: flagID,
 			Value:  value,

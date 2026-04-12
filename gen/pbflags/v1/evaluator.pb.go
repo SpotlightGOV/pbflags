@@ -7,11 +7,13 @@
 package pbflagsv1
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	anypb "google.golang.org/protobuf/types/known/anypb"
 )
 
 const (
@@ -192,7 +194,7 @@ func (EvaluatorMode) EnumDescriptor() ([]byte, []int) {
 type EvaluateRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	FlagId        string                 `protobuf:"bytes,1,opt,name=flag_id,json=flagId,proto3" json:"flag_id,omitempty"`
-	EntityId      string                 `protobuf:"bytes,2,opt,name=entity_id,json=entityId,proto3" json:"entity_id,omitempty"` // Empty for global-only evaluation.
+	Context       *anypb.Any             `protobuf:"bytes,3,opt,name=context,proto3" json:"context,omitempty"` // Serialized EvaluationContext.
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -234,11 +236,11 @@ func (x *EvaluateRequest) GetFlagId() string {
 	return ""
 }
 
-func (x *EvaluateRequest) GetEntityId() string {
+func (x *EvaluateRequest) GetContext() *anypb.Any {
 	if x != nil {
-		return x.EntityId
+		return x.Context
 	}
-	return ""
+	return nil
 }
 
 type EvaluateResponse struct {
@@ -304,8 +306,8 @@ func (x *EvaluateResponse) GetSource() EvaluationSource {
 type BulkEvaluateRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Empty = all known flags. Populated = only these.
-	FlagIds       []string `protobuf:"bytes,1,rep,name=flag_ids,json=flagIds,proto3" json:"flag_ids,omitempty"`
-	EntityId      string   `protobuf:"bytes,2,opt,name=entity_id,json=entityId,proto3" json:"entity_id,omitempty"` // Applied to all flags in the batch.
+	FlagIds       []string   `protobuf:"bytes,1,rep,name=flag_ids,json=flagIds,proto3" json:"flag_ids,omitempty"`
+	Context       *anypb.Any `protobuf:"bytes,3,opt,name=context,proto3" json:"context,omitempty"` // Serialized EvaluationContext.
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -347,11 +349,11 @@ func (x *BulkEvaluateRequest) GetFlagIds() []string {
 	return nil
 }
 
-func (x *BulkEvaluateRequest) GetEntityId() string {
+func (x *BulkEvaluateRequest) GetContext() *anypb.Any {
 	if x != nil {
-		return x.EntityId
+		return x.Context
 	}
-	return ""
+	return nil
 }
 
 type BulkEvaluateResponse struct {
@@ -971,17 +973,17 @@ var File_pbflags_v1_evaluator_proto protoreflect.FileDescriptor
 const file_pbflags_v1_evaluator_proto_rawDesc = "" +
 	"\n" +
 	"\x1apbflags/v1/evaluator.proto\x12\n" +
-	"pbflags.v1\x1a\x16pbflags/v1/types.proto\"G\n" +
+	"pbflags.v1\x1a\x19google/protobuf/any.proto\x1a\x16pbflags/v1/types.proto\"`\n" +
 	"\x0fEvaluateRequest\x12\x17\n" +
-	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12\x1b\n" +
-	"\tentity_id\x18\x02 \x01(\tR\bentityId\"\x8e\x01\n" +
+	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12.\n" +
+	"\acontext\x18\x03 \x01(\v2\x14.google.protobuf.AnyR\acontextJ\x04\b\x02\x10\x03\"\x8e\x01\n" +
 	"\x10EvaluateResponse\x12\x17\n" +
 	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.pbflags.v1.FlagValueR\x05value\x124\n" +
-	"\x06source\x18\x03 \x01(\x0e2\x1c.pbflags.v1.EvaluationSourceR\x06source\"M\n" +
+	"\x06source\x18\x03 \x01(\x0e2\x1c.pbflags.v1.EvaluationSourceR\x06source\"f\n" +
 	"\x13BulkEvaluateRequest\x12\x19\n" +
-	"\bflag_ids\x18\x01 \x03(\tR\aflagIds\x12\x1b\n" +
-	"\tentity_id\x18\x02 \x01(\tR\bentityId\"V\n" +
+	"\bflag_ids\x18\x01 \x03(\tR\aflagIds\x12.\n" +
+	"\acontext\x18\x03 \x01(\v2\x14.google.protobuf.AnyR\acontextJ\x04\b\x02\x10\x03\"V\n" +
 	"\x14BulkEvaluateResponse\x12>\n" +
 	"\vevaluations\x18\x01 \x03(\v2\x1c.pbflags.v1.EvaluateResponseR\vevaluations\"\x0f\n" +
 	"\rHealthRequest\"\xe5\x01\n" +
@@ -1076,38 +1078,41 @@ var file_pbflags_v1_evaluator_proto_goTypes = []any{
 	(*GetOverridesRequest)(nil),    // 15: pbflags.v1.GetOverridesRequest
 	(*GetOverridesResponse)(nil),   // 16: pbflags.v1.GetOverridesResponse
 	(*OverrideState)(nil),          // 17: pbflags.v1.OverrideState
-	(*FlagValue)(nil),              // 18: pbflags.v1.FlagValue
-	(State)(0),                     // 19: pbflags.v1.State
+	(*anypb.Any)(nil),              // 18: google.protobuf.Any
+	(*FlagValue)(nil),              // 19: pbflags.v1.FlagValue
+	(State)(0),                     // 20: pbflags.v1.State
 }
 var file_pbflags_v1_evaluator_proto_depIdxs = []int32{
-	18, // 0: pbflags.v1.EvaluateResponse.value:type_name -> pbflags.v1.FlagValue
-	0,  // 1: pbflags.v1.EvaluateResponse.source:type_name -> pbflags.v1.EvaluationSource
-	4,  // 2: pbflags.v1.BulkEvaluateResponse.evaluations:type_name -> pbflags.v1.EvaluateResponse
-	1,  // 3: pbflags.v1.HealthResponse.status:type_name -> pbflags.v1.EvaluatorStatus
-	11, // 4: pbflags.v1.GetFlagStateResponse.flag:type_name -> pbflags.v1.FlagState
-	19, // 5: pbflags.v1.FlagState.state:type_name -> pbflags.v1.State
-	18, // 6: pbflags.v1.FlagState.value:type_name -> pbflags.v1.FlagValue
-	14, // 7: pbflags.v1.GetKilledFlagsResponse.killed_overrides:type_name -> pbflags.v1.KilledOverride
-	17, // 8: pbflags.v1.GetOverridesResponse.overrides:type_name -> pbflags.v1.OverrideState
-	19, // 9: pbflags.v1.OverrideState.state:type_name -> pbflags.v1.State
-	18, // 10: pbflags.v1.OverrideState.value:type_name -> pbflags.v1.FlagValue
-	3,  // 11: pbflags.v1.FlagEvaluatorService.Evaluate:input_type -> pbflags.v1.EvaluateRequest
-	5,  // 12: pbflags.v1.FlagEvaluatorService.BulkEvaluate:input_type -> pbflags.v1.BulkEvaluateRequest
-	7,  // 13: pbflags.v1.FlagEvaluatorService.Health:input_type -> pbflags.v1.HealthRequest
-	9,  // 14: pbflags.v1.FlagEvaluatorService.GetFlagState:input_type -> pbflags.v1.GetFlagStateRequest
-	12, // 15: pbflags.v1.FlagEvaluatorService.GetKilledFlags:input_type -> pbflags.v1.GetKilledFlagsRequest
-	15, // 16: pbflags.v1.FlagEvaluatorService.GetOverrides:input_type -> pbflags.v1.GetOverridesRequest
-	4,  // 17: pbflags.v1.FlagEvaluatorService.Evaluate:output_type -> pbflags.v1.EvaluateResponse
-	6,  // 18: pbflags.v1.FlagEvaluatorService.BulkEvaluate:output_type -> pbflags.v1.BulkEvaluateResponse
-	8,  // 19: pbflags.v1.FlagEvaluatorService.Health:output_type -> pbflags.v1.HealthResponse
-	10, // 20: pbflags.v1.FlagEvaluatorService.GetFlagState:output_type -> pbflags.v1.GetFlagStateResponse
-	13, // 21: pbflags.v1.FlagEvaluatorService.GetKilledFlags:output_type -> pbflags.v1.GetKilledFlagsResponse
-	16, // 22: pbflags.v1.FlagEvaluatorService.GetOverrides:output_type -> pbflags.v1.GetOverridesResponse
-	17, // [17:23] is the sub-list for method output_type
-	11, // [11:17] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	18, // 0: pbflags.v1.EvaluateRequest.context:type_name -> google.protobuf.Any
+	19, // 1: pbflags.v1.EvaluateResponse.value:type_name -> pbflags.v1.FlagValue
+	0,  // 2: pbflags.v1.EvaluateResponse.source:type_name -> pbflags.v1.EvaluationSource
+	18, // 3: pbflags.v1.BulkEvaluateRequest.context:type_name -> google.protobuf.Any
+	4,  // 4: pbflags.v1.BulkEvaluateResponse.evaluations:type_name -> pbflags.v1.EvaluateResponse
+	1,  // 5: pbflags.v1.HealthResponse.status:type_name -> pbflags.v1.EvaluatorStatus
+	11, // 6: pbflags.v1.GetFlagStateResponse.flag:type_name -> pbflags.v1.FlagState
+	20, // 7: pbflags.v1.FlagState.state:type_name -> pbflags.v1.State
+	19, // 8: pbflags.v1.FlagState.value:type_name -> pbflags.v1.FlagValue
+	14, // 9: pbflags.v1.GetKilledFlagsResponse.killed_overrides:type_name -> pbflags.v1.KilledOverride
+	17, // 10: pbflags.v1.GetOverridesResponse.overrides:type_name -> pbflags.v1.OverrideState
+	20, // 11: pbflags.v1.OverrideState.state:type_name -> pbflags.v1.State
+	19, // 12: pbflags.v1.OverrideState.value:type_name -> pbflags.v1.FlagValue
+	3,  // 13: pbflags.v1.FlagEvaluatorService.Evaluate:input_type -> pbflags.v1.EvaluateRequest
+	5,  // 14: pbflags.v1.FlagEvaluatorService.BulkEvaluate:input_type -> pbflags.v1.BulkEvaluateRequest
+	7,  // 15: pbflags.v1.FlagEvaluatorService.Health:input_type -> pbflags.v1.HealthRequest
+	9,  // 16: pbflags.v1.FlagEvaluatorService.GetFlagState:input_type -> pbflags.v1.GetFlagStateRequest
+	12, // 17: pbflags.v1.FlagEvaluatorService.GetKilledFlags:input_type -> pbflags.v1.GetKilledFlagsRequest
+	15, // 18: pbflags.v1.FlagEvaluatorService.GetOverrides:input_type -> pbflags.v1.GetOverridesRequest
+	4,  // 19: pbflags.v1.FlagEvaluatorService.Evaluate:output_type -> pbflags.v1.EvaluateResponse
+	6,  // 20: pbflags.v1.FlagEvaluatorService.BulkEvaluate:output_type -> pbflags.v1.BulkEvaluateResponse
+	8,  // 21: pbflags.v1.FlagEvaluatorService.Health:output_type -> pbflags.v1.HealthResponse
+	10, // 22: pbflags.v1.FlagEvaluatorService.GetFlagState:output_type -> pbflags.v1.GetFlagStateResponse
+	13, // 23: pbflags.v1.FlagEvaluatorService.GetKilledFlags:output_type -> pbflags.v1.GetKilledFlagsResponse
+	16, // 24: pbflags.v1.FlagEvaluatorService.GetOverrides:output_type -> pbflags.v1.GetOverridesResponse
+	19, // [19:25] is the sub-list for method output_type
+	13, // [13:19] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_pbflags_v1_evaluator_proto_init() }

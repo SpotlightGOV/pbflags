@@ -175,34 +175,6 @@ func TestBulkEvaluate(t *testing.T) {
 	assert.Nil(t, byID[tf.FlagID(4)].Value)                              // DEFAULT -> nil (client has compiled defaults)
 }
 
-func TestBulkEvaluateWithEntityId(t *testing.T) {
-	t.Parallel()
-	env := setupServiceEnv(t)
-	tf := testdb.CreateTestFeature(t, env.pool, notifSpecs())
-
-	setOverride(t, env.pool, tf.FlagID(1), "user-bulk", "ENABLED", boolVal(false))
-	_, err := env.adminClient.UpdateFlagState(context.Background(), connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: tf.FlagID(2), State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
-	}))
-	require.NoError(t, err)
-	expireCache(env)
-
-	resp, err := env.evaluatorClient.BulkEvaluate(context.Background(), connect.NewRequest(&pbflagsv1.BulkEvaluateRequest{
-		FlagIds: []string{tf.FlagID(1), tf.FlagID(2)}, EntityId: "user-bulk",
-	}))
-	require.NoError(t, err)
-	require.Len(t, resp.Msg.Evaluations, 2)
-
-	byID := make(map[string]*pbflagsv1.EvaluateResponse)
-	for _, e := range resp.Msg.Evaluations {
-		byID[e.FlagId] = e
-	}
-
-	assert.False(t, byID[tf.FlagID(1)].Value.GetBoolValue())
-	assert.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, byID[tf.FlagID(1)].Source)
-	assert.Equal(t, "weekly", byID[tf.FlagID(2)].Value.GetStringValue())
-}
-
 func TestRootModeStateRPCs(t *testing.T) {
 	t.Parallel()
 	env := setupServiceEnv(t)

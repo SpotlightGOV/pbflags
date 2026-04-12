@@ -47,42 +47,6 @@ func TestEvaluate_GlobalOverride(t *testing.T) {
 	}
 }
 
-func TestEvaluate_EntityOverride(t *testing.T) {
-	eval := pbflagstest.NewInMemoryEvaluator()
-	eval.Set("feature/flag1", pbflagstest.Bool(false))
-	eval.SetForEntity("feature/flag1", "user-42", pbflagstest.Bool(true))
-
-	// Entity override wins.
-	resp, err := eval.Evaluate(context.Background(), connect.NewRequest(&pbflagsv1.EvaluateRequest{
-		FlagId:   "feature/flag1",
-		EntityId: "user-42",
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !resp.Msg.GetValue().GetBoolValue() {
-		t.Fatal("expected entity override true")
-	}
-	if resp.Msg.GetSource() != pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE {
-		t.Fatalf("expected OVERRIDE source, got %v", resp.Msg.GetSource())
-	}
-
-	// Different entity falls back to global.
-	resp, err = eval.Evaluate(context.Background(), connect.NewRequest(&pbflagsv1.EvaluateRequest{
-		FlagId:   "feature/flag1",
-		EntityId: "user-99",
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Msg.GetValue().GetBoolValue() {
-		t.Fatal("expected global override false")
-	}
-	if resp.Msg.GetSource() != pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL {
-		t.Fatalf("expected GLOBAL source, got %v", resp.Msg.GetSource())
-	}
-}
-
 func TestEvaluate_AllValueTypes(t *testing.T) {
 	eval := pbflagstest.NewInMemoryEvaluator()
 	eval.Set("f/bool", pbflagstest.Bool(true))

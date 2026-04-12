@@ -1,6 +1,7 @@
 syntax = "proto3";
 package pbflags.v1;
 
+import "google/protobuf/any.proto";
 import "pbflags/v1/types.proto";
 
 option go_package = "github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1";
@@ -31,7 +32,8 @@ service FlagEvaluatorService {
 
 message EvaluateRequest {
   string flag_id = 1;
-  string entity_id = 2; // Empty for global-only evaluation.
+  reserved 2; // was: entity_id (replaced by typed context)
+  google.protobuf.Any context = 3; // Serialized EvaluationContext.
 }
 
 message EvaluateResponse {
@@ -55,7 +57,8 @@ enum EvaluationSource {
 message BulkEvaluateRequest {
   // Empty = all known flags. Populated = only these.
   repeated string flag_ids = 1;
-  string entity_id = 2; // Applied to all flags in the batch.
+  reserved 2; // was: entity_id (replaced by typed context)
+  google.protobuf.Any context = 3; // Serialized EvaluationContext.
 }
 
 message BulkEvaluateResponse {

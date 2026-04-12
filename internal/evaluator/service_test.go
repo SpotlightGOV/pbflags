@@ -21,8 +21,7 @@ func TestService_Evaluate(t *testing.T) {
 	svc := NewService(eval, tracker, cache, nil)
 
 	resp, err := svc.Evaluate(context.Background(), connect.NewRequest(&pbflagsv1.EvaluateRequest{
-		FlagId:   "f/1",
-		EntityId: "",
+		FlagId: "f/1",
 	}))
 	require.NoError(t, err, "Evaluate returned error")
 	require.Equal(t, "f/1", resp.Msg.FlagId, "flag_id")
@@ -56,40 +55,6 @@ func TestService_BulkEvaluate_EmptyFlags(t *testing.T) {
 	resp, err := svc.BulkEvaluate(context.Background(), connect.NewRequest(&pbflagsv1.BulkEvaluateRequest{}))
 	require.NoError(t, err, "BulkEvaluate error")
 	require.Empty(t, resp.Msg.Evaluations, "evaluations count (empty when no flag IDs)")
-}
-
-func TestService_BulkEvaluate_WithEntityId(t *testing.T) {
-	cache := newTestCache(t)
-	fetcher := &stubFetcher{
-		overrides: []*CachedOverride{
-			{FlagID: "f/1", EntityID: "user-42", State: pbflagsv1.State_STATE_ENABLED, Value: strVal("override-1")},
-		},
-	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
-	tracker := NewHealthTracker(NewNoopMetrics())
-	svc := NewService(eval, tracker, cache, nil)
-
-	resp, err := svc.BulkEvaluate(context.Background(), connect.NewRequest(&pbflagsv1.BulkEvaluateRequest{
-		FlagIds:  []string{"f/1", "f/2"},
-		EntityId: "user-42",
-	}))
-	require.NoError(t, err, "BulkEvaluate error")
-	require.Len(t, resp.Msg.Evaluations, 2, "evaluations count")
-
-	var f1, f2 *pbflagsv1.EvaluateResponse
-	for _, e := range resp.Msg.Evaluations {
-		switch e.FlagId {
-		case "f/1":
-			f1 = e
-		case "f/2":
-			f2 = e
-		}
-	}
-	require.NotNil(t, f1, "expected f/1 in evaluations")
-	require.NotNil(t, f2, "expected f/2 in evaluations")
-	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE, f1.Source, "f/1 source")
-	require.Equal(t, "override-1", f1.Value.GetStringValue(), "f/1 value")
-	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, f2.Source, "f/2 source (no override for f/2)")
 }
 
 func TestService_Health(t *testing.T) {

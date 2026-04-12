@@ -1,0 +1,346 @@
+// Package contextutil discovers the EvaluationContext proto message and
+// extracts dimension metadata for codegen backends.
+package contextutil
+
+import (
+	"fmt"
+	"strings"
+
+	"google.golang.org/protobuf/compiler/protogen"
+	"google.golang.org/protobuf/encoding/protowire"
+	"google.golang.org/protobuf/reflect/protoreflect"
+)
+
+const contextExtNum = 51003   // (pbflags.context) on MessageOptions
+const dimensionExtNum = 51004 // (pbflags.dimension) on FieldOptions
+
+// DimensionKind enumerates the supported proto types for context dimensions.
+type DimensionKind int
+
+const (
+	DimensionString DimensionKind = iota
+	DimensionEnum
+	DimensionBool
+	DimensionInt64
+)
+
+func (k DimensionKind) String() string {
+	switch k {
+	case DimensionString:
+		return "string"
+	case DimensionEnum:
+		return "enum"
+	case DimensionBool:
+		return "bool"
+	case DimensionInt64:
+		return "int64"
+	default:
+		return "unknown"
+	}
+}
+
+// DimensionDef describes a single dimension field in the EvaluationContext.
+type DimensionDef struct {
+	Name        string        // proto field name (e.g., "user_id")
+	Number      int32         // proto field number
+	Kind        DimensionKind // dimension type
+	Description string        // from DimensionOptions.description
+	Hashable    bool          // from DimensionOptions.hashable
+	Bounded     bool          // from DimensionOptions.bounded
+
+	// Enum-specific metadata (only populated when Kind == DimensionEnum).
+	EnumName   string          // fully qualified enum name
+	EnumValues []EnumValueDef  // enum values
+	ProtoField *protogen.Field // original protogen field for codegen access
+}
+
+// EnumValueDef describes a single enum value.
+type EnumValueDef struct {
+	Name   string // proto enum value name (e.g., "PLAN_LEVEL_ENTERPRISE")
+	Number int32  // ordinal
+}
+
+// ContextDef holds the discovered EvaluationContext message and its dimensions.
+type ContextDef struct {
+	MessageName string         // fully qualified message name
+	Dimensions  []DimensionDef // dimensions in field-number order
+	Message     *protogen.Message
+}
+
+// DiscoverContext scans all files in the plugin request for a message annotated
+// with option (pbflags.context). Returns the context definition, or nil if
+// none is found. Returns an error if multiple are found or if validation fails.
+func DiscoverContext(plugin *protogen.Plugin) (*ContextDef, error) {
+	var found []*protogen.Message
+	for _, f := range plugin.Files {
+		for _, msg := range f.Messages {
+			if hasContextOption(msg) {
+				found = append(found, msg)
+			}
+		}
+	}
+
+	if len(found) == 0 {
+		return nil, nil
+	}
+	if len(found) > 1 {
+		names := make([]string, len(found))
+		for i, m := range found {
+			names[i] = string(m.Desc.FullName())
+		}
+		return nil, fmt.Errorf("multiple messages annotated with (pbflags.context): %s", strings.Join(names, ", "))
+	}
+
+	return parseContext(found[0])
+}
+
+// hasContextOption checks if the message has option (pbflags.context) set.
+func hasContextOption(msg *protogen.Message) bool {
+	opts := msg.Desc.Options()
+	if opts == nil {
+		return false
+	}
+
+	rm := opts.(interface{ ProtoReflect() protoreflect.Message }).ProtoReflect()
+
+	// Try resolved extensions first.
+	var found bool
+	rm.Range(func(fd protoreflect.FieldDescriptor, _ protoreflect.Value) bool {
+		if fd.Number() == contextExtNum && fd.IsExtension() {
+			found = true
+			return false
+		}
+		return true
+	})
+	if found {
+		return true
+	}
+
+	// Fall back to unknown fields.
+	return hasContextInUnknown(rm.GetUnknown())
+}
+
+// hasContextInUnknown parses (pbflags.context) from unknown fields.
+func hasContextInUnknown(b []byte) bool {
+	for len(b) > 0 {
+		num, typ, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			return false
+		}
+		b = b[n:]
+		if num == contextExtNum && typ == protowire.BytesType {
+			// ContextOptions is an empty message — its presence means true.
+			_, n := protowire.ConsumeBytes(b)
+			return n >= 0
+		}
+		n = skipField(b, typ)
+		if n < 0 {
+			return false
+		}
+		b = b[n:]
+	}
+	return false
+}
+
+func parseContext(msg *protogen.Message) (*ContextDef, error) {
+	var dims []DimensionDef
+
+	for _, field := range msg.Fields {
+		dim, err := parseDimension(field)
+		if err != nil {
+			return nil, fmt.Errorf("context %s: %w", msg.Desc.FullName(), err)
+		}
+		if dim == nil {
+			continue // field without (pbflags.dimension) annotation
+		}
+		dims = append(dims, *dim)
+	}
+
+	if len(dims) == 0 {
+		return nil, fmt.Errorf("context message %s has no fields annotated with (pbflags.dimension)", msg.Desc.FullName())
+	}
+
+	return &ContextDef{
+		MessageName: string(msg.Desc.FullName()),
+		Dimensions:  dims,
+		Message:     msg,
+	}, nil
+}
+
+func parseDimension(field *protogen.Field) (*DimensionDef, error) {
+	opts := field.Desc.Options()
+	if opts == nil {
+		return nil, nil
+	}
+
+	rm := opts.(interface{ ProtoReflect() protoreflect.Message }).ProtoReflect()
+
+	// Check for (pbflags.dimension) extension.
+	var hasDim bool
+	var description string
+	var hashable, bounded bool
+
+	rm.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
+		if fd.Number() == dimensionExtNum && fd.IsExtension() {
+			hasDim = true
+			dimMsg := v.Message()
+			dimMsg.Range(func(dfd protoreflect.FieldDescriptor, dv protoreflect.Value) bool {
+				switch dfd.Name() {
+				case "description":
+					description = dv.String()
+				case "hashable":
+					hashable = dv.Bool()
+				case "bounded":
+					bounded = dv.Bool()
+				}
+				return true
+			})
+			return false
+		}
+		return true
+	})
+
+	if !hasDim {
+		// Try unknown fields.
+		hasDim, description, hashable, bounded = parseDimensionFromUnknown(rm.GetUnknown())
+	}
+
+	if !hasDim {
+		return nil, nil
+	}
+
+	kind, err := fieldKindToDimensionKind(field)
+	if err != nil {
+		return nil, err
+	}
+
+	dim := &DimensionDef{
+		Name:        string(field.Desc.Name()),
+		Number:      int32(field.Desc.Number()),
+		Kind:        kind,
+		Description: description,
+		Hashable:    hashable,
+		Bounded:     bounded,
+		ProtoField:  field,
+	}
+
+	if kind == DimensionEnum {
+		enumDesc := field.Desc.Enum()
+		dim.EnumName = string(enumDesc.FullName())
+		for i := 0; i < enumDesc.Values().Len(); i++ {
+			v := enumDesc.Values().Get(i)
+			dim.EnumValues = append(dim.EnumValues, EnumValueDef{
+				Name:   string(v.Name()),
+				Number: int32(v.Number()),
+			})
+		}
+	}
+
+	return dim, nil
+}
+
+func fieldKindToDimensionKind(field *protogen.Field) (DimensionKind, error) {
+	if field.Desc.IsList() || field.Desc.IsMap() {
+		return 0, fmt.Errorf("field %s: repeated/map fields are not supported as dimensions", field.Desc.Name())
+	}
+
+	switch field.Desc.Kind() {
+	case protoreflect.StringKind:
+		return DimensionString, nil
+	case protoreflect.EnumKind:
+		return DimensionEnum, nil
+	case protoreflect.BoolKind:
+		return DimensionBool, nil
+	case protoreflect.Int64Kind:
+		return DimensionInt64, nil
+	default:
+		return 0, fmt.Errorf("field %s: unsupported dimension type %s (must be string, enum, bool, or int64)",
+			field.Desc.Name(), field.Desc.Kind())
+	}
+}
+
+// parseDimensionFromUnknown extracts DimensionOptions fields from unknown wire data.
+func parseDimensionFromUnknown(b []byte) (found bool, description string, hashable, bounded bool) {
+	for len(b) > 0 {
+		num, typ, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			return
+		}
+		b = b[n:]
+		if num == dimensionExtNum && typ == protowire.BytesType {
+			data, n := protowire.ConsumeBytes(b)
+			if n < 0 {
+				return
+			}
+			b = b[n:]
+			found = true
+			description, hashable, bounded = parseDimensionOptionsBytes(data)
+			continue
+		}
+		n = skipField(b, typ)
+		if n < 0 {
+			return
+		}
+		b = b[n:]
+	}
+	return
+}
+
+func parseDimensionOptionsBytes(b []byte) (description string, hashable, bounded bool) {
+	for len(b) > 0 {
+		num, typ, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			return
+		}
+		b = b[n:]
+		switch {
+		case num == 1 && typ == protowire.BytesType: // description
+			data, n := protowire.ConsumeBytes(b)
+			if n < 0 {
+				return
+			}
+			description = string(data)
+			b = b[n:]
+		case num == 2 && typ == protowire.VarintType: // hashable
+			v, n := protowire.ConsumeVarint(b)
+			if n < 0 {
+				return
+			}
+			hashable = v != 0
+			b = b[n:]
+		case num == 3 && typ == protowire.VarintType: // bounded
+			v, n := protowire.ConsumeVarint(b)
+			if n < 0 {
+				return
+			}
+			bounded = v != 0
+			b = b[n:]
+		default:
+			n = skipField(b, typ)
+			if n < 0 {
+				return
+			}
+			b = b[n:]
+		}
+	}
+	return
+}
+
+func skipField(b []byte, typ protowire.Type) int {
+	switch typ {
+	case protowire.VarintType:
+		_, n := protowire.ConsumeVarint(b)
+		return n
+	case protowire.Fixed32Type:
+		_, n := protowire.ConsumeFixed32(b)
+		return n
+	case protowire.Fixed64Type:
+		_, n := protowire.ConsumeFixed64(b)
+		return n
+	case protowire.BytesType:
+		_, n := protowire.ConsumeBytes(b)
+		return n
+	default:
+		return -1
+	}
+}
