@@ -95,27 +95,19 @@ class FlagEvaluatorClientTest {
     assertEquals(1.5f, result, 0.001f);
   }
 
-  // --- Entity ID propagation ---
+  // --- Context propagation ---
 
   @Test
-  void entityIdPropagated() {
-    service.nextValue = FlagValue.newBuilder().setBoolValue(false).build();
-    client.evaluate("test/1", Boolean.class, true, "user-42");
-    assertEquals("user-42", service.lastEntityId);
+  void noContextByDefault() {
+    service.nextValue = FlagValue.newBuilder().setBoolValue(true).build();
+    client.evaluate("test/1", Boolean.class, false);
+    assertFalse(service.lastRequest.hasContext());
   }
 
   @Test
-  void nullEntityIdNotSent() {
-    service.nextValue = FlagValue.newBuilder().setBoolValue(true).build();
-    client.evaluate("test/1", Boolean.class, false, null);
-    assertEquals("", service.lastEntityId);
-  }
-
-  @Test
-  void emptyEntityIdNotSent() {
-    service.nextValue = FlagValue.newBuilder().setBoolValue(true).build();
-    client.evaluate("test/1", Boolean.class, false, "");
-    assertEquals("", service.lastEntityId);
+  void withoutContextPrototypeThrows() {
+    assertThrows(
+        IllegalStateException.class, () -> client.with(Dimension.ofString("user_id", "user-42")));
   }
 
   // --- Compiled default fallback ---
@@ -197,13 +189,13 @@ class FlagEvaluatorClientTest {
 
     volatile FlagValue nextValue;
     volatile Status nextError;
-    volatile String lastEntityId = "";
+    volatile EvaluateRequest lastRequest;
     volatile EvaluatorStatus healthStatus = EvaluatorStatus.EVALUATOR_STATUS_SERVING;
     volatile Status healthError;
 
     @Override
     public void evaluate(EvaluateRequest request, StreamObserver<EvaluateResponse> observer) {
-      lastEntityId = request.getEntityId();
+      lastRequest = request;
 
       if (nextError != null) {
         observer.onError(nextError.asRuntimeException());

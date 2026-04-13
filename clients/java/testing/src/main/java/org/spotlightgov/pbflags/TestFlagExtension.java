@@ -8,7 +8,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * JUnit 5 extension providing an in-memory {@link FlagEvaluator} for tests.
  *
  * <p>No database, no cache, no migrations. Flags return compiled defaults unless explicitly
- * overridden via {@link #set}, {@link #setForEntity}, or {@link #kill}.
+ * overridden via {@link #set} or {@link #kill}.
  *
  * <p>All overrides are reset after each test.
  *
@@ -22,8 +22,8 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  *   @Test
  *   void testOverride() {
  *     flags.set("notifications/1", false);
- *     var flags = NotificationsFlags.forEvaluator(flags.evaluator());
- *     assertFalse(flags.emailEnabled().get());
+ *     var nf = NotificationsFlags.forEvaluator(flags.evaluator());
+ *     assertFalse(nf.emailEnabled().get());
  *   }
  * }
  * }</pre>
@@ -52,11 +52,6 @@ public final class TestFlagExtension implements BeforeAllCallback, AfterEachCall
   /** Set a global flag value. Immediately visible to the evaluator. */
   public void set(String flagId, Object value) {
     evaluator.set(flagId, value);
-  }
-
-  /** Set a per-entity flag value. */
-  public void setForEntity(String flagId, String entityId, Object value) {
-    evaluator.setForEntity(flagId, entityId, value);
   }
 
   /** Kill a flag globally (forces compiled default). */

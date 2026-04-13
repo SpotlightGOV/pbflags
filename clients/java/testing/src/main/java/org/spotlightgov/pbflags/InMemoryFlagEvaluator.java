@@ -3,29 +3,22 @@ package org.spotlightgov.pbflags;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import javax.annotation.Nullable;
 
 /**
  * In-memory flag evaluator for tests. No database, no cache, no metrics.
  *
  * <p>Flags return compiled defaults unless explicitly overridden via {@link #set} or killed via
- * {@link #kill}. Per-entity overrides are supported via {@link #setForEntity}.
+ * {@link #kill}.
  */
 public final class InMemoryFlagEvaluator implements FlagEvaluator {
 
   private final ConcurrentHashMap<String, String> globalOverrides = new ConcurrentHashMap<>();
-  private final ConcurrentHashMap<String, String> entityOverrides = new ConcurrentHashMap<>();
   private final Set<String> killedFlags = ConcurrentHashMap.newKeySet();
 
   /** Set a global flag value. */
   public void set(String flagId, Object value) {
     killedFlags.remove(flagId);
     globalOverrides.put(flagId, String.valueOf(value));
-  }
-
-  /** Set a per-entity flag value. */
-  public void setForEntity(String flagId, String entityId, Object value) {
-    entityOverrides.put(flagId + ":" + entityId, String.valueOf(value));
   }
 
   /** Kill a flag globally (forces compiled default). */
@@ -37,23 +30,14 @@ public final class InMemoryFlagEvaluator implements FlagEvaluator {
   /** Reset all overrides and kills. */
   public void reset() {
     globalOverrides.clear();
-    entityOverrides.clear();
     killedFlags.clear();
   }
 
   @Override
   @SuppressWarnings("unchecked")
-  public <T> T evaluate(
-      String flagId, Class<T> type, T compiledDefault, @Nullable String entityId) {
+  public <T> T evaluate(String flagId, Class<T> type, T compiledDefault) {
     if (killedFlags.contains(flagId)) {
       return compiledDefault;
-    }
-
-    if (entityId != null && !entityId.isEmpty()) {
-      String entityValue = entityOverrides.get(flagId + ":" + entityId);
-      if (entityValue != null) {
-        return parseValue(entityValue, type, compiledDefault);
-      }
     }
 
     String globalValue = globalOverrides.get(flagId);
@@ -65,26 +49,10 @@ public final class InMemoryFlagEvaluator implements FlagEvaluator {
   }
 
   @Override
-  public <E> List<E> evaluateList(
-      String flagId, Class<E> elementType, List<E> compiledDefault, @Nullable String entityId) {
+  public <E> List<E> evaluateList(String flagId, Class<E> elementType, List<E> compiledDefault) {
     if (killedFlags.contains(flagId)) {
       return compiledDefault;
     }
-
-    if (entityId != null && !entityId.isEmpty()) {
-      String entityValue = entityOverrides.get(flagId + ":" + entityId);
-      if (entityValue != null) {
-        // In-memory test evaluator stores list overrides as-is via set(); return compiled default
-        // for string-based overrides since list parsing is not needed for test scaffolding.
-        return compiledDefault;
-      }
-    }
-
-    String globalValue = globalOverrides.get(flagId);
-    if (globalValue != null) {
-      return compiledDefault;
-    }
-
     return compiledDefault;
   }
 

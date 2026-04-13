@@ -84,13 +84,14 @@ String frequency = notifications.digestFrequency().get();
 
 ```java
 // Simple local setup: the evaluator serves plaintext gRPC on :9201 by default.
-FlagEvaluatorClient evaluator = new FlagEvaluatorClient("localhost:9201");
+// Pass your EvaluationContext default instance to enable typed dimensions.
+FlagEvaluatorClient evaluator =
+    new FlagEvaluatorClient("localhost:9201", EvaluationContext.getDefaultInstance());
 
-// Advanced: custom channel (interceptors, in-process testing, or your own TLS setup)
-ManagedChannel channel = ManagedChannelBuilder.forTarget("localhost:9201")
-    .usePlaintext()
-    .build();
-FlagEvaluatorClient evaluator = FlagEvaluatorClient.forChannel(channel);
+// Bind context dimensions for a request scope:
+FlagEvaluator userEval = evaluator.with(Dims.userId("user-123"), Dims.plan(PlanLevel.PRO));
+NotificationsFlags flags = NotificationsFlags.forEvaluator(userEval);
+boolean enabled = flags.emailEnabled().get();
 ```
 
 ### Flag ID constants

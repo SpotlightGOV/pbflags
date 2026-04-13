@@ -1,8 +1,13 @@
 package org.spotlightgov.pbflags;
 
+import com.google.protobuf.Any;
+import com.google.protobuf.Message;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.StatusRuntimeException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
@@ -20,6 +25,11 @@ import org.spotlightgov.pbflags.v1.proto.HealthResponse;
  * Thin gRPC client to a pbflags evaluator. Implements {@link FlagEvaluator} so it can be injected
  * wherever flag evaluation is needed.
  *
+ * <p>Context dimensions are accumulated via {@link #with(Dimension...)} and sent as a typed {@code
+ * google.protobuf.Any} on each request. The {@code contextPrototype} parameter (a zero-value
+ * instance of the customer's EvaluationContext proto) is used as a factory for creating new context
+ * messages.
+ *
  * <p>All errors are caught and the compiled default is returned, maintaining the never-throw
  * guarantee.
  */
@@ -32,8 +42,24 @@ public final class FlagEvaluatorClient implements FlagEvaluator {
 
   private final FlagEvaluatorServiceGrpc.FlagEvaluatorServiceBlockingStub stub;
   private final ManagedChannel channel;
+  @Nullable private final Message contextPrototype;
+  private final List<Dimension> dims;
 
+  /**
+   * Creates a client that connects to the given target. Use this constructor when context
+   * dimensions are not needed (all evaluations use empty context).
+   */
   public FlagEvaluatorClient(String target) {
+    this(target, null);
+  }
+
+  /**
+   * Creates a client that connects to the given target with an EvaluationContext prototype. The
+   * prototype is a zero-value instance of the customer's EvaluationContext proto (e.g., {@code
+   * EvaluationContext.getDefaultInstance()}). It is used as a factory for creating new context
+   * messages during {@link #with(Dimension...)}.
+   */
+  public FlagEvaluatorClient(String target, @Nullable Message contextPrototype) {
     boolean useTls = target.startsWith("https://");
     String normalizedTarget = stripScheme(target);
 
@@ -44,6 +70,8 @@ public final class FlagEvaluatorClient implements FlagEvaluator {
     }
     this.channel = builder.build();
     this.stub = FlagEvaluatorServiceGrpc.newBlockingStub(channel);
+    this.contextPrototype = contextPrototype;
+    this.dims = Collections.emptyList();
     logger.info("FlagEvaluatorClient connecting to {}{}", useTls ? "(TLS) " : "", normalizedTarget);
   }
 
@@ -69,19 +97,60 @@ public final class FlagEvaluatorClient implements FlagEvaluator {
     return new FlagEvaluatorClient(channel, FlagEvaluatorServiceGrpc.newBlockingStub(channel));
   }
 
+  /**
+   * Creates a client backed by the given channel with an EvaluationContext prototype.
+   *
+   * @param channel the gRPC channel
+   * @param contextPrototype zero-value EvaluationContext proto instance (or null)
+   */
+  public static FlagEvaluatorClient forChannel(
+      ManagedChannel channel, @Nullable Message contextPrototype) {
+    return new FlagEvaluatorClient(
+        channel,
+        FlagEvaluatorServiceGrpc.newBlockingStub(channel),
+        contextPrototype,
+        Collections.emptyList());
+  }
+
   FlagEvaluatorClient(
       ManagedChannel channel, FlagEvaluatorServiceGrpc.FlagEvaluatorServiceBlockingStub stub) {
     this.channel = channel;
     this.stub = stub;
+    this.contextPrototype = null;
+    this.dims = Collections.emptyList();
+  }
+
+  private FlagEvaluatorClient(
+      ManagedChannel channel,
+      FlagEvaluatorServiceGrpc.FlagEvaluatorServiceBlockingStub stub,
+      @Nullable Message contextPrototype,
+      List<Dimension> dims) {
+    this.channel = channel;
+    this.stub = stub;
+    this.contextPrototype = contextPrototype;
+    this.dims = dims;
   }
 
   @Override
-  public <T> T evaluate(
-      String flagId, Class<T> type, T compiledDefault, @Nullable String entityId) {
+  public FlagEvaluator with(Dimension... newDims) {
+    if (contextPrototype == null) {
+      throw new IllegalStateException(
+          "Cannot use with() without a context prototype. "
+              + "Pass an EvaluationContext.getDefaultInstance() to the constructor.");
+    }
+    List<Dimension> combined = new ArrayList<>(this.dims.size() + newDims.length);
+    combined.addAll(this.dims);
+    combined.addAll(Arrays.asList(newDims));
+    return new FlagEvaluatorClient(channel, stub, contextPrototype, combined);
+  }
+
+  @Override
+  public <T> T evaluate(String flagId, Class<T> type, T compiledDefault) {
     try {
       EvaluateRequest.Builder req = EvaluateRequest.newBuilder().setFlagId(flagId);
-      if (entityId != null && !entityId.isEmpty()) {
-        req.setEntityId(entityId);
+      Any ctx = buildContext();
+      if (ctx != null) {
+        req.setContext(ctx);
       }
 
       EvaluateResponse resp =
@@ -128,12 +197,12 @@ public final class FlagEvaluatorClient implements FlagEvaluator {
   }
 
   @Override
-  public <E> List<E> evaluateList(
-      String flagId, Class<E> elementType, List<E> compiledDefault, @Nullable String entityId) {
+  public <E> List<E> evaluateList(String flagId, Class<E> elementType, List<E> compiledDefault) {
     try {
       EvaluateRequest.Builder req = EvaluateRequest.newBuilder().setFlagId(flagId);
-      if (entityId != null && !entityId.isEmpty()) {
-        req.setEntityId(entityId);
+      Any ctx = buildContext();
+      if (ctx != null) {
+        req.setContext(ctx);
       }
 
       EvaluateResponse resp =
@@ -151,6 +220,21 @@ public final class FlagEvaluatorClient implements FlagEvaluator {
       logger.error("Evaluator call failed for list flag {}", flagId, e);
       return compiledDefault;
     }
+  }
+
+  /**
+   * Builds a google.protobuf.Any from accumulated dimensions, or null if no dimensions are bound.
+   */
+  @Nullable
+  private Any buildContext() {
+    if (dims.isEmpty() || contextPrototype == null) {
+      return null;
+    }
+    Message.Builder builder = contextPrototype.newBuilderForType();
+    for (Dimension d : dims) {
+      d.apply(builder);
+    }
+    return Any.pack(builder.build());
   }
 
   @SuppressWarnings("unchecked")

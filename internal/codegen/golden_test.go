@@ -123,6 +123,7 @@ func TestGoldenJava(t *testing.T) {
 	goldenDir := filepath.Join(root, "internal", "codegen", "testdata", "golden", "java")
 
 	javaFiles := []goldenFile{
+		gf("Dims.java"),
 		gf("NotificationsFlags.java"),
 		gf("NotificationsFlagsImpl.java"),
 		gf("PbflagsFlagDescriptorProvider.java"),
