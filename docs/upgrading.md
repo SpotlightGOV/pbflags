@@ -125,12 +125,26 @@ It:
 **This migration is irreversible in practice** — exported data can be restored from
 the YAML config files, but the override table data is gone. Export first.
 
-### Generated code
+### Generated code (Go)
 
 Layer parameters were removed from generated method signatures in v0.15.0. If you
 skipped that migration, see the [v0.15.0 guide](#evaluation-context-dimensions-v0150).
 
-No additional generated code changes in v0.16.0.
+No additional generated Go code changes in v0.16.0.
+
+### Generated code (Java)
+
+The Java client replaces the entity/layer API with typed context dimensions:
+
+- `evaluate()` and `evaluateList()` no longer accept an `entityId` parameter.
+- `LayerFlag` and `LayerListFlag` are removed.
+- `Flag<T>` and `ListFlag<E>` now have only `get()` (no `get(entityId)` overload).
+- `FlagEvaluatorClient` accepts an optional `EvaluationContext` prototype for
+  dimension support: `new FlagEvaluatorClient(target, EvaluationContext.getDefaultInstance())`.
+- `protoc-gen-pbflags` now generates a `Dimensions.java` class with typed
+  constructors (e.g., `Dimensions.userId("...")`, `Dimensions.plan(PlanLevel.PRO)`).
+- Bind dimensions at the evaluator level: `evaluator.with(Dimensions.userId("..."))`.
+  The returned evaluator carries the context for all subsequent flag evaluations.
 
 ### Migration checklist
 
@@ -144,6 +158,8 @@ No additional generated code changes in v0.16.0.
 6. **Verify** the admin UI shows condition chains on flag detail pages and the sync SHA badge.
 7. **Remove** any code that calls override APIs (`SetFlagOverride`, `RemoveFlagOverride`).
    These now return `Unimplemented`.
+8. **Update Java clients** (if applicable): regenerate codegen, replace `entityId` params
+   with `evaluator.with(Dimensions.userId(...))`, remove `LayerFlag`/`LayerListFlag` usage.
 
 ---
 
