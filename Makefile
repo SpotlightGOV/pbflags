@@ -1,4 +1,4 @@
-.PHONY: help generate build test test-e2e lint fmt setup clean docker dev dev-db dev-seed release-notes release
+.PHONY: help generate build test test-e2e lint fmt setup setup-beads clean docker dev dev-db dev-seed release-notes release
 
 .DEFAULT_GOAL := help
 
@@ -21,6 +21,7 @@ help:
 	@echo "  fmt             Auto-format Go, Java, and proto files"
 	@echo "  lint            Run all linters (go vet, staticcheck, buf lint)"
 	@echo "  setup           Install pre-commit hooks and dev tooling"
+	@echo "  setup-beads     Bootstrap a new local beads db"
 	@echo ""
 	@echo "Test:"
 	@echo "  test            Run Go unit and integration tests"
@@ -74,6 +75,21 @@ setup:
 	@echo "Pre-commit hooks installed."
 	@echo ""
 	@echo "For E2E tests: go tool playwright install --with-deps"
+
+# Set up beads in a new clone
+setup-beads:
+	@if [ -d .beads ]; then \
+		echo ".beads already exists — skipping setup."; \
+		exit 0; \
+	fi; \
+	cp -R .beads.template .beads; \
+  chmod 700 .beads; \
+	if bd dolt status 2>&1 | grep -q "not running"; then \
+		echo "Bootstrapping beads."; \
+		bd bootstrap --yes \
+	else \
+		echo "Dolt server already running."; \
+	fi;
 
 # Remove build artifacts.
 clean:
