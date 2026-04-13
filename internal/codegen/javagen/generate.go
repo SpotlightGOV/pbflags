@@ -31,8 +31,8 @@ func Generate(plugin *protogen.Plugin, javaPackage string, dagger ...bool) error
 		return fmt.Errorf("discovering evaluation context: %w", err)
 	}
 	if ctxDef != nil {
-		if err := generateDimsClass(plugin, ctxDef, javaPackage); err != nil {
-			return fmt.Errorf("generating Dims class: %w", err)
+		if err := generateDimensionsClass(plugin, ctxDef, javaPackage); err != nil {
+			return fmt.Errorf("generating Dimensions class: %w", err)
 		}
 	}
 
@@ -351,11 +351,11 @@ func generateDescriptorProvider(plugin *protogen.Plugin, features []featureEntry
 	return nil
 }
 
-// generateDimsClass generates a Dims.java class with typed dimension
+// generateDimensionsClass generates a Dims.java class with typed dimension
 // constructors from the EvaluationContext proto message.
-func generateDimsClass(plugin *protogen.Plugin, ctx *contextutil.ContextDef, javaPackage string) error {
+func generateDimensionsClass(plugin *protogen.Plugin, ctx *contextutil.ContextDef, javaPackage string) error {
 	pkgDir := strings.ReplaceAll(javaPackage, ".", "/")
-	outPath := pkgDir + "/Dims.java"
+	outPath := pkgDir + "/Dimensions.java"
 
 	g := plugin.NewGeneratedFile(outPath, "")
 	p := g.P
@@ -366,9 +366,9 @@ func generateDimsClass(plugin *protogen.Plugin, ctx *contextutil.ContextDef, jav
 	p("import org.spotlightgov.pbflags.Dimension;")
 	p()
 	p("/** Generated typed dimension constructors for the EvaluationContext. */")
-	p("public final class Dims {")
+	p("public final class Dimensions {")
 	p()
-	p("  private Dims() {}")
+	p("  private Dimensions() {}")
 
 	for _, dim := range ctx.Dimensions {
 		methodName := toCamelCase(dim.Name)

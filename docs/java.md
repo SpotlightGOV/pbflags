@@ -89,7 +89,7 @@ FlagEvaluatorClient evaluator =
     new FlagEvaluatorClient("localhost:9201", EvaluationContext.getDefaultInstance());
 
 // Bind context dimensions for a request scope:
-FlagEvaluator userEval = evaluator.with(Dims.userId("user-123"), Dims.plan(PlanLevel.PRO));
+FlagEvaluator userEval = evaluator.with(Dimensions.userId("user-123"), Dimensions.plan(PlanLevel.PRO));
 NotificationsFlags flags = NotificationsFlags.forEvaluator(userEval);
 boolean enabled = flags.emailEnabled().get();
 ```

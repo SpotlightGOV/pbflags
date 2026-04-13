@@ -4,9 +4,9 @@ package org.spotlightgov.pbflags.generated;
 import org.spotlightgov.pbflags.Dimension;
 
 /** Generated typed dimension constructors for the EvaluationContext. */
-public final class Dims {
+public final class Dimensions {
 
-  private Dims() {}
+  private Dimensions() {}
 
   /** Sets the user_id dimension (Authenticated user identifier). */
   public static Dimension userId(String v) {
