@@ -21,7 +21,7 @@ func NewAdminService(store *Store, logger *slog.Logger) *AdminService {
 }
 
 func (a *AdminService) ListFeatures(ctx context.Context, _ *connect.Request[pbflagsv1.ListFeaturesRequest]) (*connect.Response[pbflagsv1.ListFeaturesResponse], error) {
-	features, err := a.store.ListFeatures(ctx)
+	features, _, err := a.store.ListFeatures(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

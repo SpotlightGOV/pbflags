@@ -183,18 +183,18 @@ func TestFlagDetailReadOnly(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Value section should be visible.
-	valueSection := page.Locator("#state-section")
-	err = valueSection.WaitFor(playwright.LocatorWaitForOptions{
+	// Conditions section should be visible (shows static default for non-conditional flags).
+	condSection := page.Locator("#conditions-section")
+	err = condSection.WaitFor(playwright.LocatorWaitForOptions{
 		State: playwright.WaitForSelectorStateVisible,
 	})
 	require.NoError(t, err)
 
 	// There should be NO input fields or textareas for value editing.
-	inputs := page.Locator("#state-section input[type='text'], #state-section textarea, #state-section select")
+	inputs := page.Locator("#conditions-section input[type='text'], #conditions-section textarea, #conditions-section select")
 	count, err := inputs.Count()
 	require.NoError(t, err)
-	assert.Equal(t, 0, count, "value section should be read-only — no input/textarea/select elements")
+	assert.Equal(t, 0, count, "conditions section should be read-only — no input/textarea/select elements")
 
 	// There should be NO override section.
 	overrides := page.Locator("#overrides-section")

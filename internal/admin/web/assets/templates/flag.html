@@ -33,11 +33,11 @@
   </div>
 </div>
 
-{{if .Conditions}}
-<!-- Condition Chain -->
+<!-- Configuration -->
 <div class="detail-section" id="conditions-section">
+  {{if .Conditions}}
   <div class="detail-section-header">
-    <h3>Condition Chain</h3>
+    <h3>Conditions</h3>
     <span class="state-hint">Evaluated top-to-bottom; first match wins</span>
   </div>
   <table class="condition-table">
@@ -64,49 +64,32 @@
       {{end}}
     </tbody>
   </table>
-</div>
-{{end}}
-
-<!-- Effective Value (read-only) -->
-<div class="detail-section" id="state-section">
+  {{else}}
   <div class="detail-section-header">
     <h3>Value</h3>
-    <span class="state-hint">{{stateHint .Flag.State}}</span>
+    <span class="state-hint">Static value from config</span>
   </div>
-  <div class="detail-section-body">
-    <div class="value-grid">
-      <div class="value-cell value-cell-primary">
-        <label>Resolves To</label>
-        {{if eq (stateLabel .Flag.State) "KILLED"}}
+  <table class="condition-table">
+    <thead>
+      <tr>
+        <th class="cond-col-expr">Default</th>
+        <th class="cond-col-val">Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="condition-row condition-row-otherwise">
+        <td><span class="cond-otherwise">compiled default</span></td>
+        <td>
           {{if isListType .Flag.FlagType}}
-            {{template "list_chips" dict "Items" (listItems .Flag.DefaultValue) "Muted" true}}
+            {{template "list_chips" dict "Items" (listItems .Flag.DefaultValue) "Muted" false}}
           {{else}}
-            <div class="val val-resolved val-muted">{{resolvedValue .Flag}}</div>
+            <span class="cond-value">{{flagValue .Flag.DefaultValue}}</span>
           {{end}}
-        {{else if isListType .Flag.FlagType}}
-          {{if isEnabled .Flag.State}}
-            {{template "list_chips" dict "Items" (listItems .Flag.CurrentValue) "Muted" false}}
-          {{else}}
-            {{template "list_chips" dict "Items" (listItems .Flag.DefaultValue) "Muted" true}}
-          {{end}}
-        {{else}}
-          <div class="val val-resolved{{if not (isEnabled .Flag.State)}} val-muted{{end}}">{{resolvedValue .Flag}}</div>
-        {{end}}
-      </div>
-      <div class="value-cell">
-        <label>Default</label>
-        {{if isListType .Flag.FlagType}}
-          {{template "list_chips" dict "Items" (listItems .Flag.DefaultValue) "Muted" true}}
-        {{else}}
-          <div class="val val-muted">{{flagValue .Flag.DefaultValue}}</div>
-        {{end}}
-      </div>
-      <div class="value-cell">
-        <label>Feature</label>
-        <div class="val">{{.Feature}}</div>
-      </div>
-    </div>
-  </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  {{end}}
 </div>
 
 <!-- Audit Log (recent) -->

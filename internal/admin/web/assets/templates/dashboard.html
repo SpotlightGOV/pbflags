@@ -34,7 +34,8 @@
     <span class="feature-desc">{{.Description}}</span>
     <span class="feature-meta">
       {{if .Owner}}<span class="owner">{{.Owner}}</span>{{end}}
-      <span class="feature-summary">{{featureSummary .Flags}}</span>
+      {{$summary := featureSummary .Flags}}
+      {{if $summary}}<span class="feature-summary feature-summary-killed">{{$summary}}</span>{{end}}
       <span>{{len .Flags}} flags</span>
     </span>
   </div>
@@ -44,13 +45,14 @@
         <tr>
           <th class="col-flag">Flag</th>
           <th class="col-type">Type</th>
-          <th class="col-value-ro">Value</th>
+          <th class="col-config">Config</th>
           <th class="col-actions-ro"></th>
         </tr>
       </thead>
       <tbody>
+        {{$cc := $.CondCounts}}
         {{range .Flags}}
-        {{template "flag_row" dict "Flag" .}}
+        {{template "flag_row" dict "Flag" . "CondCounts" $cc}}
         {{end}}
       </tbody>
     </table>
@@ -60,6 +62,7 @@
 {{end}}
 
 {{define "flag_row"}}
+{{$n := condCount .CondCounts .Flag.FlagId}}
 <tr id="flag-row-{{flagIDEscape .Flag.FlagId}}"
     data-flag="{{.Flag.FlagId}}" data-flag-desc="{{.Flag.Description}}"
     data-flag-name="{{flagLabel .Flag}}"
@@ -73,15 +76,14 @@
     {{if .Flag.Description}}<div class="flag-desc">{{.Flag.Description}}</div>{{end}}
   </td>
   <td><span class="badge badge-type">{{typeLabel .Flag.FlagType}}</span></td>
-  <td>
+  <td class="config-cell">
     {{if eq (stateLabel .Flag.State) "KILLED"}}
-      <span class="value-display value-killed">{{resolvedValue .Flag}}</span>
-      <span class="value-source value-source-killed">killed</span>
-    {{else if isEnabled .Flag.State}}
-      <span class="value-display">{{resolvedValue .Flag}}</span>
+      <span class="badge badge-killed">killed</span>
+    {{else if gt $n 0}}
+      <span class="config-summary">{{$n}} conditions</span>
+      <span class="config-default">default: {{flagValue .Flag.DefaultValue}}</span>
     {{else}}
-      <span class="value-display value-default">{{resolvedValue .Flag}}</span>
-      <span class="value-source">default</span>
+      <span class="config-static">{{flagValue .Flag.DefaultValue}}</span>
     {{end}}
   </td>
   <td class="col-actions-ro">

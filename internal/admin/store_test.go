@@ -287,7 +287,7 @@ func TestListFeatures(t *testing.T) {
 		{FlagType: "STRING", Layer: "GLOBAL"},
 	})
 
-	features, err := store.ListFeatures(ctx)
+	features, _, err := store.ListFeatures(ctx)
 	require.NoError(t, err)
 
 	// Find our features in the list (other parallel tests may have data too).
@@ -312,7 +312,7 @@ func TestListFeatures_ArchivedExcluded(t *testing.T) {
 	_, err := pool.Exec(ctx, `UPDATE feature_flags.flags SET archived_at = now() WHERE flag_id = $1`, tf.FlagID(1))
 	require.NoError(t, err)
 
-	features, err := store.ListFeatures(ctx)
+	features, _, err := store.ListFeatures(ctx)
 	require.NoError(t, err)
 
 	// Our feature should not appear (its only flag is archived).

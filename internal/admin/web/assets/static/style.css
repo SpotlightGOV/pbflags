@@ -316,10 +316,10 @@ body {
   background: rgba(91, 127, 255, 0.03);
 }
 
-.col-flag { width: 40%; }
-.col-type { width: 10%; }
-.col-value-ro { width: 30%; }
-.col-actions-ro { width: 20%; text-align: right; }
+.col-flag { width: 35%; }
+.col-type { width: 8%; }
+.col-config { width: 42%; }
+.col-actions-ro { width: 15%; text-align: right; }
 
 /* Flag name link */
 .flag-name {
@@ -447,6 +447,41 @@ body {
   border: 1px solid var(--border-dim);
   border-radius: 2px;
   vertical-align: middle;
+}
+
+/* Dashboard config cell */
+.config-cell {
+  line-height: 1.6;
+}
+
+.config-summary {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.config-default {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+
+.config-static {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.badge-killed {
+  color: var(--red);
+  background: var(--red-dim);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+}
+
+.feature-summary-killed {
+  color: var(--red);
 }
 
 /* Buttons */

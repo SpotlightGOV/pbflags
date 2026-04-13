@@ -73,6 +73,7 @@ func NewHandler(store *admin.Store, logger *slog.Logger, env ...EnvConfig) (*Han
 		"dict":               dict,
 		"inc":                func(i int) int { return i + 1 },
 		"slice":              safeSlice,
+		"condCount":          func(m map[string]int, id string) int { return m[id] },
 	}
 
 	var ec EnvConfig
@@ -247,7 +248,7 @@ func (h *Handler) pageData(page string, extra ...any) map[string]any {
 }
 
 func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
-	features, err := h.store.ListFeatures(r.Context())
+	features, condCounts, err := h.store.ListFeatures(r.Context())
 	if err != nil {
 		h.serverError(w, "list features", err)
 		return
@@ -256,6 +257,7 @@ func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	data := h.pageData("dashboard",
 		"Features", features,
 		"FlagCount", countFlags(features),
+		"CondCounts", condCounts,
 	)
 
 	// htmx partial swap: return just the content block.
@@ -711,28 +713,18 @@ func isCustomSVValue(flag *pbflagsv1.FlagDetail) bool {
 	return true
 }
 
-// featureSummary returns a short summary like "2 enabled, 1 killed" for a feature's flags.
+// featureSummary returns a short summary like "1 killed" for a feature's flags.
 func featureSummary(flags []*pbflagsv1.FlagDetail) string {
-	var enabled, killed int
+	var killed int
 	for _, f := range flags {
-		switch f.State {
-		case pbflagsv1.State_STATE_ENABLED:
-			enabled++
-		case pbflagsv1.State_STATE_KILLED:
+		if f.State == pbflagsv1.State_STATE_KILLED {
 			killed++
 		}
 	}
-	var parts []string
-	if enabled > 0 {
-		parts = append(parts, fmt.Sprintf("%d enabled", enabled))
-	}
 	if killed > 0 {
-		parts = append(parts, fmt.Sprintf("%d killed", killed))
+		return fmt.Sprintf("%d killed", killed)
 	}
-	if len(parts) == 0 {
-		return "all defaults"
-	}
-	return strings.Join(parts, ", ")
+	return ""
 }
 
 // resolvedValue returns the effective value a flag evaluates to:

@@ -424,23 +424,26 @@ func (s *Store) RemoveFlagOverride(ctx context.Context, flagID, entityID, actor 
 }
 
 // ListFeatures returns all features with their non-archived flags.
-func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, error) {
+// The second return value maps flag_id → condition count (0 = static/default).
+func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, map[string]int, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT f.feature_id, f.description, f.owner,
 		       fl.flag_id, fl.display_name, fl.description,
 		       fl.flag_type, fl.layer, fl.state, fl.value,
 		       fl.default_value, fl.supported_values,
-		       fl.archived_at IS NOT NULL as archived
+		       fl.archived_at IS NOT NULL as archived,
+		       COALESCE(jsonb_array_length(fl.conditions), 0) as condition_count
 		FROM feature_flags.features f
 		JOIN feature_flags.flags fl ON fl.feature_id = f.feature_id
 		WHERE fl.archived_at IS NULL
 		ORDER BY f.feature_id, fl.field_number`)
 	if err != nil {
-		return nil, fmt.Errorf("query features: %w", err)
+		return nil, nil, fmt.Errorf("query features: %w", err)
 	}
 	defer rows.Close()
 
 	features := make(map[string]*pbflagsv1.FeatureDetail)
+	condCounts := make(map[string]int)
 	var order []string
 	for rows.Next() {
 		var featureID, fDesc, fOwner string
@@ -448,15 +451,16 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, e
 		var flagType, layer, state string
 		var valueBytes, defaultBytes, supportedBytes []byte
 		var archived bool
+		var condCount int
 
 		if err := rows.Scan(
 			&featureID, &fDesc, &fOwner,
 			&flagID, &flagDisplayName, &flagDesc,
 			&flagType, &layer, &state, &valueBytes,
 			&defaultBytes, &supportedBytes,
-			&archived,
+			&archived, &condCount,
 		); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		feat, ok := features[featureID]
@@ -497,16 +501,19 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, e
 		}
 
 		feat.Flags = append(feat.Flags, fd)
+		if condCount > 0 {
+			condCounts[flagID] = condCount
+		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	result := make([]*pbflagsv1.FeatureDetail, 0, len(order))
 	for _, id := range order {
 		result = append(result, features[id])
 	}
-	return result, nil
+	return result, condCounts, nil
 }
 
 // GetFlag returns details for a single flag including overrides.
