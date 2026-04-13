@@ -11,6 +11,7 @@ import (
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/internal/configfile"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
+	"github.com/SpotlightGOV/pbflags/internal/flagfmt"
 	"gopkg.in/yaml.v3"
 )
 
@@ -126,24 +127,9 @@ func formatFlagValue(fv *pbflagsv1.FlagValue) string {
 	if fv == nil {
 		return "(nil)"
 	}
-	switch v := fv.Value.(type) {
-	case *pbflagsv1.FlagValue_BoolValue:
-		return fmt.Sprintf("%v", v.BoolValue)
-	case *pbflagsv1.FlagValue_StringValue:
-		return fmt.Sprintf("%q", v.StringValue)
-	case *pbflagsv1.FlagValue_Int64Value:
-		return fmt.Sprintf("%d", v.Int64Value)
-	case *pbflagsv1.FlagValue_DoubleValue:
-		return fmt.Sprintf("%g", v.DoubleValue)
-	case *pbflagsv1.FlagValue_BoolListValue:
-		return fmt.Sprintf("%v", v.BoolListValue.GetValues())
-	case *pbflagsv1.FlagValue_StringListValue:
-		return fmt.Sprintf("%v", v.StringListValue.GetValues())
-	case *pbflagsv1.FlagValue_Int64ListValue:
-		return fmt.Sprintf("%v", v.Int64ListValue.GetValues())
-	case *pbflagsv1.FlagValue_DoubleListValue:
-		return fmt.Sprintf("%v", v.DoubleListValue.GetValues())
-	default:
-		return fmt.Sprintf("%v", fv)
+	// Quote strings for terminal clarity.
+	if sv, ok := fv.Value.(*pbflagsv1.FlagValue_StringValue); ok {
+		return fmt.Sprintf("%q", sv.StringValue)
 	}
+	return flagfmt.DisplayString(fv)
 }

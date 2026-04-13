@@ -6,15 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"strings"
 	"time"
 
 	pbflagspb "github.com/SpotlightGOV/pbflags/gen/pbflags"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
+	"github.com/SpotlightGOV/pbflags/internal/flagfmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -573,17 +572,13 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 		extra.SyncSHA = *syncSHA
 	}
 	if conditionsJSON != nil {
-		type condEntry struct {
-			CEL   *string         `json:"cel"`
-			Value json.RawMessage `json:"value"`
-		}
-		var entries []condEntry
+		var entries []flagfmt.StoredCondition
 		if err := json.Unmarshal(conditionsJSON, &entries); err != nil {
 			s.logger.Warn("failed to unmarshal conditions", "flag_id", flagID, "error", err)
 			extra.ConditionsError = err.Error()
 		} else {
 			for _, e := range entries {
-				fc := FlagCondition{Value: formatConditionValue(e.Value)}
+				fc := FlagCondition{Value: flagfmt.DisplayConditionValue(e.Value)}
 				if e.CEL != nil {
 					fc.CEL = *e.CEL
 				}
@@ -795,71 +790,6 @@ func parseState(s string) pbflagsv1.State {
 
 func isGlobalLayer(s string) bool {
 	return s == "" || strings.EqualFold(s, "GLOBAL")
-}
-
-// formatConditionValue formats a protojson-encoded FlagValue for display.
-func formatConditionValue(raw json.RawMessage) string {
-	if raw == nil {
-		return "—"
-	}
-	var fv pbflagsv1.FlagValue
-	if err := protojson.Unmarshal(raw, &fv); err != nil {
-		return string(raw)
-	}
-	return formatFlagValueForDisplay(&fv)
-}
-
-func formatFlagValueForDisplay(v *pbflagsv1.FlagValue) string {
-	if v == nil {
-		return "—"
-	}
-	switch val := v.Value.(type) {
-	case *pbflagsv1.FlagValue_BoolValue:
-		if val.BoolValue {
-			return "true"
-		}
-		return "false"
-	case *pbflagsv1.FlagValue_StringValue:
-		return val.StringValue
-	case *pbflagsv1.FlagValue_Int64Value:
-		return strconv.FormatInt(val.Int64Value, 10)
-	case *pbflagsv1.FlagValue_DoubleValue:
-		return strconv.FormatFloat(val.DoubleValue, 'f', -1, 64)
-	case *pbflagsv1.FlagValue_StringListValue:
-		if val.StringListValue == nil || len(val.StringListValue.Values) == 0 {
-			return "[]"
-		}
-		return "[" + strings.Join(val.StringListValue.Values, ", ") + "]"
-	case *pbflagsv1.FlagValue_Int64ListValue:
-		if val.Int64ListValue == nil || len(val.Int64ListValue.Values) == 0 {
-			return "[]"
-		}
-		parts := make([]string, len(val.Int64ListValue.Values))
-		for i, v := range val.Int64ListValue.Values {
-			parts[i] = strconv.FormatInt(v, 10)
-		}
-		return "[" + strings.Join(parts, ", ") + "]"
-	case *pbflagsv1.FlagValue_DoubleListValue:
-		if val.DoubleListValue == nil || len(val.DoubleListValue.Values) == 0 {
-			return "[]"
-		}
-		parts := make([]string, len(val.DoubleListValue.Values))
-		for i, v := range val.DoubleListValue.Values {
-			parts[i] = strconv.FormatFloat(v, 'f', -1, 64)
-		}
-		return "[" + strings.Join(parts, ", ") + "]"
-	case *pbflagsv1.FlagValue_BoolListValue:
-		if val.BoolListValue == nil || len(val.BoolListValue.Values) == 0 {
-			return "[]"
-		}
-		parts := make([]string, len(val.BoolListValue.Values))
-		for i, v := range val.BoolListValue.Values {
-			parts[i] = strconv.FormatBool(v)
-		}
-		return "[" + strings.Join(parts, ", ") + "]"
-	default:
-		return "—"
-	}
 }
 
 // validateFlagValueType checks that a FlagValue's oneof variant matches the

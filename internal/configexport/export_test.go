@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
+	"github.com/SpotlightGOV/pbflags/internal/flagfmt"
 	"github.com/SpotlightGOV/pbflags/internal/testdb"
 )
 
@@ -114,7 +115,7 @@ func TestFlagValueToYAML(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := flagValueToYAML(tt.fv)
+			got, err := flagfmt.AsAny(tt.fv)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, got)
 		})

@@ -14,12 +14,14 @@ import (
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/internal/celenv"
+	"github.com/SpotlightGOV/pbflags/internal/flagfmt"
 )
 
 // CachedCondition is a compiled condition ready for evaluation.
 type CachedCondition struct {
 	Program cel.Program          // compiled CEL program; nil for "otherwise"
 	Value   *pbflagsv1.FlagValue // the value to return when this condition matches
+	Source  string               // original CEL expression text (empty for "otherwise")
 }
 
 // ConditionEvaluator compiles stored condition JSON into CEL programs and
@@ -47,12 +49,6 @@ func NewConditionEvaluator(md protoreflect.MessageDescriptor, logger *slog.Logge
 	}, nil
 }
 
-// storedCondition is the JSON format stored in the conditions JSONB column.
-type storedCondition struct {
-	CEL   *string         `json:"cel"`
-	Value json.RawMessage `json:"value"`
-}
-
 // CompileConditions parses the conditions JSONB and compiles CEL programs.
 // Returns nil if conditionsJSON is nil (no conditions). On compile failure,
 // logs the error and returns nil (graceful degradation to default).
@@ -61,7 +57,7 @@ func (ce *ConditionEvaluator) CompileConditions(flagID string, conditionsJSON []
 		return nil
 	}
 
-	var stored []storedCondition
+	var stored []flagfmt.StoredCondition
 	if err := json.Unmarshal(conditionsJSON, &stored); err != nil {
 		ce.logger.Error("failed to parse conditions JSON", "flag_id", flagID, "error", err)
 		return nil
@@ -86,7 +82,7 @@ func (ce *ConditionEvaluator) CompileConditions(flagID string, conditionsJSON []
 			ce.logger.Error("failed to compile CEL condition", "flag_id", flagID, "index", i, "cel", *sc.CEL, "error", err)
 			return nil // degrade: fall back to compiled default
 		}
-		conditions = append(conditions, CachedCondition{Program: compiled.Program, Value: fv})
+		conditions = append(conditions, CachedCondition{Program: compiled.Program, Value: fv, Source: *sc.CEL})
 	}
 
 	return conditions
@@ -101,14 +97,14 @@ type EvalResult struct {
 // EvaluateConditions iterates the condition chain and returns the value of
 // the first matching condition. Returns a nil Value if no condition matches
 // or if evalCtx is nil.
-func (ce *ConditionEvaluator) EvaluateConditions(conditions []CachedCondition, evalCtx proto.Message) *EvalResult {
+func (ce *ConditionEvaluator) EvaluateConditions(flagID string, conditions []CachedCondition, evalCtx proto.Message) *EvalResult {
 	if len(conditions) == 0 || evalCtx == nil {
 		return &EvalResult{}
 	}
 
 	checked := 0
 	activation := map[string]any{"ctx": evalCtx}
-	for _, cond := range conditions {
+	for i, cond := range conditions {
 		if cond.Program == nil {
 			// "otherwise" — always matches.
 			return &EvalResult{Value: cond.Value, ConditionsChecked: checked}
@@ -116,7 +112,11 @@ func (ce *ConditionEvaluator) EvaluateConditions(conditions []CachedCondition, e
 		checked++
 		out, _, err := cond.Program.Eval(activation)
 		if err != nil {
-			ce.logger.Warn("CEL evaluation error", "error", err)
+			ce.logger.Warn("CEL evaluation error",
+				"flag_id", flagID,
+				"cond_index", i,
+				"cel", cond.Source,
+				"error", err)
 			continue // skip failed condition, try next
 		}
 		if b, ok := out.Value().(bool); ok && b {

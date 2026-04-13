@@ -185,7 +185,7 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 			e.metrics.CacheMissesTotal.WithLabelValues("conditions").Inc()
 		}
 
-		result := e.condEval.EvaluateConditions(state.Conditions, evalCtx)
+		result := e.condEval.EvaluateConditions(flagID, state.Conditions, evalCtx)
 		span.SetAttributes(attribute.Int("conditions_evaluated", result.ConditionsChecked))
 
 		if result.Value != nil {

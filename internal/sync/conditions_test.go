@@ -20,6 +20,7 @@ import (
 	"github.com/SpotlightGOV/pbflags/internal/codegen/contextutil"
 	"github.com/SpotlightGOV/pbflags/internal/configfile"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
+	"github.com/SpotlightGOV/pbflags/internal/flagfmt"
 	"github.com/SpotlightGOV/pbflags/internal/testdb"
 )
 
@@ -106,7 +107,7 @@ func TestCompileFlag(t *testing.T) {
 			t.Fatal("expected non-nil condJSON")
 		}
 
-		var conds []conditionEntry
+		var conds []flagfmt.StoredCondition
 		if err := json.Unmarshal(condJSON, &conds); err != nil {
 			t.Fatalf("unmarshal conditions: %v", err)
 		}
@@ -226,7 +227,7 @@ flags:
 	if condJSON == nil {
 		t.Fatal("conditions should be non-nil for conditional flag")
 	}
-	var conds []conditionEntry
+	var conds []flagfmt.StoredCondition
 	if err := json.Unmarshal(condJSON, &conds); err != nil {
 		t.Fatalf("unmarshal conditions: %v", err)
 	}

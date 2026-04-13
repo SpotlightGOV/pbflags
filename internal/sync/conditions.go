@@ -20,6 +20,7 @@ import (
 	"github.com/SpotlightGOV/pbflags/internal/codegen/contextutil"
 	"github.com/SpotlightGOV/pbflags/internal/configfile"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
+	"github.com/SpotlightGOV/pbflags/internal/flagfmt"
 )
 
 // ConditionResult reports what the condition sync did.
@@ -211,13 +212,6 @@ func processConfigFile(
 	return featureID, updated, warnings, nil
 }
 
-// conditionEntry is the JSON representation of a single condition stored in the
-// conditions JSONB column.
-type conditionEntry struct {
-	CEL   *string         `json:"cel"`
-	Value json.RawMessage `json:"value"`
-}
-
 func compileFlag(
 	flagName string,
 	entry configfile.FlagEntry,
@@ -229,7 +223,7 @@ func compileFlag(
 		return nil, nil, nil, nil
 	}
 
-	var conditions []conditionEntry
+	var conditions []flagfmt.StoredCondition
 	var asts []*cel.Ast
 	var values []*pbflagsv1.FlagValue
 
@@ -240,7 +234,7 @@ func compileFlag(
 		}
 
 		if cond.When == "" {
-			conditions = append(conditions, conditionEntry{CEL: nil, Value: fvBytes})
+			conditions = append(conditions, flagfmt.StoredCondition{CEL: nil, Value: fvBytes})
 			asts = append(asts, nil)
 		} else {
 			compiled, compileErr := compiler.Compile(cond.When)
@@ -248,7 +242,7 @@ func compileFlag(
 				return nil, nil, nil, fmt.Errorf("condition %d: %w", i, compileErr)
 			}
 			celStr := cond.When
-			conditions = append(conditions, conditionEntry{CEL: &celStr, Value: fvBytes})
+			conditions = append(conditions, flagfmt.StoredCondition{CEL: &celStr, Value: fvBytes})
 			asts = append(asts, compiled.AST)
 		}
 		values = append(values, cond.Value)

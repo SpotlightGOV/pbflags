@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
+	"github.com/SpotlightGOV/pbflags/internal/flagfmt"
 )
 
 // ExportedConfig is a single feature's generated YAML config.
@@ -228,7 +229,7 @@ func buildFlagEntry(fl flag, opts Options) (yamlEntry, error) {
 		return buildConditionEntry(fl, activeOverrides, opts.EntityDimension)
 	}
 
-	val, err := flagValueToYAML(fl.value)
+	val, err := flagfmt.AsAny(fl.value)
 	if err != nil {
 		return yamlEntry{}, err
 	}
@@ -253,7 +254,7 @@ func buildConditionEntry(fl flag, overrides []override, entityDim string) (yamlE
 		if o.state != "ENABLED" {
 			continue
 		}
-		val, err := flagValueToYAML(o.value)
+		val, err := flagfmt.AsAny(o.value)
 		if err != nil {
 			return yamlEntry{}, err
 		}
@@ -289,7 +290,7 @@ func buildConditionEntry(fl flag, overrides []override, entityDim string) (yamlE
 	}
 
 	// Otherwise: use the global value or typed zero.
-	otherwiseVal, err := flagValueToYAML(fl.value)
+	otherwiseVal, err := flagfmt.AsAny(fl.value)
 	if err != nil {
 		return yamlEntry{}, err
 	}
@@ -354,44 +355,6 @@ func filterActiveOverrides(overrides []override) []override {
 		}
 	}
 	return result
-}
-
-func flagValueToYAML(fv *pbflagsv1.FlagValue) (any, error) {
-	if fv == nil {
-		return nil, nil
-	}
-	switch v := fv.Value.(type) {
-	case *pbflagsv1.FlagValue_BoolValue:
-		return v.BoolValue, nil
-	case *pbflagsv1.FlagValue_StringValue:
-		return v.StringValue, nil
-	case *pbflagsv1.FlagValue_Int64Value:
-		return v.Int64Value, nil
-	case *pbflagsv1.FlagValue_DoubleValue:
-		return v.DoubleValue, nil
-	case *pbflagsv1.FlagValue_BoolListValue:
-		if v.BoolListValue == nil {
-			return []bool{}, nil
-		}
-		return v.BoolListValue.Values, nil
-	case *pbflagsv1.FlagValue_StringListValue:
-		if v.StringListValue == nil {
-			return []string{}, nil
-		}
-		return v.StringListValue.Values, nil
-	case *pbflagsv1.FlagValue_Int64ListValue:
-		if v.Int64ListValue == nil {
-			return []int64{}, nil
-		}
-		return v.Int64ListValue.Values, nil
-	case *pbflagsv1.FlagValue_DoubleListValue:
-		if v.DoubleListValue == nil {
-			return []float64{}, nil
-		}
-		return v.DoubleListValue.Values, nil
-	default:
-		return nil, nil
-	}
 }
 
 func typedZero(flagType string) any {
