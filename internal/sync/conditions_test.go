@@ -80,7 +80,7 @@ func TestCompileFlag(t *testing.T) {
 		entry := configfile.FlagEntry{
 			Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}},
 		}
-		condJSON, dimJSON, _, err := compileFlag("email_enabled", entry, compiler, boundedDims)
+		condJSON, dimJSON, valueBytes, _, err := compileFlag("email_enabled", entry, compiler, boundedDims)
 		if err != nil {
 			t.Fatalf("compileFlag: %v", err)
 		}
@@ -89,6 +89,9 @@ func TestCompileFlag(t *testing.T) {
 		}
 		if dimJSON != nil {
 			t.Error("expected nil dimJSON for static value")
+		}
+		if valueBytes == nil {
+			t.Error("expected non-nil valueBytes for static value")
 		}
 	})
 
@@ -99,7 +102,7 @@ func TestCompileFlag(t *testing.T) {
 				{When: "", Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: "weekly"}}},
 			},
 		}
-		condJSON, dimJSON, warnings, err := compileFlag("digest_frequency", entry, compiler, boundedDims)
+		condJSON, dimJSON, _, warnings, err := compileFlag("digest_frequency", entry, compiler, boundedDims)
 		if err != nil {
 			t.Fatalf("compileFlag: %v", err)
 		}
@@ -148,7 +151,7 @@ func TestCompileFlag(t *testing.T) {
 				{When: "", Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: false}}},
 			},
 		}
-		_, _, warnings, err := compileFlag("test_flag", entry, compiler, boundedDims)
+		_, _, _, warnings, err := compileFlag("test_flag", entry, compiler, boundedDims)
 		if err != nil {
 			t.Fatalf("compileFlag: %v", err)
 		}

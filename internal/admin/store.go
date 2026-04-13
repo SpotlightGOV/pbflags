@@ -432,7 +432,7 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, m
 		       fl.flag_type, fl.layer, fl.state, fl.value,
 		       fl.default_value, fl.supported_values,
 		       fl.archived_at IS NOT NULL as archived,
-		       COALESCE(jsonb_array_length(fl.conditions), 0) as condition_count
+		       COALESCE(CASE WHEN jsonb_typeof(fl.conditions) = 'array' THEN jsonb_array_length(fl.conditions) ELSE 0 END, 0) as condition_count
 		FROM feature_flags.features f
 		JOIN feature_flags.flags fl ON fl.feature_id = f.feature_id
 		WHERE fl.archived_at IS NULL
