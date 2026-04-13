@@ -240,9 +240,9 @@ func TestAuditLogPage(t *testing.T) {
 	require.NoError(t, err)
 	waitForHTMX(page)
 
-	// Audit log page should load.
-	auditTable := page.Locator(".audit-table")
-	err = auditTable.WaitFor(playwright.LocatorWaitForOptions{
+	// Audit log page should load (may show empty state if no audit entries exist).
+	auditContent := page.Locator(".audit-table, .empty-state")
+	err = auditContent.WaitFor(playwright.LocatorWaitForOptions{
 		State: playwright.WaitForSelectorStateVisible,
 	})
 	require.NoError(t, err)
