@@ -2,7 +2,7 @@
 
 ## Proto as source of truth
 
-Flag definitions live in `.proto` files. This means flag schemas are versioned in source control, reviewed in pull requests, and validated at compile time. The database stores runtime state (values, overrides, kills), but the shape of the flag system — which flags exist, their types, their evaluation context dimensions — is defined in proto.
+Flag definitions live in `.proto` files. This means flag schemas are versioned in source control, reviewed in pull requests, and validated at compile time. The database stores runtime state (kill switches and condition evaluation metadata), but the shape of the flag system — which flags exist, their types, their default values, their conditions, and their evaluation context dimensions — is defined in proto.
 
 This gives you a property most feature flag systems don't have: your flag definitions are as reviewable and auditable as your code.
 
@@ -17,16 +17,17 @@ This gives you a property most feature flag systems don't have: your flag defini
 
 ## Flag evaluation precedence
 
-The evaluator resolves flags using this precedence chain:
+The evaluator resolves flags using a three-step precedence chain:
 
-1. **Global KILLED** -> compiled default (polled every ~30s, or checked inline in write-through mode)
-2. **Per-entity override ENABLED** -> override value
-3. **Per-entity override DEFAULT** -> compiled default
-4. **Global ENABLED** -> configured value
-5. **Stale fallback** -> last known value (if hot cache expired, served while background refresh runs)
-6. **Compiled default** -> always safe
+1. **Killed** (`killed_at IS NOT NULL`) → compiled default (polled every ~30s, or checked inline in write-through mode)
+2. **Condition chain** (CEL expressions evaluated top-to-bottom, first match wins) → condition value
+3. **Compiled default** (from proto definition) → always safe
 
-The key insight is that the global kill switch always wins, overrides beat global state, and the compiled default is the ultimate safety net. Per-entity kills are not supported — use the global kill switch instead.
+The kill switch is the only runtime control — it overrides everything and forces the compiled default. There is no "enabled" or "disabled" toggle. A flag is either killed or it is live and evaluating its condition chain.
+
+Conditions are CEL expressions defined in the proto source and synced to the database. Each condition has an expression and a value; the evaluator walks the chain in order and returns the value of the first condition whose expression evaluates to true against the supplied evaluation context. If no condition matches, the compiled default is returned.
+
+This model keeps the evaluation path simple and auditable: the condition chain is visible in the proto source, reviewed in pull requests, and deterministic for any given evaluation context. The kill switch provides the safety escape hatch.
 
 ## Evaluation context
 
@@ -50,7 +51,8 @@ eval := pbflags.Connect(httpClient, url, &pb.EvaluationContext{})
 emailEnabled := nf.EmailEnabled(ctx, eval.With(dims.UserID("user-123")))
 lookbackDays := ic.LookbackDays(ctx, eval.With(dims.UserID("user-123"), dims.Plan(pb.PlanLevel_PLAN_LEVEL_PRO)))
 
-// No dimensions evaluates global state (no per-entity override applied).
+// No dimensions — conditions that reference context fields won't match,
+// so the compiled default is returned.
 globalDefault := nf.EmailEnabled(ctx, eval)
 ```
 
@@ -61,21 +63,21 @@ globalDefault := nf.EmailEnabled(ctx, eval)
 | Proto definition | `(pbflags.dimension)` on context fields | Source of truth |
 | Generated client | Typed constructors (`dims.UserID`, `dims.Plan`) | Yes — enforces correct value types |
 | Wire protocol | `EvaluationContext` message fields | Structured — carries typed dimensions |
-| Evaluator | Context fields | Resolves overrides against matching dimensions |
-| Database | `flags.dimension` VARCHAR, `flag_overrides(flag_id, entity_id)` | Stores dimension name; overrides keyed by opaque entity ID |
-| Admin UI | Displays dimension name, shows override section for non-global | Displays only |
+| Evaluator | Context fields | Evaluates CEL conditions against supplied dimensions |
+| Database | `flags.conditions` JSONB, `flags.killed_at` | Stores condition chain and kill state |
+| Admin UI | Displays dimension name and condition chain | Displays only |
 
 Type safety is enforced in both the generated client code and the wire protocol via the structured `EvaluationContext` message.
 
 ### Changing a flag's dimension
 
-A flag's dimension is part of its contract with consumers — changing it changes the generated client signature and can invalidate existing override data.
+A flag's dimension is part of its contract with consumers — changing it changes the generated client signature and can invalidate existing condition expressions that reference the old dimension.
 
 | Transition | Allowed? | Why |
 |---|---|---|
-| Global → Dimension | **Yes** | No existing overrides. Safe rollout — empty context falls back to global state. |
-| Dimension → Global | **No** | Orphaned overrides remain in the database. Cannot be deleted until rollout is complete, but if not deleted, silently reappear if the flag is later given a dimension. |
-| Dimension A → Dimension B | **No** | Existing override rows were written with Dimension A's ID semantics (e.g., user IDs). After the change, they're interpreted as Dimension B IDs (e.g., plan levels). If value spaces overlap, overrides evaluate incorrectly. |
+| Global → Dimension | **Yes** | No existing conditions reference dimension fields. Safe rollout — empty context falls back to compiled default. |
+| Dimension → Global | **No** | Existing conditions reference the old dimension's context fields and would fail CEL evaluation or silently mismatch. |
+| Dimension A → Dimension B | **No** | Existing conditions were written against Dimension A's context fields (e.g., `user_id`). After the change, they reference fields that no longer apply. |
 
 The lint tool (`pbflags-lint`) enforces these rules at pre-commit or release time.
 
@@ -85,11 +87,11 @@ When you need to change a flag's dimension, define a new flag instead of modifyi
 
 1. **Add a new flag** in the same feature message with the desired dimension and a new field number.
 2. **Regenerate code.** Both flags are available simultaneously.
-3. **Set up overrides** on the new flag for the appropriate entities.
+3. **Define conditions** on the new flag with CEL expressions targeting the new dimension.
 4. **Update application code** to read the new flag. Deploy.
 5. **Archive the old flag.** Remove the field from the proto (or mark it `reserved`). Run `pbflags-sync` to archive it.
 
-This avoids any window of incorrect evaluation — both flags coexist during the transition, each with correct override data for its dimension.
+This avoids any window of incorrect evaluation — both flags coexist during the transition, each with conditions written for the correct dimension.
 
 ## Lint tool
 

@@ -7,7 +7,7 @@ Three binaries, each with a distinct role and explicit database permission requi
 | Binary | Role | DB permissions |
 |---|---|---|
 | `pbflags-sync` | Migrations + definition sync | DDL + R/W |
-| `pbflags-admin` | Flag management, UI, local evaluator | R/W (no DDL) |
+| `pbflags-admin` | Kill switches, dashboard UI, local evaluator | R/W (no DDL) |
 | `pbflags-evaluator` | Read-only flag resolution | Readonly, or none if using an upstream evaluator |
 
 For development, `pbflags-admin --standalone` runs all three roles in one process.
@@ -21,8 +21,8 @@ For development, `pbflags-admin --standalone` runs all three roles in one proces
 └─────────────┘     └────────────────────┘     └────────────┘
   Generated            Three-tier cache:       ┌────────────┐
   type-safe            - Kill set (30s)     ┌──▶│ PostgreSQL │
-  client               - Global state (10m)│   │   (R/W)    │
-                       - Overrides (10m LRU)│   └────────────┘
+  client               - Flag state (10m)  │   │   (R/W)    │
+                       - Conditions (LRU)  │   └────────────┘
                                            │
 ┌─────────────┐     ┌────────────────────┐─┘
 │  Operator   │────▶│  pbflags-admin     │
@@ -40,6 +40,7 @@ buf build proto -o descriptors.pb
 
 ```bash
 pbflags-admin --standalone \
+  --config=pbflags.toml \
   --descriptors=descriptors.pb \
   --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable \
   --env-name=local
@@ -72,11 +73,14 @@ In production, the three roles run as separate processes with explicit DB permis
 ```bash
 # 1. CI/CD pipeline (once per change to flag definitions — DDL + R/W):
 pbflags-sync \
+  --config=pbflags.toml \
   --descriptors=descriptors.pb \
-  --database=postgres://admin:pass@db:5432/flags
+  --database=postgres://admin:pass@db:5432/flags \
+  --sha=$(git rev-parse HEAD)
 
 # 2. Control plane (one or more instances — R/W, no DDL):
 pbflags-admin \
+  --config=pbflags.toml \
   --database=postgres://app:pass@db:5432/flags
 
 # 3. Evaluators (any number — readonly):
@@ -92,12 +96,14 @@ pbflags-evaluator \
 
 ## Admin Web UI
 
-`pbflags-admin` serves an embedded web dashboard for flag management, built with server-rendered HTML and htmx.
+`pbflags-admin` serves an embedded read-only web dashboard, built with server-rendered HTML and htmx.
 
-- **Dashboard**: Overview of all features and flags with inline state toggles (ENABLED/DEFAULT/KILLED)
-- **Flag Detail**: Per-flag view with state/value editing, override management (layer-scoped flags), and recent audit history
+- **Dashboard**: Overview of all features and flags with condition counts and sync SHA badge showing config provenance
+- **Flag Detail**: Per-flag view with a condition chain table (CEL expression → value), kill state, and recent audit history
+- **Kill Switch**: The only runtime control — kill a flag to force the compiled default, or revive it to resume condition evaluation
 - **Audit Log**: Filterable log of all state changes with actor attribution
-- **Override Management**: Add and remove per-entity overrides for layer-scoped flags
+
+The admin UI does not support editing flag values or conditions — those are defined in proto source and synced via `pbflags-sync`. The only mutation available is the kill switch.
 
 The admin UI is available at `http://localhost:9200/` by default (configurable via `--listen` or `PBFLAGS_ADMIN`). The embedded evaluator listener is configured separately via `--evaluator-listen` or `PBFLAGS_LISTEN`.
 
@@ -140,9 +146,15 @@ The evaluator uses a three-tier cache with configurable TTLs:
 
 | Flag | Default | Description |
 |---|---|---|
-| `--cache-kill-ttl` | 30s | Kill set poll interval |
-| `--cache-flag-ttl` | 10m | Global flag state hot-cache TTL |
-| `--cache-override-ttl` | 10m | Per-entity override hot-cache TTL |
+| `--cache-kill-ttl` | 30s | Kill-set poll interval |
+| `--cache-flag-ttl` | 10m | Flag state (conditions + killed_at) hot-cache TTL |
+| `--cache-condition-ttl` | 10m | Condition evaluation cache TTL (dimension-keyed LRU) |
+
+The three tiers are:
+
+1. **Kill-set cache** — polled on a short interval (`--cache-kill-ttl`, default 30s) so emergency shutoffs propagate quickly.
+2. **Flag state cache** — caches conditions and `killed_at` per flag with a longer TTL (`--cache-flag-ttl`, default 10m).
+3. **Condition evaluation cache** — dimension-keyed LRU that caches the result of CEL condition evaluation for a given flag + evaluation context combination (`--cache-condition-ttl`, default 10m).
 
 #### Standard mode (default)
 
@@ -151,7 +163,7 @@ With the default TTLs, the evaluator caches flag state in a hot cache
 expires, the evaluator returns the **stale value immediately** and
 triggers a background refresh — no request ever blocks on a fetch after
 initial warmup. The evaluation source will be `STALE` until the
-background refresh completes, then `GLOBAL` or `OVERRIDE` on the next
+background refresh completes, then `CONDITION` or `DEFAULT` on the next
 call.
 
 A background kill set poller runs every `--cache-kill-ttl` (default 30s)
@@ -159,7 +171,7 @@ to ensure killed flags take effect quickly.
 
 #### Write-through mode (`--cache-flag-ttl=0`)
 
-Setting `--cache-flag-ttl=0` (and/or `--cache-override-ttl=0`) disables
+Setting `--cache-flag-ttl=0` (and/or `--cache-condition-ttl=0`) disables
 the hot cache entirely. Every evaluation fetches from the database,
 giving instant flag propagation. A stale fallback map is still populated
 on each fetch as a safety net if the database becomes unavailable.
@@ -169,7 +181,7 @@ database is local and sub-millisecond fetch latency is acceptable.
 
 When `--cache-flag-ttl` is less than or equal to `--cache-kill-ttl`, the
 kill set poller is automatically disabled. Instead, the evaluator fetches
-each flag's state before checking overrides and detects kills inline.
+each flag's state and detects kills inline.
 
 #### Evaluation sources
 
@@ -178,15 +190,14 @@ resolved value came from:
 
 | Source | Meaning |
 |---|---|
-| `GLOBAL` | Fresh value from global flag state |
-| `OVERRIDE` | Fresh value from per-entity override |
+| `CONDITION` | Fresh value from a matched condition in the chain |
 | `STALE` | Stale value returned while background refresh is in flight (normal operation after TTL expiry) |
 | `CACHED` | Last-resort stale value (database unreachable, no background refresh possible) |
-| `KILLED` | Flag is globally killed |
+| `KILLED` | Flag is killed — compiled default returned |
 | `ARCHIVED` | Archived flag's last known value |
-| `DEFAULT` | Compiled default (flag not found, not enabled, or no value set) |
+| `DEFAULT` | Compiled default (flag not found, no condition matched, or no conditions defined) |
 
-In dashboards, a steady rate of `STALE` evaluations is normal — it
+In dashboards, a steady rate of `STALE` evaluations is normal -- it
 means TTL-expired entries are being served while refreshes complete in
 the background. A spike in `CACHED` evaluations indicates the database
 may be unreachable.
@@ -206,7 +217,7 @@ Environment variables override CLI flags:
 | `PBFLAGS_ENV_COLOR` | admin | `--env-color` | Accent color for admin UI environment banner |
 | `PBFLAGS_CACHE_KILL_TTL` | admin, evaluator | `--cache-kill-ttl` | Kill set poll interval (default `30s`) |
 | `PBFLAGS_CACHE_FLAG_TTL` | admin, evaluator | `--cache-flag-ttl` | Flag state cache TTL (default `10m`, `0` for write-through) |
-| `PBFLAGS_CACHE_OVERRIDE_TTL` | admin, evaluator | `--cache-override-ttl` | Override cache TTL (default `10m`, `0` for write-through) |
+| `PBFLAGS_CACHE_CONDITION_TTL` | admin, evaluator | `--cache-condition-ttl` | Condition evaluation cache TTL (default `10m`, `0` for write-through) |
 
 ## Proto Definitions (BSR)
 

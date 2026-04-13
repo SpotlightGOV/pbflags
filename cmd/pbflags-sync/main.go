@@ -16,6 +16,7 @@ import (
 	"github.com/SpotlightGOV/pbflags/internal/configcli"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 	"github.com/SpotlightGOV/pbflags/internal/flagfile"
+	"github.com/SpotlightGOV/pbflags/internal/projectconfig"
 	defsync "github.com/SpotlightGOV/pbflags/internal/sync"
 )
 
@@ -58,6 +59,18 @@ func main() {
 		*sha = os.Getenv("PBFLAGS_SHA")
 	}
 
+	// Load project config for defaults.
+	projCfg, projRoot, projErr := projectconfig.Discover(".")
+	if projErr != nil {
+		slog.Warn("failed to load .pbflags.yaml", "error", projErr)
+	}
+	if projCfg.FeaturesPath != "" {
+		featDir := projCfg.FeaturesDir(projRoot)
+		if *configDir == "" {
+			*configDir = featDir
+		}
+	}
+
 	if *database == "" {
 		slog.Error("--database flag or PBFLAGS_DATABASE env var is required")
 		os.Exit(1)
@@ -85,6 +98,19 @@ func runValidate(args []string) {
 	if *configDir == "" {
 		*configDir = os.Getenv("PBFLAGS_CONFIG")
 	}
+
+	// Load project config for defaults.
+	projCfg, projRoot, projErr := projectconfig.Discover(".")
+	if projErr != nil {
+		slog.Warn("failed to load .pbflags.yaml", "error", projErr)
+	}
+	if projCfg.FeaturesPath != "" {
+		featDir := projCfg.FeaturesDir(projRoot)
+		if *configDir == "" {
+			*configDir = featDir
+		}
+	}
+
 	if *descriptors == "" || *configDir == "" {
 		slog.Error("--descriptors and --config are required for validate")
 		os.Exit(1)
@@ -128,6 +154,19 @@ func runShow(args []string) {
 	if *configDir == "" {
 		*configDir = os.Getenv("PBFLAGS_CONFIG")
 	}
+
+	// Load project config for defaults.
+	projCfg, projRoot, projErr := projectconfig.Discover(".")
+	if projErr != nil {
+		slog.Warn("failed to load .pbflags.yaml", "error", projErr)
+	}
+	if projCfg.FeaturesPath != "" {
+		featDir := projCfg.FeaturesDir(projRoot)
+		if *configDir == "" {
+			*configDir = featDir
+		}
+	}
+
 	if *descriptors == "" || *configDir == "" || len(fs.Args()) == 0 {
 		slog.Error("usage: pbflags-sync show --descriptors=... --config=... <flag>")
 		os.Exit(1)

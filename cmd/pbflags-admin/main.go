@@ -57,6 +57,7 @@ import (
 	adminweb "github.com/SpotlightGOV/pbflags/internal/admin/web"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 	"github.com/SpotlightGOV/pbflags/internal/flagfile"
+	"github.com/SpotlightGOV/pbflags/internal/projectconfig"
 	defsync "github.com/SpotlightGOV/pbflags/internal/sync"
 )
 
@@ -93,6 +94,18 @@ func main() {
 	setDurationEnvIfFlag("PBFLAGS_CACHE_KILL_TTL", *killTTL)
 	setDurationEnvIfFlag("PBFLAGS_CACHE_FLAG_TTL", *flagTTL)
 	setDurationEnvIfFlag("PBFLAGS_CACHE_OVERRIDE_TTL", *overrideTTL)
+
+	// Load project config for defaults.
+	projCfg, projRoot, projErr := projectconfig.Discover(".")
+	if projErr != nil {
+		slog.Warn("failed to load .pbflags.yaml", "error", projErr)
+	}
+	if projCfg.FeaturesPath != "" {
+		featDir := projCfg.FeaturesDir(projRoot)
+		if *configDir == "" {
+			*configDir = featDir
+		}
+	}
 
 	cfg := evaluator.LoadConfig()
 	// Admin listen defaults to :9200.
