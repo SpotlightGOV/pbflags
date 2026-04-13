@@ -165,6 +165,8 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 
 	// 3. Conditions — check cache, then evaluate CEL chain.
 	if state != nil && len(state.Conditions) > 0 && e.condEval != nil && evalCtx != nil {
+		span.SetAttributes(attribute.Bool("has_conditions", true))
+
 		var version uint64
 		if e.condCache != nil {
 			version = e.condCache.FlagVersion(flagID)
@@ -173,18 +175,24 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 
 		if e.condCache != nil {
 			if cached, noMatch, ok := e.condCache.Get(cacheKey); ok {
+				e.metrics.CacheHitsTotal.WithLabelValues("conditions").Inc()
+				span.SetAttributes(attribute.Bool("condition_cache_hit", true))
 				if noMatch {
 					return val, src // no-match sentinel → fall through to static/default
 				}
 				return cached, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED
 			}
+			e.metrics.CacheMissesTotal.WithLabelValues("conditions").Inc()
 		}
 
-		if condVal := e.condEval.EvaluateConditions(state.Conditions, evalCtx); condVal != nil {
+		result := e.condEval.EvaluateConditions(state.Conditions, evalCtx)
+		span.SetAttributes(attribute.Int("conditions_evaluated", result.ConditionsChecked))
+
+		if result.Value != nil {
 			if e.condCache != nil {
-				e.condCache.Set(cacheKey, condVal)
+				e.condCache.Set(cacheKey, result.Value)
 			}
-			return condVal, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CONDITION
+			return result.Value, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CONDITION
 		}
 		// No condition matched — cache the no-match to avoid re-evaluation.
 		if e.condCache != nil {

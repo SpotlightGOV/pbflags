@@ -92,30 +92,38 @@ func (ce *ConditionEvaluator) CompileConditions(flagID string, conditionsJSON []
 	return conditions
 }
 
+// EvalResult holds the result and metadata from condition evaluation.
+type EvalResult struct {
+	Value             *pbflagsv1.FlagValue
+	ConditionsChecked int // how many CEL programs were evaluated
+}
+
 // EvaluateConditions iterates the condition chain and returns the value of
-// the first matching condition. Returns nil if no condition matches or if
-// evalCtx is nil.
-func (ce *ConditionEvaluator) EvaluateConditions(conditions []CachedCondition, evalCtx proto.Message) *pbflagsv1.FlagValue {
+// the first matching condition. Returns a nil Value if no condition matches
+// or if evalCtx is nil.
+func (ce *ConditionEvaluator) EvaluateConditions(conditions []CachedCondition, evalCtx proto.Message) *EvalResult {
 	if len(conditions) == 0 || evalCtx == nil {
-		return nil
+		return &EvalResult{}
 	}
 
+	checked := 0
 	activation := map[string]any{"ctx": evalCtx}
 	for _, cond := range conditions {
 		if cond.Program == nil {
 			// "otherwise" — always matches.
-			return cond.Value
+			return &EvalResult{Value: cond.Value, ConditionsChecked: checked}
 		}
+		checked++
 		out, _, err := cond.Program.Eval(activation)
 		if err != nil {
-			ce.logger.Debug("CEL evaluation error", "error", err)
+			ce.logger.Warn("CEL evaluation error", "error", err)
 			continue // skip failed condition, try next
 		}
 		if b, ok := out.Value().(bool); ok && b {
-			return cond.Value
+			return &EvalResult{Value: cond.Value, ConditionsChecked: checked}
 		}
 	}
-	return nil
+	return &EvalResult{ConditionsChecked: checked}
 }
 
 // UnmarshalContext deserializes an anypb.Any into a dynamic proto message
