@@ -255,37 +255,12 @@ func (e *Evaluator) resolveGlobal(
 	ctx context.Context,
 	flagID string,
 ) (*pbflagsv1.FlagValue, pbflagsv1.EvaluationSource) {
-	state := e.cache.GetFlagState(flagID)
-
-	if state != nil {
-		e.metrics.CacheHitsTotal.WithLabelValues("flags").Inc()
-		trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("cache_hit", true))
-		return e.evalFlagState(state)
-	}
-
-	e.metrics.CacheMissesTotal.WithLabelValues("flags").Inc()
-
-	// Stale-while-revalidate: if we have a stale value, return it
-	// immediately and refresh in the background.
-	if stale := e.cache.GetStaleFlagState(flagID); stale != nil {
-		e.backgroundRefreshFlag(flagID)
-		return e.evalFlagStateWithSource(stale, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_STALE)
-	}
-
-	// Cold start: no stale value, must block on fetch.
-	fetched, err := e.fetcher.FetchFlagState(ctx, flagID)
-	if err != nil {
-		e.logger.Debug("flag state fetch failed", "flag_id", flagID, "error", err)
-		return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT
-	}
-	if fetched != nil {
-		e.setFlagState(fetched)
-	}
-	return e.evalFlagState(fetched)
+	_, val, src := e.resolveGlobalWithState(ctx, flagID)
+	return val, src
 }
 
-// resolveGlobalWithState is like resolveGlobal but also returns the
-// CachedFlagState for use by EvaluateWithContext (avoids double-fetch).
+// resolveGlobalWithState resolves global flag state via cache → stale → fetch,
+// returning the CachedFlagState alongside the evaluated (value, source).
 func (e *Evaluator) resolveGlobalWithState(
 	ctx context.Context,
 	flagID string,
@@ -293,6 +268,7 @@ func (e *Evaluator) resolveGlobalWithState(
 	state := e.cache.GetFlagState(flagID)
 	if state != nil {
 		e.metrics.CacheHitsTotal.WithLabelValues("flags").Inc()
+		trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("cache_hit", true))
 		val, src := e.evalFlagState(state)
 		return state, val, src
 	}

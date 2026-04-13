@@ -134,7 +134,7 @@ func BuildCacheKey(flagID string, version uint64, meta CachedDimMeta, evalCtx pr
 		}
 		val := rm.Get(fd)
 
-		b.WriteByte('\x00') // NUL separator — cannot appear in UTF-8 proto strings
+		b.WriteByte('\x00') // NUL separator for readability; safety comes from length-prefixed values
 		b.WriteString(name)
 		b.WriteByte('\x00')
 
