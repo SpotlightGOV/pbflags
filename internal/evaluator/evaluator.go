@@ -63,6 +63,15 @@ func WithConditionCache(cc *ConditionCache) EvaluatorOption {
 	return func(e *Evaluator) { e.condCache = cc }
 }
 
+// setFlagState writes to the cache store and invalidates any condition
+// cache entries for the flag (bumps version so old keys become unreachable).
+func (e *Evaluator) setFlagState(state *CachedFlagState) {
+	e.cache.SetFlagState(state)
+	if e.condCache != nil && len(state.Conditions) > 0 {
+		e.condCache.InvalidateFlag(state.FlagID)
+	}
+}
+
 // NewEvaluator creates an Evaluator.
 func NewEvaluator(cache *CacheStore, fetcher Fetcher, logger *slog.Logger, m *Metrics, tracer trace.Tracer, opts ...EvaluatorOption) *Evaluator {
 	e := &Evaluator{
@@ -105,7 +114,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, flagID, entityID string) (valu
 	if e.inlineKillCheck {
 		fetched, err := e.fetcher.FetchFlagState(ctx, flagID)
 		if err == nil && fetched != nil {
-			e.cache.SetFlagState(fetched)
+			e.setFlagState(fetched)
 			if fetched.State == pbflagsv1.State_STATE_KILLED {
 				return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED
 			}
@@ -156,9 +165,17 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 
 	// 3. Conditions — check cache, then evaluate CEL chain.
 	if state != nil && len(state.Conditions) > 0 && e.condEval != nil && evalCtx != nil {
-		cacheKey := BuildCacheKey(flagID, state.DimMeta, evalCtx)
+		var version uint64
 		if e.condCache != nil {
-			if cached, ok := e.condCache.Get(cacheKey); ok {
+			version = e.condCache.FlagVersion(flagID)
+		}
+		cacheKey := BuildCacheKey(flagID, version, state.DimMeta, evalCtx)
+
+		if e.condCache != nil {
+			if cached, noMatch, ok := e.condCache.Get(cacheKey); ok {
+				if noMatch {
+					return val, src // no-match sentinel → fall through to static/default
+				}
 				return cached, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED
 			}
 		}
@@ -168,6 +185,10 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 				e.condCache.Set(cacheKey, condVal)
 			}
 			return condVal, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CONDITION
+		}
+		// No condition matched — cache the no-match to avoid re-evaluation.
+		if e.condCache != nil {
+			e.condCache.SetNoMatch(cacheKey)
 		}
 	}
 
@@ -258,7 +279,7 @@ func (e *Evaluator) resolveGlobal(
 		return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT
 	}
 	if fetched != nil {
-		e.cache.SetFlagState(fetched)
+		e.setFlagState(fetched)
 	}
 	return e.evalFlagState(fetched)
 }
@@ -290,7 +311,7 @@ func (e *Evaluator) resolveGlobalWithState(
 		return nil, nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT
 	}
 	if fetched != nil {
-		e.cache.SetFlagState(fetched)
+		e.setFlagState(fetched)
 	}
 	val, src := e.evalFlagState(fetched)
 	return fetched, val, src
@@ -344,7 +365,7 @@ func (e *Evaluator) backgroundRefreshFlag(flagID string) {
 				return nil, err
 			}
 			if fetched != nil {
-				e.cache.SetFlagState(fetched)
+				e.setFlagState(fetched)
 			}
 			e.metrics.BackgroundRefreshes.WithLabelValues("flags", "ok").Inc()
 			return nil, nil

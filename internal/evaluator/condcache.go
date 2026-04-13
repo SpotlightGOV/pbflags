@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/dgraph-io/ristretto/v2"
 	"google.golang.org/protobuf/proto"
@@ -14,11 +15,21 @@ import (
 	"github.com/SpotlightGOV/pbflags/internal/celenv"
 )
 
+// condCacheEntry wraps a condition evaluation result. A nil Value with
+// noMatch=true is a cached "no condition matched" sentinel — avoids
+// re-evaluating the full CEL chain on every no-match context.
+type condCacheEntry struct {
+	Value   *pbflagsv1.FlagValue
+	NoMatch bool
+}
+
 // ConditionCache caches condition evaluation results keyed by
-// dimension-classified cache keys. Flags without conditions use
-// the flag ID alone as the cache key (one entry).
+// dimension-classified cache keys with per-flag version stamps
+// for invalidation on config changes.
 type ConditionCache struct {
-	cache *ristretto.Cache[string, *pbflagsv1.FlagValue]
+	cache    *ristretto.Cache[string, *condCacheEntry]
+	mu       sync.RWMutex
+	versions map[string]uint64 // flagID → version counter
 }
 
 // NewConditionCache creates a condition result cache with the given max entries.
@@ -26,7 +37,7 @@ func NewConditionCache(maxEntries int64) (*ConditionCache, error) {
 	if maxEntries <= 0 {
 		maxEntries = 10_000
 	}
-	cache, err := ristretto.NewCache(&ristretto.Config[string, *pbflagsv1.FlagValue]{
+	cache, err := ristretto.NewCache(&ristretto.Config[string, *condCacheEntry]{
 		NumCounters: maxEntries * 10,
 		MaxCost:     maxEntries,
 		BufferItems: 64,
@@ -34,17 +45,46 @@ func NewConditionCache(maxEntries int64) (*ConditionCache, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ConditionCache{cache: cache}, nil
+	return &ConditionCache{
+		cache:    cache,
+		versions: make(map[string]uint64),
+	}, nil
 }
 
-// Get looks up a cached condition result.
-func (c *ConditionCache) Get(key string) (*pbflagsv1.FlagValue, bool) {
-	return c.cache.Get(key)
+// Get looks up a cached condition result. Returns (value, noMatch, found).
+// When noMatch is true, the CEL chain was evaluated and no condition matched.
+func (c *ConditionCache) Get(key string) (val *pbflagsv1.FlagValue, noMatch bool, found bool) {
+	entry, ok := c.cache.Get(key)
+	if !ok {
+		return nil, false, false
+	}
+	return entry.Value, entry.NoMatch, true
 }
 
-// Set stores a condition result. cost=1 per entry for LRU counting.
+// Set stores a condition match result.
 func (c *ConditionCache) Set(key string, val *pbflagsv1.FlagValue) {
-	c.cache.Set(key, val, 1)
+	c.cache.Set(key, &condCacheEntry{Value: val}, 1)
+}
+
+// SetNoMatch stores a "no condition matched" sentinel.
+func (c *ConditionCache) SetNoMatch(key string) {
+	c.cache.Set(key, &condCacheEntry{NoMatch: true}, 1)
+}
+
+// InvalidateFlag bumps the version for a flag, making all existing
+// cache entries for that flag unreachable (they have the old version
+// in their key). Old entries are evicted naturally by LRU.
+func (c *ConditionCache) InvalidateFlag(flagID string) {
+	c.mu.Lock()
+	c.versions[flagID]++
+	c.mu.Unlock()
+}
+
+// FlagVersion returns the current cache version for a flag.
+func (c *ConditionCache) FlagVersion(flagID string) uint64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.versions[flagID]
 }
 
 // Close releases cache resources.
@@ -67,17 +107,16 @@ func (c *ConditionCache) Wait() {
 type CachedDimMeta map[string]*celenv.DimensionMeta
 
 // BuildCacheKey constructs a dimension-classified cache key from the
-// flag ID, dimension metadata, and evaluation context.
-// For flags with no conditions/metadata, returns just the flag ID.
-func BuildCacheKey(flagID string, meta CachedDimMeta, evalCtx proto.Message) string {
+// flag ID, version stamp, dimension metadata, and evaluation context.
+// Values are length-prefixed to prevent delimiter collision.
+func BuildCacheKey(flagID string, version uint64, meta CachedDimMeta, evalCtx proto.Message) string {
 	if len(meta) == 0 || evalCtx == nil {
-		return flagID
+		return fmt.Sprintf("%s@%d", flagID, version)
 	}
 
 	rm := evalCtx.ProtoReflect()
 	fields := rm.Descriptor().Fields()
 
-	// Sort dimension names for deterministic keys.
 	names := make([]string, 0, len(meta))
 	for name := range meta {
 		names = append(names, name)
@@ -85,7 +124,7 @@ func BuildCacheKey(flagID string, meta CachedDimMeta, evalCtx proto.Message) str
 	sort.Strings(names)
 
 	var b strings.Builder
-	b.WriteString(flagID)
+	fmt.Fprintf(&b, "%s@%d", flagID, version)
 
 	for _, name := range names {
 		dm := meta[name]
@@ -95,37 +134,28 @@ func BuildCacheKey(flagID string, meta CachedDimMeta, evalCtx proto.Message) str
 		}
 		val := rm.Get(fd)
 
-		b.WriteByte('|')
+		b.WriteByte('\x00') // NUL separator — cannot appear in UTF-8 proto strings
 		b.WriteString(name)
+		b.WriteByte('\x00')
 
 		switch dm.Classification {
-		case celenv.Bounded:
-			// Include full dimension value.
-			b.WriteByte('=')
-			b.WriteString(formatFieldValue(fd, val))
+		case celenv.Bounded, celenv.Unbounded:
+			v := formatFieldValue(fd, val)
+			fmt.Fprintf(&b, "%d:%s", len(v), v)
 
 		case celenv.FiniteFilterUniform:
-			// Check if context value matches any literal in the set.
-			b.WriteString(":match=")
 			if matchesLiteral(fd, val, dm.LiteralSet) {
-				b.WriteString("true")
+				b.WriteByte('1')
 			} else {
-				b.WriteString("false")
+				b.WriteByte('0')
 			}
 
 		case celenv.FiniteFilterDistinct:
-			// Check which specific literal matches (or "none").
-			b.WriteString(":match=")
 			if lit := findMatchingLiteral(fd, val, dm.LiteralSet); lit != "" {
-				b.WriteString(lit)
+				fmt.Fprintf(&b, "%d:%s", len(lit), lit)
 			} else {
-				b.WriteString("none")
+				b.WriteByte('-')
 			}
-
-		case celenv.Unbounded:
-			// Include raw dimension value (LRU-capped by the cache).
-			b.WriteByte('=')
-			b.WriteString(formatFieldValue(fd, val))
 		}
 	}
 
