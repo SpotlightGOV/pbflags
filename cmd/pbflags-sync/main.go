@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/SpotlightGOV/pbflags/db"
+	"github.com/SpotlightGOV/pbflags/internal/configcli"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 	"github.com/SpotlightGOV/pbflags/internal/flagfile"
 	defsync "github.com/SpotlightGOV/pbflags/internal/sync"
@@ -23,6 +24,18 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Check for subcommands: "validate" or "show".
+	if len(args) > 0 {
+		switch args[0] {
+		case "validate":
+			runValidate(args[1:])
+			return
+		case "show":
+			runShow(args[1:])
+			return
+		}
 	}
 
 	fs := flag.NewFlagSet("pbflags-sync", flag.ExitOnError)
@@ -52,6 +65,78 @@ func main() {
 
 	if err := run(context.Background(), *database, *descriptors, *configDir); err != nil {
 		slog.Error("sync failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func runValidate(args []string) {
+	fs := flag.NewFlagSet("validate", flag.ExitOnError)
+	descriptors := fs.String("descriptors", "", "path to descriptors.pb")
+	configDir := fs.String("config", "", "directory of YAML config files")
+	fs.Parse(args)
+
+	if *descriptors == "" {
+		*descriptors = os.Getenv("PBFLAGS_DESCRIPTORS")
+	}
+	if *configDir == "" {
+		*configDir = os.Getenv("PBFLAGS_CONFIG")
+	}
+	if *descriptors == "" || *configDir == "" {
+		slog.Error("--descriptors and --config are required for validate")
+		os.Exit(1)
+	}
+
+	descData, err := os.ReadFile(*descriptors)
+	if err != nil {
+		slog.Error("read descriptors", "error", err)
+		os.Exit(1)
+	}
+
+	result, err := configcli.Validate(descData, *configDir)
+	if err != nil {
+		slog.Error("validation failed", "error", err)
+		os.Exit(1)
+	}
+
+	for _, w := range result.Warnings {
+		slog.Warn(w)
+	}
+	for _, e := range result.Errors {
+		slog.Error(e)
+	}
+
+	if len(result.Errors) > 0 {
+		fmt.Fprintf(os.Stderr, "\nValidation FAILED: %d error(s) in %d file(s)\n", len(result.Errors), result.Files)
+		os.Exit(1)
+	}
+	fmt.Printf("Validation OK: %d file(s), %d flag(s)\n", result.Files, result.Flags)
+}
+
+func runShow(args []string) {
+	fs := flag.NewFlagSet("show", flag.ExitOnError)
+	descriptors := fs.String("descriptors", "", "path to descriptors.pb")
+	configDir := fs.String("config", "", "directory of YAML config files")
+	fs.Parse(args)
+
+	if *descriptors == "" {
+		*descriptors = os.Getenv("PBFLAGS_DESCRIPTORS")
+	}
+	if *configDir == "" {
+		*configDir = os.Getenv("PBFLAGS_CONFIG")
+	}
+	if *descriptors == "" || *configDir == "" || len(fs.Args()) == 0 {
+		slog.Error("usage: pbflags-sync show --descriptors=... --config=... <flag>")
+		os.Exit(1)
+	}
+
+	descData, err := os.ReadFile(*descriptors)
+	if err != nil {
+		slog.Error("read descriptors", "error", err)
+		os.Exit(1)
+	}
+
+	if err := configcli.Show(descData, *configDir, fs.Args()[0], os.Stdout); err != nil {
+		slog.Error("show failed", "error", err)
 		os.Exit(1)
 	}
 }
