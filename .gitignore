@@ -31,3 +31,11 @@ workspace/
 .dolt/
 *.db
 .beads-credential-key
+
+# Gas City
+.beads/
+.gc
+.runtime
+scripts/discord*
+scripts/__pycache__/*
+.claude/skills/gc*
