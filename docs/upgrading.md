@@ -134,7 +134,7 @@ No additional generated code changes in v0.16.0.
 
 ### Migration checklist
 
-1. **Export** existing database values with `pbflags-sync export`.
+1. **Export** existing database values and overrides with `pbflags-sync export`.
 2. **Write YAML configs** for each feature (or use the exported files as a starting point).
 3. **Validate** configs with `pbflags-sync validate`.
 4. **Deploy `pbflags-sync`** with `--features` pointing to your config directory.
