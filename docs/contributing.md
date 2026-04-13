@@ -102,14 +102,12 @@ The main sync command also supports:
 - `--features=./features` — directory of YAML flag config files to compile into database conditions
 - `--sha=<hash>` — git commit SHA recorded on synced features (displayed in the admin UI)
 
-Additionally, `pbflags-sync export` generates YAML from existing database state, useful as a migration bridge when moving from the old override system to YAML configs:
+Additionally, `pbflags-sync export` generates YAML from existing database flag values, useful as a starting point when moving to YAML configs:
 
 ```bash
 pbflags-sync export \
   --database=$PBFLAGS_DATABASE \
-  --descriptors=descriptors.pb \
-  --entity-dimension=user_id \
-  > config/exported.yaml
+  --output=features/
 ```
 
 ## Project config file

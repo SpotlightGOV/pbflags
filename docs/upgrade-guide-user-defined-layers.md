@@ -1,5 +1,10 @@
 # Upgrade Guide: User-Defined Layers
 
+> **Historical note:** This guide only applies to pre-v0.15 deployments that
+> still use layers. v0.15 replaced layers with `EvaluationContext` dimensions,
+> and v0.16 removed the remaining layer storage and override model. New
+> integrations should use `agent-setup.md` instead.
+
 This guide covers migrating from the hardcoded `Layer` enum to user-defined
 layers. This is a breaking change — all steps are required.
 

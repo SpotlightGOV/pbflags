@@ -25,7 +25,7 @@ This order matters because `pbflags-admin` and `pbflags-evaluator` do not run mi
 
 - [Conditions and config-driven flags (v0.16.0)](#conditions-and-config-driven-flags-v0160) — migrating from overrides to YAML conditions
 - [Evaluation context dimensions (v0.15.0)](#evaluation-context-dimensions-v0150) — replacing layers with context dimensions
-- [User-defined layers](upgrade-guide-user-defined-layers.md) — migrating from hardcoded to user-defined layer enums (v0.6.0)
+- [User-defined layers](upgrade-guide-user-defined-layers.md) — historical guide for pre-v0.15 layer migrations
 
 ---
 
@@ -48,23 +48,21 @@ managed entirely through config files in git.
 
 ### Before you upgrade
 
-**Export your current state.** If you have per-entity overrides or admin-UI-set values,
-export them before running the migration:
+**Export your current database values.** If you have admin-UI-set values, export
+them before running the migration:
 
 ```bash
 pbflags-sync export \
   --database=$PBFLAGS_DATABASE \
-  --descriptors=descriptors.pb \
-  --entity-dimension=user_id \
   --output=config/
 ```
 
-This generates one YAML file per feature with your current values and overrides
-converted to condition chains. Review and commit these files — they become your
-source of truth.
+This generates one YAML file per feature with static `value:` entries derived
+from the database. Review and commit these files — they become your source of
+truth.
 
-If you have no overrides or admin-set values (all flags use compiled defaults),
-you can skip the export and write config files from scratch.
+If you have no admin-set values (all flags use compiled defaults), you can skip
+the export and write config files from scratch.
 
 ### YAML config format
 
@@ -135,7 +133,7 @@ No additional generated code changes in v0.16.0.
 
 ### Migration checklist
 
-1. **Export** existing overrides and admin-set values with `export`.
+1. **Export** existing database values with `pbflags-sync export`.
 2. **Write YAML configs** for each feature (or use the exported files as a starting point).
 3. **Validate** configs with `pbflags-sync validate`.
 4. **Deploy `pbflags-sync`** with `--features` pointing to your config directory.

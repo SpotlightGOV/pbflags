@@ -21,7 +21,7 @@ version: v2
 plugins:
   - local: protoc-gen-pbflags
     out: src/main/java
-    strategy: all  # required — plugin needs all files to find the Layer enum
+    strategy: all  # required — plugin needs all files to find the EvaluationContext message
     opt:
       - lang=java
       - java_package=com.yourorg.flags.generated
@@ -29,7 +29,7 @@ inputs:
   - directory: proto
 ```
 
-`strategy: all` is required because the plugin needs to see all files in a single invocation to discover the `Layer` enum.
+`strategy: all` is required because the plugin needs to see all files in a single invocation to discover the `EvaluationContext` message.
 
 ### Install and generate
 
@@ -61,8 +61,7 @@ For each feature message (e.g., `Notifications`), the codegen produces:
 
 ```java
 public interface NotificationsFlags {
-    // Layer-scoped flags return LayerFlag<T, ID>; global flags return Flag<T>.
-    LayerFlag<Boolean, UserID> emailEnabled();
+    Flag<Boolean> emailEnabled();
     Flag<String> digestFrequency();
 
     // Factory methods
@@ -70,14 +69,14 @@ public interface NotificationsFlags {
 }
 ```
 
-Global accessors return `Flag<T>` or `ListFlag<T>`. Layer-scoped accessors return `LayerFlag<T, ID>` or `LayerListFlag<T, ID>`.
+Accessors return `Flag<T>` or `ListFlag<T>`. Each flag object is lightweight and delegates to the configured `FlagEvaluator` on every `get()` call.
 
 ### Usage
 
 ```java
 NotificationsFlags notifications = NotificationsFlags.forEvaluator(evaluator);
 
-boolean emailEnabled = notifications.emailEnabled().get(UserID.of("user-123"));
+boolean emailEnabled = notifications.emailEnabled().get();
 String frequency = notifications.digestFrequency().get();
 ```
 
@@ -92,15 +91,6 @@ ManagedChannel channel = ManagedChannelBuilder.forTarget("localhost:9201")
     .usePlaintext()
     .build();
 FlagEvaluatorClient evaluator = FlagEvaluatorClient.forChannel(channel);
-```
-
-### Typed layer IDs
-
-Each non-global layer produces a top-level class in `<java_package>.layers`:
-
-```java
-UserID.of("user-123")
-EntityID.of("org-456")
 ```
 
 ### Flag ID constants

@@ -6,7 +6,7 @@ Protocol Buffer-based feature flags with type-safe code generation, multi-tier c
 
 ## Overview
 
-pbflags lets you define feature flags as protobuf messages and generates type-safe client code for Go and Java. Flags are the proto source of truth, the database is the runtime source of truth, and generated clients give you compile-time type safety at every call site.
+pbflags lets you define feature flag schemas as protobuf messages, define flag behavior in YAML config files, and generate type-safe client code for Go and Java. Proto is the source of truth for flag identity, types, defaults, and evaluation context dimensions; YAML config is the source of truth for condition chains; the database stores synced runtime state for evaluators.
 
 ## For AI agents
 
@@ -96,11 +96,35 @@ inputs:
   - directory: proto
 ```
 
-### 3. Run the server
+### 3. Define flag behavior
+
+Create one YAML config file per feature:
+
+```yaml
+# features/notifications.yaml
+feature: notifications
+flags:
+  email_enabled:
+    conditions:
+      - when: "ctx.plan == PlanLevel.ENTERPRISE"
+        value: true
+      - otherwise: false
+  digest_frequency:
+    value: "daily"
+```
+
+Validate it before syncing:
+
+```bash
+pbflags-sync validate --descriptors=descriptors.pb --features=./features
+```
+
+### 4. Run the server
 
 ```bash
 pbflags-admin --standalone \
   --descriptors=descriptors.pb \
+  --features=./features \
   --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable
 ```
 
@@ -112,7 +136,7 @@ Or use Docker Compose:
 docker compose -f docker/docker-compose.yml up
 ```
 
-### 4. Use in your application
+### 5. Use in your application
 
 ```go
 import (

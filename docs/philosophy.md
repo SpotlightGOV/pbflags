@@ -2,7 +2,7 @@
 
 ## Proto as source of truth
 
-Flag definitions live in `.proto` files. This means flag schemas are versioned in source control, reviewed in pull requests, and validated at compile time. The database stores runtime state (kill switches and condition evaluation metadata), but the shape of the flag system — which flags exist, their types, their default values, their conditions, and their evaluation context dimensions — is defined in proto.
+Flag definitions live in `.proto` files. This means flag schemas are versioned in source control, reviewed in pull requests, and validated at compile time. The database stores runtime state (kill switches and synced condition metadata), but the shape of the flag system — which flags exist, their types, their compiled defaults, and their evaluation context dimensions — is defined in proto.
 
 This gives you a property most feature flag systems don't have: your flag definitions are as reviewable and auditable as your code.
 
@@ -25,17 +25,17 @@ The evaluator resolves flags using a three-step precedence chain:
 
 The kill switch is the only runtime control — it overrides everything and forces the compiled default. There is no "enabled" or "disabled" toggle. A flag is either killed or it is live and evaluating its condition chain.
 
-Conditions are CEL expressions defined in the proto source and synced to the database. Each condition has an expression and a value; the evaluator walks the chain in order and returns the value of the first condition whose expression evaluates to true against the supplied evaluation context. If no condition matches, the compiled default is returned.
+Conditions are CEL expressions defined in YAML config files and synced to the database by `pbflags-sync`. Each condition has an expression and a value; the evaluator walks the chain in order and returns the value of the first condition whose expression evaluates to true against the supplied evaluation context. If no condition matches, the compiled default is returned.
 
-This model keeps the evaluation path simple and auditable: the condition chain is visible in the proto source, reviewed in pull requests, and deterministic for any given evaluation context. The kill switch provides the safety escape hatch.
+This model keeps the evaluation path simple and auditable: proto files define the typed schema, YAML config files define behavior, both are reviewed in pull requests, and evaluation is deterministic for any given context. The kill switch provides the safety escape hatch.
 
 ## Evaluation context
 
-The evaluation context defines the dimensions along which flags can vary (e.g., per-user, per-plan, per-tenant). You define your context as a proto message annotated with `option (pbflags.context) = true`, where each field is a dimension annotated with `(pbflags.dimension)`:
+The evaluation context defines the dimensions along which flags can vary (e.g., per-user, per-plan, per-tenant). You define your context as a proto message annotated with `option (pbflags.context) = {}`, where each field is a dimension annotated with `(pbflags.dimension)`:
 
 ```protobuf
 message EvaluationContext {
-  option (pbflags.context) = true;
+  option (pbflags.context) = {};
 
   string user_id = 1 [(pbflags.dimension) = { description: "Authenticated user" }];
   PlanLevel plan = 2 [(pbflags.dimension) = { description: "Subscription plan" }];
@@ -46,14 +46,14 @@ message EvaluationContext {
 The codegen generates a **typed dimension constructor** for each field. These types enforce at compile time that callers supply the correct kind of value for each dimension:
 
 ```go
-// Can't pass a Plan where a UserID is expected — compiler error.
 eval := pbflags.Connect(httpClient, url, &pb.EvaluationContext{})
-emailEnabled := nf.EmailEnabled(ctx, eval.With(dims.UserID("user-123")))
-lookbackDays := ic.LookbackDays(ctx, eval.With(dims.UserID("user-123"), dims.Plan(pb.PlanLevel_PLAN_LEVEL_PRO)))
+scoped := eval.With(dims.UserID("user-123"), dims.Plan(pb.PlanLevel_PLAN_LEVEL_PRO))
+notifications := notificationsflags.New(scoped)
+emailEnabled := notifications.EmailEnabled(ctx)
 
 // No dimensions — conditions that reference context fields won't match,
 // so the compiled default is returned.
-globalDefault := nf.EmailEnabled(ctx, eval)
+globalDefault := notificationsflags.New(eval).EmailEnabled(ctx)
 ```
 
 ### How dimensions flow through the system
@@ -65,7 +65,8 @@ globalDefault := nf.EmailEnabled(ctx, eval)
 | Wire protocol | `EvaluationContext` message fields | Structured — carries typed dimensions |
 | Evaluator | Context fields | Evaluates CEL conditions against supplied dimensions |
 | Database | `flags.conditions` JSONB, `flags.killed_at` | Stores condition chain and kill state |
-| Admin UI | Displays dimension name and condition chain | Displays only |
+| YAML config | `ctx.<field>` references in CEL expressions | Defines targeting behavior |
+| Admin UI | Displays condition chain and sync SHA | Displays only |
 
 Type safety is enforced in both the generated client code and the wire protocol via the structured `EvaluationContext` message.
 

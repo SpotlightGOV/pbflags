@@ -102,7 +102,7 @@ pbflags-evaluator \
 - **Kill Switch**: The only runtime control — kill a flag to force the compiled default, or revive it to resume condition evaluation
 - **Audit Log**: Filterable log of all state changes with actor attribution
 
-The admin UI does not support editing flag values or conditions — those are defined in proto source and synced via `pbflags-sync`. The only mutation available is the kill switch.
+The admin UI does not support editing flag values or conditions — those are defined in YAML config files and synced via `pbflags-sync`. Proto files define flag schemas, defaults, and evaluation context dimensions. The only mutation available in the UI is the kill switch.
 
 The admin UI is available at `http://localhost:9200/` by default (configurable via `--listen` or `PBFLAGS_ADMIN`). The embedded evaluator listener is configured separately via `--evaluator-listen` or `PBFLAGS_LISTEN`.
 

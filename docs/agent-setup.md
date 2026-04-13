@@ -255,14 +255,12 @@ Note: flag methods take only `context.Context` — dimensions are bound on the e
 
 ```java
 import com.yourorg.flags.generated.<Feature>Flags;
-import com.yourorg.flags.generated.dims.Dims;
-import org.spotlightgov.pbflags.PbFlags;
-import org.spotlightgov.pbflags.Evaluator;
+import org.spotlightgov.pbflags.FlagEvaluatorClient;
 
 // All formats accepted: "localhost:9201", "http://localhost:9201", "https://host:9201"
-Evaluator eval = PbFlags.connect("localhost:9201");
-<Feature>Flags <feature> = <Feature>Flags.create(eval);
-boolean val = <feature>.<flagName>().get(eval.with(Dims.userId("user-123")));
+FlagEvaluatorClient eval = new FlagEvaluatorClient("localhost:9201");
+<Feature>Flags <feature> = <Feature>Flags.forEvaluator(eval);
+boolean val = <feature>.<flagName>().get();
 ```
 
 For Java consumers, add the runtime dependency using the same release version as the pbflags binaries/plugin you are integrating:
@@ -280,6 +278,7 @@ go install github.com/SpotlightGOV/pbflags/cmd/pbflags-admin@latest
 
 pbflags-admin --standalone \
   --descriptors=descriptors.pb \
+  --features=./features \
   --database=postgres://user:pass@localhost:5432/dbname
 ```
 
@@ -291,9 +290,9 @@ If the consumer project needs the production topology instead of standalone mode
 
 - `buf generate --template buf.gen.flags.yaml` succeeds
 - `buf build proto -o descriptors.pb` succeeds
-- The generated `dims/` package or classes exist
+- For Go, the generated `dims/` package exists
 - `pbflags-sync validate --descriptors=descriptors.pb --features=./features` passes (if using YAML configs)
-- `pbflags-admin --standalone --descriptors=descriptors.pb ...` starts cleanly
+- `pbflags-admin --standalone --descriptors=descriptors.pb --features=./features ...` starts cleanly
 - A sample flag read returns the compiled default before any config changes
 
 ## Common mistakes
