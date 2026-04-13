@@ -20,7 +20,6 @@ import (
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
-	"google.golang.org/protobuf/proto"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
@@ -37,35 +36,17 @@ type serviceTestEnv struct {
 	adminClient     pbflagsv1connect.FlagAdminServiceClient
 }
 
-func boolVal(v bool) *pbflagsv1.FlagValue {
-	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: v}}
-}
 func stringVal(v string) *pbflagsv1.FlagValue {
 	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: v}}
-}
-
-func setOverride(t *testing.T, pool *pgxpool.Pool, flagID, entityID, state string, value *pbflagsv1.FlagValue) {
-	t.Helper()
-	var valBytes []byte
-	if value != nil {
-		var err error
-		valBytes, err = proto.Marshal(value)
-		require.NoError(t, err)
-	}
-	_, err := pool.Exec(context.Background(), `
-		INSERT INTO feature_flags.flag_overrides (flag_id, entity_id, state, value) VALUES ($1, $2, $3, $4)
-		ON CONFLICT (flag_id, entity_id) DO UPDATE SET state = EXCLUDED.state, value = EXCLUDED.value`,
-		flagID, entityID, state, valBytes)
-	require.NoError(t, err)
 }
 
 // notifSpecs returns the standard 4-flag spec used by most service tests.
 func notifSpecs() []testdb.FlagSpec {
 	return []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},
-		{FlagType: "STRING", Layer: "GLOBAL"},
-		{FlagType: "INT64", Layer: "GLOBAL"},
-		{FlagType: "DOUBLE", Layer: "GLOBAL"},
+		{FlagType: "BOOL"},
+		{FlagType: "STRING"},
+		{FlagType: "INT64"},
+		{FlagType: "DOUBLE"},
 	}
 }
 
@@ -81,8 +62,7 @@ func setupServiceEnv(t *testing.T) *serviceTestEnv {
 	tracker := evaluator.NewHealthTracker(noopM)
 
 	cache, err := evaluator.NewCacheStore(evaluator.CacheStoreConfig{
-		FlagTTL: 100 * time.Millisecond, OverrideTTL: 100 * time.Millisecond,
-		OverrideMaxSize: 1000, JitterPercent: 0,
+		FlagTTL: 100 * time.Millisecond, JitterPercent: 0,
 	})
 	require.NoError(t, err)
 
@@ -148,10 +128,6 @@ func TestBulkEvaluate(t *testing.T) {
 	tf := testdb.CreateTestFeature(t, env.pool, notifSpecs())
 
 	_, err := env.adminClient.UpdateFlagState(context.Background(), connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: tf.FlagID(2), State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
-	}))
-	require.NoError(t, err)
-	_, err = env.adminClient.UpdateFlagState(context.Background(), connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
 		FlagId: tf.FlagID(3), State: pbflagsv1.State_STATE_KILLED, Actor: "test",
 	}))
 	require.NoError(t, err)
@@ -169,10 +145,10 @@ func TestBulkEvaluate(t *testing.T) {
 		byID[e.FlagId] = e
 	}
 
-	assert.Nil(t, byID[tf.FlagID(1)].Value)                              // DEFAULT -> nil (client has compiled defaults)
-	assert.Equal(t, "weekly", byID[tf.FlagID(2)].Value.GetStringValue()) // ENABLED with value
-	assert.Nil(t, byID[tf.FlagID(3)].Value)                              // KILLED -> nil (client has compiled defaults)
-	assert.Nil(t, byID[tf.FlagID(4)].Value)                              // DEFAULT -> nil (client has compiled defaults)
+	assert.Nil(t, byID[tf.FlagID(1)].Value) // DEFAULT -> nil (client has compiled defaults)
+	assert.Nil(t, byID[tf.FlagID(2)].Value) // DEFAULT -> nil (conditions handle values)
+	assert.Nil(t, byID[tf.FlagID(3)].Value) // KILLED -> nil (client has compiled defaults)
+	assert.Nil(t, byID[tf.FlagID(4)].Value) // DEFAULT -> nil (client has compiled defaults)
 }
 
 func TestRootModeStateRPCs(t *testing.T) {
@@ -182,19 +158,13 @@ func TestRootModeStateRPCs(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := env.adminClient.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: tf.FlagID(2), State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
-	}))
-	require.NoError(t, err)
-	_, err = env.adminClient.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
 		FlagId: tf.FlagID(3), State: pbflagsv1.State_STATE_KILLED, Actor: "test",
 	}))
 	require.NoError(t, err)
-	setOverride(t, env.pool, tf.FlagID(1), "user-100", "ENABLED", boolVal(false))
 
 	flagResp, err := env.evaluatorClient.GetFlagState(ctx, connect.NewRequest(&pbflagsv1.GetFlagStateRequest{FlagId: tf.FlagID(2)}))
 	require.NoError(t, err)
-	assert.Equal(t, pbflagsv1.State_STATE_ENABLED, flagResp.Msg.Flag.State)
-	assert.Equal(t, "weekly", flagResp.Msg.Flag.Value.GetStringValue())
+	assert.Equal(t, pbflagsv1.State_STATE_DEFAULT, flagResp.Msg.Flag.State)
 
 	killResp, err := env.evaluatorClient.GetKilledFlags(ctx, connect.NewRequest(&pbflagsv1.GetKilledFlagsRequest{}))
 	require.NoError(t, err)
@@ -202,12 +172,10 @@ func TestRootModeStateRPCs(t *testing.T) {
 
 	overResp, err := env.evaluatorClient.GetOverrides(ctx, connect.NewRequest(&pbflagsv1.GetOverridesRequest{EntityId: "user-100"}))
 	require.NoError(t, err)
-	require.Len(t, overResp.Msg.Overrides, 1)
-	assert.Equal(t, tf.FlagID(1), overResp.Msg.Overrides[0].FlagId)
-	assert.False(t, overResp.Msg.Overrides[0].Value.GetBoolValue())
+	require.Empty(t, overResp.Msg.Overrides) // overrides table removed
 }
 
-func TestGlobalLayerRejectsOverride(t *testing.T) {
+func TestSetFlagOverrideIsUnimplemented(t *testing.T) {
 	t.Parallel()
 	env := setupServiceEnv(t)
 	tf := testdb.CreateTestFeature(t, env.pool, notifSpecs())
@@ -217,6 +185,7 @@ func TestGlobalLayerRejectsOverride(t *testing.T) {
 		State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("rejected"), Actor: "test",
 	}))
 	require.Error(t, err)
+	assert.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
 }
 
 func TestServiceAuditLog(t *testing.T) {
@@ -226,11 +195,11 @@ func TestServiceAuditLog(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := env.adminClient.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: tf.FlagID(2), State: pbflagsv1.State_STATE_ENABLED, Value: stringVal("weekly"), Actor: "test",
+		FlagId: tf.FlagID(2), State: pbflagsv1.State_STATE_KILLED, Actor: "test",
 	}))
 	require.NoError(t, err)
 	_, err = env.adminClient.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: tf.FlagID(2), State: pbflagsv1.State_STATE_KILLED, Actor: "test",
+		FlagId: tf.FlagID(2), State: pbflagsv1.State_STATE_DEFAULT, Actor: "test",
 	}))
 	require.NoError(t, err)
 

@@ -101,40 +101,6 @@ func (c *FlagServerClient) FetchFlagState(ctx context.Context, flagID string) (*
 	}, nil
 }
 
-// FetchOverrides implements Fetcher.
-func (c *FlagServerClient) FetchOverrides(ctx context.Context, entityID string, flagIDs []string) ([]*CachedOverride, error) {
-	ctx, span := clientTracer.Start(ctx, "FlagServerClient.FetchOverrides",
-		trace.WithAttributes(attribute.String("entity_id", entityID)))
-	defer span.End()
-
-	timer := prometheus.NewTimer(c.metrics.FetchDuration.WithLabelValues("upstream", "overrides"))
-	defer timer.ObserveDuration()
-
-	ctx, cancel := context.WithTimeout(ctx, c.timeout)
-	defer cancel()
-
-	resp, err := c.eval.GetOverrides(ctx, connect.NewRequest(&pbflagsv1.GetOverridesRequest{
-		EntityId: entityID,
-		FlagIds:  flagIDs,
-	}))
-	if err != nil {
-		c.tracker.RecordFailure()
-		return nil, err
-	}
-	c.tracker.RecordSuccess()
-
-	result := make([]*CachedOverride, 0, len(resp.Msg.Overrides))
-	for _, o := range resp.Msg.Overrides {
-		result = append(result, &CachedOverride{
-			FlagID:   o.FlagId,
-			EntityID: o.EntityId,
-			State:    o.State,
-			Value:    o.Value,
-		})
-	}
-	return result, nil
-}
-
 // StateServer returns a StateServer that delegates to the upstream evaluator.
 func (c *FlagServerClient) StateServer() StateServer {
 	return &proxyStateServer{client: c.eval}

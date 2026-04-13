@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/proto"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
@@ -55,16 +54,17 @@ func (f *DBFetcher) FetchFlagState(ctx context.Context, flagID string) (*CachedF
 	timer := prometheus.NewTimer(f.metrics.FetchDuration.WithLabelValues("db", "flag_state"))
 	defer timer.ObserveDuration()
 
-	var stateStr string
-	var valueBytes []byte
+	var killedAt *time.Time
 	var archivedAt *time.Time
 	var conditionsJSON []byte
 	var dimMetaJSON []byte
+	var celVersion *string
+	var defaultValueBytes []byte
 
 	err := f.pool.QueryRow(ctx, `
-		SELECT state, value, archived_at, conditions, dimension_metadata
+		SELECT killed_at, archived_at, conditions, dimension_metadata, cel_version, default_value
 		FROM feature_flags.flags
-		WHERE flag_id = $1`, flagID).Scan(&stateStr, &valueBytes, &archivedAt, &conditionsJSON, &dimMetaJSON)
+		WHERE flag_id = $1`, flagID).Scan(&killedAt, &archivedAt, &conditionsJSON, &dimMetaJSON, &celVersion, &defaultValueBytes)
 	if err == pgx.ErrNoRows {
 		f.tracker.RecordSuccess()
 		return nil, nil
@@ -75,64 +75,20 @@ func (f *DBFetcher) FetchFlagState(ctx context.Context, flagID string) (*CachedF
 	}
 	f.tracker.RecordSuccess()
 
-	val := unmarshalValue(valueBytes)
 	cs := &CachedFlagState{
 		FlagID:   flagID,
-		State:    dbParseState(stateStr),
-		Value:    val,
 		Archived: archivedAt != nil,
+	}
+	if killedAt != nil {
+		cs.State = pbflagsv1.State_STATE_KILLED
+	} else {
+		cs.State = pbflagsv1.State_STATE_DEFAULT
 	}
 	if f.condEval != nil && len(conditionsJSON) > 0 {
 		cs.Conditions = f.condEval.CompileConditions(flagID, conditionsJSON)
 		cs.DimMeta = ParseDimMeta(dimMetaJSON)
 	}
 	return cs, nil
-}
-
-// FetchOverrides implements Fetcher.
-func (f *DBFetcher) FetchOverrides(ctx context.Context, entityID string, flagIDs []string) ([]*CachedOverride, error) {
-	ctx, span := f.tracer.Start(ctx, "DBFetcher.FetchOverrides",
-		trace.WithAttributes(attribute.String("entity_id", entityID)))
-	defer span.End()
-
-	timer := prometheus.NewTimer(f.metrics.FetchDuration.WithLabelValues("db", "overrides"))
-	defer timer.ObserveDuration()
-
-	var rows pgx.Rows
-	var err error
-	if len(flagIDs) == 0 {
-		rows, err = f.pool.Query(ctx, `
-			SELECT flag_id, entity_id, state, value
-			FROM feature_flags.flag_overrides
-			WHERE entity_id = $1`, entityID)
-	} else {
-		rows, err = f.pool.Query(ctx, `
-			SELECT flag_id, entity_id, state, value
-			FROM feature_flags.flag_overrides
-			WHERE entity_id = $1 AND flag_id = ANY($2)`, entityID, flagIDs)
-	}
-	if err != nil {
-		f.tracker.RecordFailure()
-		return nil, fmt.Errorf("query overrides: %w", err)
-	}
-	defer rows.Close()
-	f.tracker.RecordSuccess()
-
-	var result []*CachedOverride
-	for rows.Next() {
-		var fid, eid, stateStr string
-		var valueBytes []byte
-		if err := rows.Scan(&fid, &eid, &stateStr, &valueBytes); err != nil {
-			return nil, err
-		}
-		result = append(result, &CachedOverride{
-			FlagID:   fid,
-			EntityID: eid,
-			State:    dbParseState(stateStr),
-			Value:    unmarshalValue(valueBytes),
-		})
-	}
-	return result, rows.Err()
 }
 
 // GetKilledFlags implements KillFetcher.
@@ -148,7 +104,7 @@ func (f *DBFetcher) GetKilledFlags(ctx context.Context) (*KillSet, error) {
 	}
 
 	rows, err := f.pool.Query(ctx, `
-		SELECT flag_id FROM feature_flags.flags WHERE state = 'KILLED'`)
+		SELECT flag_id FROM feature_flags.flags WHERE killed_at IS NOT NULL`)
 	if err != nil {
 		return nil, fmt.Errorf("query killed flags: %w", err)
 	}
@@ -166,14 +122,13 @@ func (f *DBFetcher) GetKilledFlags(ctx context.Context) (*KillSet, error) {
 
 // GetFlagStateProto implements StateServer.
 func (f *DBFetcher) GetFlagStateProto(ctx context.Context, flagID string) (*pbflagsv1.GetFlagStateResponse, error) {
-	var stateStr string
-	var valueBytes []byte
+	var killedAt *time.Time
 	var archivedAt *time.Time
 
 	err := f.pool.QueryRow(ctx, `
-		SELECT state, value, archived_at
+		SELECT killed_at, archived_at
 		FROM feature_flags.flags
-		WHERE flag_id = $1`, flagID).Scan(&stateStr, &valueBytes, &archivedAt)
+		WHERE flag_id = $1`, flagID).Scan(&killedAt, &archivedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -181,11 +136,15 @@ func (f *DBFetcher) GetFlagStateProto(ctx context.Context, flagID string) (*pbfl
 		return nil, fmt.Errorf("query flag %s: %w", flagID, err)
 	}
 
+	state := pbflagsv1.State_STATE_DEFAULT
+	if killedAt != nil {
+		state = pbflagsv1.State_STATE_KILLED
+	}
+
 	return &pbflagsv1.GetFlagStateResponse{
 		Flag: &pbflagsv1.FlagState{
 			FlagId: flagID,
-			State:  dbParseState(stateStr),
-			Value:  unmarshalValue(valueBytes),
+			State:  state,
 		},
 		Archived: archivedAt != nil,
 	}, nil
@@ -196,7 +155,7 @@ func (f *DBFetcher) GetKilledFlagsProto(ctx context.Context) (*pbflagsv1.GetKill
 	resp := &pbflagsv1.GetKilledFlagsResponse{}
 
 	rows, err := f.pool.Query(ctx, `
-		SELECT flag_id FROM feature_flags.flags WHERE state = 'KILLED'`)
+		SELECT flag_id FROM feature_flags.flags WHERE killed_at IS NOT NULL`)
 	if err != nil {
 		return nil, fmt.Errorf("query killed flags: %w", err)
 	}
@@ -215,64 +174,8 @@ func (f *DBFetcher) GetKilledFlagsProto(ctx context.Context) (*pbflagsv1.GetKill
 	return resp, nil
 }
 
-// GetOverridesProto implements StateServer.
-func (f *DBFetcher) GetOverridesProto(ctx context.Context, entityID string, flagIDs []string) (*pbflagsv1.GetOverridesResponse, error) {
-	resp := &pbflagsv1.GetOverridesResponse{}
-
-	var rows pgx.Rows
-	var err error
-	if len(flagIDs) == 0 {
-		rows, err = f.pool.Query(ctx, `
-			SELECT flag_id, entity_id, state, value
-			FROM feature_flags.flag_overrides
-			WHERE entity_id = $1`, entityID)
-	} else {
-		rows, err = f.pool.Query(ctx, `
-			SELECT flag_id, entity_id, state, value
-			FROM feature_flags.flag_overrides
-			WHERE entity_id = $1 AND flag_id = ANY($2)`, entityID, flagIDs)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("query overrides: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var fid, eid, stateStr string
-		var valueBytes []byte
-		if err := rows.Scan(&fid, &eid, &stateStr, &valueBytes); err != nil {
-			return nil, err
-		}
-		resp.Overrides = append(resp.Overrides, &pbflagsv1.OverrideState{
-			FlagId:   fid,
-			EntityId: eid,
-			State:    dbParseState(stateStr),
-			Value:    unmarshalValue(valueBytes),
-		})
-	}
-	return resp, rows.Err()
-}
-
-func unmarshalValue(b []byte) *pbflagsv1.FlagValue {
-	if len(b) == 0 {
-		return nil
-	}
-	v := &pbflagsv1.FlagValue{}
-	if err := proto.Unmarshal(b, v); err != nil {
-		return nil
-	}
-	return v
-}
-
-func dbParseState(s string) pbflagsv1.State {
-	switch s {
-	case "ENABLED":
-		return pbflagsv1.State_STATE_ENABLED
-	case "DEFAULT":
-		return pbflagsv1.State_STATE_DEFAULT
-	case "KILLED":
-		return pbflagsv1.State_STATE_KILLED
-	default:
-		return pbflagsv1.State_STATE_UNSPECIFIED
-	}
+// GetOverridesProto implements StateServer. Overrides table has been removed;
+// always returns an empty response.
+func (f *DBFetcher) GetOverridesProto(_ context.Context, _ string, _ []string) (*pbflagsv1.GetOverridesResponse, error) {
+	return &pbflagsv1.GetOverridesResponse{}, nil
 }

@@ -33,12 +33,10 @@ type Config struct {
 
 // CacheConfig controls cache TTLs and sizes.
 type CacheConfig struct {
-	KillTTL         time.Duration
-	FlagTTL         time.Duration
-	OverrideTTL     time.Duration
-	OverrideMaxSize int64
-	JitterPercent   int
-	FetchTimeout    time.Duration
+	KillTTL       time.Duration
+	FlagTTL       time.Duration
+	JitterPercent int
+	FetchTimeout  time.Duration
 }
 
 // DefaultConfig returns a Config with all default values applied.
@@ -46,12 +44,10 @@ func DefaultConfig() Config {
 	return Config{
 		Listen: "localhost:9201",
 		Cache: CacheConfig{
-			KillTTL:         30 * time.Second,
-			FlagTTL:         10 * time.Minute,
-			OverrideTTL:     10 * time.Minute,
-			OverrideMaxSize: 10_000,
-			JitterPercent:   20,
-			FetchTimeout:    500 * time.Millisecond,
+			KillTTL:       30 * time.Second,
+			FlagTTL:       10 * time.Minute,
+			JitterPercent: 20,
+			FetchTimeout:  500 * time.Millisecond,
 		},
 	}
 }
@@ -89,9 +85,5 @@ func LoadConfig() Config {
 	if d, ok := parseDurationEnv("PBFLAGS_CACHE_FLAG_TTL"); ok {
 		cfg.Cache.FlagTTL = d
 	}
-	if d, ok := parseDurationEnv("PBFLAGS_CACHE_OVERRIDE_TTL"); ok {
-		cfg.Cache.OverrideTTL = d
-	}
-
 	return cfg
 }

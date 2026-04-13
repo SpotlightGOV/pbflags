@@ -13,7 +13,6 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 	"gopkg.in/yaml.v3"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
@@ -187,40 +186,24 @@ func processConfigFile(
 	for flagName, entry := range cfg.Flags {
 		info := featureFlags[flagName]
 
-		condJSON, dimJSON, valueBytes, warns, compileErr := compileFlag(flagName, entry, compiler, boundedDims)
+		condJSON, dimJSON, warns, compileErr := compileFlag(flagName, entry, compiler, boundedDims)
 		if compileErr != nil {
 			return featureID, 0, nil, fmt.Errorf("flag %q: %w", flagName, compileErr)
 		}
 		warnings = append(warnings, warns...)
 
-		// Only set cel_version when conditions are present; static-value
-		// flags get NULL for all three condition columns.
 		var cv *string
 		if condJSON != nil {
 			cv = &celVersion
 		}
-
-		if valueBytes != nil {
-			// Static value from config — update value and set state to ENABLED.
-			if _, err := tx.Exec(ctx,
-				`UPDATE feature_flags.flags
-				 SET value = $2, state = 'ENABLED',
-				     conditions = NULL, dimension_metadata = NULL, cel_version = NULL,
-				     updated_at = now()
-				 WHERE flag_id = $1`,
-				info.FlagID, valueBytes,
-			); err != nil {
-				return featureID, 0, nil, fmt.Errorf("update flag %q static value: %w", info.FlagID, err)
-			}
-		} else {
-			if _, err := tx.Exec(ctx,
-				`UPDATE feature_flags.flags
-				 SET conditions = $2, dimension_metadata = $3, cel_version = $4, updated_at = now()
-				 WHERE flag_id = $1`,
-				info.FlagID, condJSON, dimJSON, cv,
-			); err != nil {
-				return featureID, 0, nil, fmt.Errorf("update flag %q: %w", info.FlagID, err)
-			}
+		if _, err := tx.Exec(ctx,
+			`UPDATE feature_flags.flags
+			 SET conditions = $2, dimension_metadata = $3, cel_version = $4,
+			     updated_at = now()
+			 WHERE flag_id = $1`,
+			info.FlagID, condJSON, dimJSON, cv,
+		); err != nil {
+			return featureID, 0, nil, fmt.Errorf("update flag %q: %w", info.FlagID, err)
 		}
 		updated++
 	}
@@ -233,15 +216,20 @@ func compileFlag(
 	entry configfile.FlagEntry,
 	compiler *celenv.Compiler,
 	boundedDims map[string]bool,
-) (condJSON []byte, dimJSON []byte, valueBytes []byte, warnings []string, err error) {
+) (condJSON []byte, dimJSON []byte, warnings []string, err error) {
 	if entry.Value != nil {
-		// Static value — serialize the value for the flags.value column.
-		// No conditions or dimension metadata needed.
-		vb, marshalErr := proto.Marshal(entry.Value)
+		// Static value — store as a single "otherwise" condition entry
+		// so all flag behavior flows through the conditions column.
+		fvBytes, marshalErr := protojson.Marshal(entry.Value)
 		if marshalErr != nil {
-			return nil, nil, nil, nil, fmt.Errorf("marshal static value: %w", marshalErr)
+			return nil, nil, nil, fmt.Errorf("marshal static value: %w", marshalErr)
 		}
-		return nil, nil, vb, nil, nil
+		conds := []flagfmt.StoredCondition{{CEL: nil, Value: fvBytes}}
+		condJSON, jsonErr := json.Marshal(conds)
+		if jsonErr != nil {
+			return nil, nil, nil, fmt.Errorf("marshal static conditions: %w", jsonErr)
+		}
+		return condJSON, nil, nil, nil
 	}
 
 	var conditions []flagfmt.StoredCondition
@@ -251,7 +239,7 @@ func compileFlag(
 	for i, cond := range entry.Conditions {
 		fvBytes, marshalErr := protojson.Marshal(cond.Value)
 		if marshalErr != nil {
-			return nil, nil, nil, nil, fmt.Errorf("condition %d: marshal value: %w", i, marshalErr)
+			return nil, nil, nil, fmt.Errorf("condition %d: marshal value: %w", i, marshalErr)
 		}
 
 		if cond.When == "" {
@@ -260,7 +248,7 @@ func compileFlag(
 		} else {
 			compiled, compileErr := compiler.Compile(cond.When)
 			if compileErr != nil {
-				return nil, nil, nil, nil, fmt.Errorf("condition %d: %w", i, compileErr)
+				return nil, nil, nil, fmt.Errorf("condition %d: %w", i, compileErr)
 			}
 			celStr := cond.When
 			conditions = append(conditions, flagfmt.StoredCondition{CEL: &celStr, Value: fvBytes})
@@ -271,14 +259,14 @@ func compileFlag(
 
 	condJSON, err = json.Marshal(conditions)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("marshal conditions: %w", err)
+		return nil, nil, nil, fmt.Errorf("marshal conditions: %w", err)
 	}
 
 	dimMeta := celenv.ClassifyDimensions(asts, values, boundedDims)
 	if len(dimMeta) > 0 {
 		dimJSON, err = json.Marshal(dimMeta)
 		if err != nil {
-			return nil, nil, nil, nil, fmt.Errorf("marshal dimension_metadata: %w", err)
+			return nil, nil, nil, fmt.Errorf("marshal dimension_metadata: %w", err)
 		}
 	}
 
@@ -288,7 +276,7 @@ func compileFlag(
 		}
 	}
 
-	return condJSON, dimJSON, nil, warnings, nil
+	return condJSON, dimJSON, warnings, nil
 }
 
 func peekFeature(data []byte) (string, error) {

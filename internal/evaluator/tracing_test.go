@@ -21,13 +21,13 @@ func TestEvaluate_CreatesSpanWithAttributes(t *testing.T) {
 	tracer := tp.Tracer("pbflags/evaluator")
 	cache := newTestCache(t)
 	fetcher := &stubFetcher{
-		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
+		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT},
 	}
 	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), tracer)
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "entity-42")
-	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, src)
-	require.Equal(t, true, val.GetBoolValue())
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src)
+	require.Nil(t, val)
 
 	spans := exporter.GetSpans()
 	require.Len(t, spans, 1, "expected one span")
@@ -39,7 +39,7 @@ func TestEvaluate_CreatesSpanWithAttributes(t *testing.T) {
 	}
 	assert.Equal(t, "f/1", attrs["flag_id"])
 	assert.Equal(t, "entity-42", attrs["entity_id"])
-	assert.Equal(t, "global", attrs["source"])
+	assert.Equal(t, "default", attrs["source"])
 }
 
 func TestEvaluate_KilledFlagSpanHasKilledSource(t *testing.T) {
@@ -76,7 +76,7 @@ func TestEvaluate_CacheHitSetsAttribute(t *testing.T) {
 	tracer := tp.Tracer("pbflags/evaluator")
 	cache := newTestCache(t)
 	fetcher := &stubFetcher{
-		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
+		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT},
 	}
 	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), tracer)
 

@@ -14,7 +14,7 @@ import (
 func TestService_Evaluate(t *testing.T) {
 	cache := newTestCache(t)
 	fetcher := &stubFetcher{
-		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
+		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT},
 	}
 	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 	tracker := NewHealthTracker(NewNoopMetrics())
@@ -25,14 +25,14 @@ func TestService_Evaluate(t *testing.T) {
 	}))
 	require.NoError(t, err, "Evaluate returned error")
 	require.Equal(t, "f/1", resp.Msg.FlagId, "flag_id")
-	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, resp.Msg.Source, "source")
-	require.Equal(t, true, resp.Msg.Value.GetBoolValue(), "value")
+	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, resp.Msg.Source, "source")
+	require.Nil(t, resp.Msg.Value, "value = nil (conditions handle values)")
 }
 
 func TestService_BulkEvaluate_SpecificFlags(t *testing.T) {
 	cache := newTestCache(t)
 	fetcher := &stubFetcher{
-		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
+		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT},
 	}
 	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
 	tracker := NewHealthTracker(NewNoopMetrics())
@@ -55,32 +55,6 @@ func TestService_BulkEvaluate_EmptyFlags(t *testing.T) {
 	resp, err := svc.BulkEvaluate(context.Background(), connect.NewRequest(&pbflagsv1.BulkEvaluateRequest{}))
 	require.NoError(t, err, "BulkEvaluate error")
 	require.Empty(t, resp.Msg.Evaluations, "evaluations count (empty when no flag IDs)")
-}
-
-// TestService_Evaluate_IgnoresEntityOverrides verifies the transitional behavior:
-// the service passes empty entityID to the evaluator, so per-entity overrides
-// are not resolved via the wire protocol. This is intentional until pb-cfx.16
-// replaces entity_id with context-based condition evaluation.
-func TestService_Evaluate_IgnoresEntityOverrides(t *testing.T) {
-	cache := newTestCache(t)
-	fetcher := &stubFetcher{
-		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_ENABLED, Value: boolVal(true)},
-		overrides: []*CachedOverride{
-			{FlagID: "f/1", EntityID: "user-42", State: pbflagsv1.State_STATE_ENABLED, Value: strVal("override-val")},
-		},
-	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
-	tracker := NewHealthTracker(NewNoopMetrics())
-	svc := NewService(eval, tracker, cache, nil)
-
-	// Even though an override exists for user-42, the service passes empty
-	// entityID so the evaluator returns the global state.
-	resp, err := svc.Evaluate(context.Background(), connect.NewRequest(&pbflagsv1.EvaluateRequest{
-		FlagId: "f/1",
-	}))
-	require.NoError(t, err)
-	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_GLOBAL, resp.Msg.Source,
-		"service should return global state, not override (entity_id is discarded in transition)")
 }
 
 func TestService_Health(t *testing.T) {

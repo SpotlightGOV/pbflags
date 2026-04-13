@@ -2,7 +2,6 @@ package admin
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 	"sync"
@@ -12,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/internal/testdb"
@@ -28,22 +26,6 @@ func setupTestStore(t *testing.T) (*Store, *pgxpool.Pool) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	store := NewStore(pool, logger)
 	return store, pool
-}
-
-func boolValue(v bool) *pbflagsv1.FlagValue {
-	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: v}}
-}
-
-func stringValue(v string) *pbflagsv1.FlagValue {
-	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: v}}
-}
-
-func int64Value(v int64) *pbflagsv1.FlagValue {
-	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64Value{Int64Value: v}}
-}
-
-func doubleValue(v float64) *pbflagsv1.FlagValue {
-	return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleValue{DoubleValue: v}}
 }
 
 // testEnv holds shared resources for admin service tests.
@@ -66,7 +48,7 @@ func TestGetFlagState(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},
+		{FlagType: "BOOL"},
 	})
 
 	resp, err := store.GetFlagState(ctx, tf.FlagID(1))
@@ -86,28 +68,27 @@ func TestUpdateFlagState(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},
+		{FlagType: "BOOL"},
 	})
 
-	// Update to ENABLED with a value.
-	err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_ENABLED, boolValue(true), "test-actor")
+	// Update to KILLED.
+	err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_KILLED, "test-actor")
 	require.NoError(t, err)
 
 	resp, err := store.GetFlagState(ctx, tf.FlagID(1))
 	require.NoError(t, err)
-	require.Equal(t, pbflagsv1.State_STATE_ENABLED, resp.Flag.State)
-	require.True(t, resp.Flag.Value.GetBoolValue())
+	require.Equal(t, pbflagsv1.State_STATE_KILLED, resp.Flag.State)
 
-	// Update to KILLED.
-	err = store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_KILLED, nil, "test-actor")
+	// Unkill back to DEFAULT.
+	err = store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_DEFAULT, "test-actor")
 	require.NoError(t, err)
 
 	resp, err = store.GetFlagState(ctx, tf.FlagID(1))
 	require.NoError(t, err)
-	require.Equal(t, pbflagsv1.State_STATE_KILLED, resp.Flag.State)
+	require.Equal(t, pbflagsv1.State_STATE_DEFAULT, resp.Flag.State)
 
 	// Update non-existent flag fails.
-	err = store.UpdateFlagState(ctx, "nonexistent.flag", pbflagsv1.State_STATE_ENABLED, nil, "test-actor")
+	err = store.UpdateFlagState(ctx, "nonexistent.flag", pbflagsv1.State_STATE_KILLED, "test-actor")
 	require.Error(t, err)
 }
 
@@ -116,12 +97,12 @@ func TestGetKilledFlags(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},
-		{FlagType: "STRING", Layer: "GLOBAL"},
+		{FlagType: "BOOL"},
+		{FlagType: "STRING"},
 	})
 
 	// Kill one flag globally.
-	err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_KILLED, nil, "test-actor")
+	err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_KILLED, "test-actor")
 	require.NoError(t, err)
 
 	resp, err := store.GetKilledFlags(ctx)
@@ -130,139 +111,29 @@ func TestGetKilledFlags(t *testing.T) {
 	require.Empty(t, resp.KilledOverrides, "per-entity kills are no longer supported")
 }
 
-func TestGetOverrides(t *testing.T) {
-	t.Parallel()
-	store, pool := setupTestStore(t)
-	ctx := context.Background()
-	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},
-	})
-
-	val := boolValue(true)
-	valBytes, err := marshalFlagValue(val)
-	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `
-		INSERT INTO feature_flags.flag_overrides (flag_id, entity_id, state, value)
-		VALUES ($1, 'user-42', 'ENABLED', $2)`, tf.FlagID(1), valBytes)
-	require.NoError(t, err)
-
-	// Get all overrides for entity (scoped to our flags to avoid parallel test interference).
-	resp, err := store.GetOverrides(ctx, "user-42", tf.FlagIDs)
-	require.NoError(t, err)
-	require.Len(t, resp.Overrides, 1)
-	require.Equal(t, tf.FlagID(1), resp.Overrides[0].FlagId)
-	require.True(t, resp.Overrides[0].Value.GetBoolValue())
-
-	// Get overrides filtered by flag IDs.
-	resp, err = store.GetOverrides(ctx, "user-42", []string{tf.FlagID(1)})
-	require.NoError(t, err)
-	require.Len(t, resp.Overrides, 1)
-
-	// Get overrides for non-matching flag returns empty.
-	resp, err = store.GetOverrides(ctx, "user-42", []string{"other.flag"})
-	require.NoError(t, err)
-	require.Empty(t, resp.Overrides)
-
-	// No overrides for unknown entity.
-	resp, err = store.GetOverrides(ctx, "nobody", tf.FlagIDs)
-	require.NoError(t, err)
-	require.Empty(t, resp.Overrides)
-}
-
-func TestSetFlagOverride(t *testing.T) {
-	t.Parallel()
-	store, pool := setupTestStore(t)
-	ctx := context.Background()
-	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},
-	})
-
-	// Set override.
-	err := store.SetFlagOverride(ctx, tf.FlagID(1), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
-	require.NoError(t, err)
-
-	// Verify via GetOverrides.
-	resp, err := store.GetOverrides(ctx, "user-1", tf.FlagIDs)
-	require.NoError(t, err)
-	require.Len(t, resp.Overrides, 1)
-	require.True(t, resp.Overrides[0].Value.GetBoolValue())
-
-	// Update (upsert) override.
-	err = store.SetFlagOverride(ctx, tf.FlagID(1), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
-	require.NoError(t, err)
-	resp, err = store.GetOverrides(ctx, "user-1", tf.FlagIDs)
-	require.NoError(t, err)
-	require.False(t, resp.Overrides[0].Value.GetBoolValue())
-}
-
-func TestSetFlagOverride_GlobalLayerRejected(t *testing.T) {
-	t.Parallel()
-	store, pool := setupTestStore(t)
-	ctx := context.Background()
-	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "STRING", Layer: "GLOBAL"},
-	})
-
-	err := store.SetFlagOverride(ctx, tf.FlagID(1), "user-1", pbflagsv1.State_STATE_ENABLED, stringValue("weekly"), "admin")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "GLOBAL layer")
-}
-
-func TestSetFlagOverride_NonexistentFlag(t *testing.T) {
-	t.Parallel()
-	store, _ := setupTestStore(t)
-	ctx := context.Background()
-
-	err := store.SetFlagOverride(ctx, "nonexistent.flag", "user-1", pbflagsv1.State_STATE_ENABLED, nil, "admin")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "not found")
-}
-
-func TestRemoveFlagOverride(t *testing.T) {
-	t.Parallel()
-	store, pool := setupTestStore(t)
-	ctx := context.Background()
-	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},
-	})
-
-	err := store.SetFlagOverride(ctx, tf.FlagID(1), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
-	require.NoError(t, err)
-	err = store.RemoveFlagOverride(ctx, tf.FlagID(1), "user-1", "admin")
-	require.NoError(t, err)
-
-	resp, err := store.GetOverrides(ctx, "user-1", tf.FlagIDs)
-	require.NoError(t, err)
-	require.Empty(t, resp.Overrides)
-}
-
 func TestAuditLog(t *testing.T) {
 	t.Parallel()
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},
+		{FlagType: "BOOL"},
 	})
 
-	err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_ENABLED, boolValue(true), "deployer")
+	err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_KILLED, "deployer")
 	require.NoError(t, err)
 
-	err = store.SetFlagOverride(ctx, tf.FlagID(1), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
-	require.NoError(t, err)
-
-	err = store.RemoveFlagOverride(ctx, tf.FlagID(1), "user-1", "admin")
+	err = store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_DEFAULT, "admin")
 	require.NoError(t, err)
 
 	// Get audit log filtered by this flag.
 	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: tf.FlagID(1)})
 	require.NoError(t, err)
-	require.Len(t, entries, 3)
+	require.Len(t, entries, 2)
 
 	// Most recent first.
-	require.Equal(t, "REMOVE_OVERRIDE", entries[0].Action)
-	require.Equal(t, "CREATE_OVERRIDE", entries[1].Action)
-	require.Equal(t, "UPDATE_STATE", entries[2].Action)
-	require.Equal(t, "deployer", entries[2].Actor)
+	require.Equal(t, "UPDATE_STATE", entries[0].Action)
+	require.Equal(t, "UPDATE_STATE", entries[1].Action)
+	require.Equal(t, "deployer", entries[1].Actor)
 
 	// Filter by flag ID with limit.
 	entries, err = store.GetAuditLog(ctx, AuditLogFilter{FlagID: tf.FlagID(1), Limit: 2})
@@ -280,11 +151,11 @@ func TestListFeatures(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 	tf1 := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "INT64", Layer: "GLOBAL"},
+		{FlagType: "INT64"},
 	})
 	tf2 := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},
-		{FlagType: "STRING", Layer: "GLOBAL"},
+		{FlagType: "BOOL"},
+		{FlagType: "STRING"},
 	})
 
 	features, _, err := store.ListFeatures(ctx)
@@ -306,7 +177,7 @@ func TestListFeatures_ArchivedExcluded(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},
+		{FlagType: "BOOL"},
 	})
 
 	_, err := pool.Exec(ctx, `UPDATE feature_flags.flags SET archived_at = now() WHERE flag_id = $1`, tf.FlagID(1))
@@ -326,22 +197,17 @@ func TestGetFlag(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},
+		{FlagType: "BOOL"},
 	})
 
-	err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_ENABLED, boolValue(true), "actor")
-	require.NoError(t, err)
-
-	err = store.SetFlagOverride(ctx, tf.FlagID(1), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
+	// Kill the flag and verify state.
+	err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_KILLED, "actor")
 	require.NoError(t, err)
 
 	flag, _, err := store.GetFlag(ctx, tf.FlagID(1))
 	require.NoError(t, err)
 	require.NotNil(t, flag)
-	require.Equal(t, pbflagsv1.State_STATE_ENABLED, flag.State)
-	require.True(t, flag.CurrentValue.GetBoolValue())
-	require.Len(t, flag.Overrides, 1)
-	require.Equal(t, "user-1", flag.Overrides[0].EntityId)
+	require.Equal(t, pbflagsv1.State_STATE_KILLED, flag.State)
 
 	// Non-existent flag returns nil.
 	flag, _, err = store.GetFlag(ctx, "nonexistent")
@@ -354,7 +220,7 @@ func TestGetFlag_Archived(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},
+		{FlagType: "BOOL"},
 	})
 
 	_, err := pool.Exec(ctx, `UPDATE feature_flags.flags SET archived_at = now() WHERE flag_id = $1`, tf.FlagID(1))
@@ -373,7 +239,7 @@ func TestAdversarial_SQLInjection(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},
+		{FlagType: "BOOL"},
 	})
 
 	// SQL injection in flag ID — just returns not found.
@@ -381,13 +247,8 @@ func TestAdversarial_SQLInjection(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, resp)
 
-	// SQL injection in entity ID.
-	overrides, err := store.GetOverrides(ctx, "'; DROP TABLE feature_flags.flags; --", nil)
-	require.NoError(t, err)
-	require.Empty(t, overrides.Overrides)
-
 	// SQL injection in actor.
-	err = store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_ENABLED, nil, "'; DROP TABLE feature_flags.flags; --")
+	err = store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_KILLED, "'; DROP TABLE feature_flags.flags; --")
 	require.NoError(t, err)
 
 	// Verify tables still intact.
@@ -401,16 +262,12 @@ func TestAdversarial_Unicode(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},
+		{FlagType: "BOOL"},
 	})
 
-	// Unicode entity ID.
-	err := store.SetFlagOverride(ctx, tf.FlagID(1), "用户-αβγ-🎉", pbflagsv1.State_STATE_ENABLED, boolValue(true), "管理员")
+	// Unicode in actor.
+	err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_KILLED, "管理员")
 	require.NoError(t, err)
-
-	resp, err := store.GetOverrides(ctx, "用户-αβγ-🎉", nil)
-	require.NoError(t, err)
-	require.Len(t, resp.Overrides, 1)
 
 	// Unicode in audit.
 	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: tf.FlagID(1), Limit: 10})
@@ -433,21 +290,13 @@ func TestGetKilledFlags_Empty(t *testing.T) {
 	t.Parallel()
 	store, pool := setupTestStore(t)
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "GLOBAL"},
+		{FlagType: "BOOL"},
 	})
 
 	// Verify our flag is not killed.
 	resp, err := store.GetKilledFlags(context.Background())
 	require.NoError(t, err)
 	require.NotContains(t, resp.FlagIds, tf.FlagID(1))
-}
-
-func TestGetOverrides_EmptyEntityID(t *testing.T) {
-	t.Parallel()
-	store, _ := setupTestStore(t)
-	resp, err := store.GetOverrides(context.Background(), "", nil)
-	require.NoError(t, err)
-	require.Empty(t, resp.Overrides)
 }
 
 func TestUpdateFlagState_EmptyFlagID(t *testing.T) {
@@ -475,23 +324,15 @@ func TestUpdateFlagState_Lifecycle(t *testing.T) {
 	env := setupTestEnv(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, env.pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "GLOBAL"},
+		{FlagType: "BOOL"},
 	})
 
-	// DEFAULT → ENABLED.
+	// DEFAULT → KILLED.
 	_, err := env.admin.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
-		FlagId: tf.FlagID(1), State: pbflagsv1.State_STATE_ENABLED, Value: boolValue(true), Actor: "admin",
-	}))
-	require.NoError(t, err)
-	resp, _ := env.store.GetFlagState(ctx, tf.FlagID(1))
-	assert.Equal(t, pbflagsv1.State_STATE_ENABLED, resp.Flag.State)
-
-	// ENABLED → KILLED.
-	_, err = env.admin.UpdateFlagState(ctx, connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
 		FlagId: tf.FlagID(1), State: pbflagsv1.State_STATE_KILLED, Actor: "admin",
 	}))
 	require.NoError(t, err)
-	resp, _ = env.store.GetFlagState(ctx, tf.FlagID(1))
+	resp, _ := env.store.GetFlagState(ctx, tf.FlagID(1))
 	assert.Equal(t, pbflagsv1.State_STATE_KILLED, resp.Flag.State)
 
 	// KILLED → DEFAULT.
@@ -503,66 +344,6 @@ func TestUpdateFlagState_Lifecycle(t *testing.T) {
 	assert.Equal(t, pbflagsv1.State_STATE_DEFAULT, resp.Flag.State)
 }
 
-func TestSetFlagOverride_EmptyFlagID(t *testing.T) {
-	t.Parallel()
-	env := setupTestEnv(t)
-	_, err := env.admin.SetFlagOverride(context.Background(), connect.NewRequest(&pbflagsv1.SetFlagOverrideRequest{
-		FlagId: "", EntityId: "user-1", State: pbflagsv1.State_STATE_ENABLED, Actor: "admin",
-	}))
-	require.Error(t, err)
-	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-}
-
-func TestSetFlagOverride_EmptyEntityID(t *testing.T) {
-	t.Parallel()
-	env := setupTestEnv(t)
-	_, err := env.admin.SetFlagOverride(context.Background(), connect.NewRequest(&pbflagsv1.SetFlagOverrideRequest{
-		FlagId: "feat/1", EntityId: "", State: pbflagsv1.State_STATE_ENABLED, Actor: "admin",
-	}))
-	require.Error(t, err)
-	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-}
-
-func TestSetFlagOverride_UnspecifiedState(t *testing.T) {
-	t.Parallel()
-	env := setupTestEnv(t)
-	_, err := env.admin.SetFlagOverride(context.Background(), connect.NewRequest(&pbflagsv1.SetFlagOverrideRequest{
-		FlagId: "feat/1", EntityId: "user-1", State: pbflagsv1.State_STATE_UNSPECIFIED, Actor: "admin",
-	}))
-	require.Error(t, err)
-	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-}
-
-func TestRemoveFlagOverride_NonexistentIsNoOp(t *testing.T) {
-	t.Parallel()
-	store, pool := setupTestStore(t)
-	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},
-	})
-	err := store.RemoveFlagOverride(context.Background(), tf.FlagID(1), "nonexistent-user", "admin")
-	require.NoError(t, err)
-}
-
-func TestRemoveFlagOverride_EmptyFlagID(t *testing.T) {
-	t.Parallel()
-	env := setupTestEnv(t)
-	_, err := env.admin.RemoveFlagOverride(context.Background(), connect.NewRequest(&pbflagsv1.RemoveFlagOverrideRequest{
-		FlagId: "", EntityId: "user-1", Actor: "admin",
-	}))
-	require.Error(t, err)
-	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-}
-
-func TestRemoveFlagOverride_EmptyEntityID(t *testing.T) {
-	t.Parallel()
-	env := setupTestEnv(t)
-	_, err := env.admin.RemoveFlagOverride(context.Background(), connect.NewRequest(&pbflagsv1.RemoveFlagOverrideRequest{
-		FlagId: "feat/1", EntityId: "", Actor: "admin",
-	}))
-	require.Error(t, err)
-	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-}
-
 func TestGetFlag_NotFound(t *testing.T) {
 	t.Parallel()
 	env := setupTestEnv(t)
@@ -571,49 +352,24 @@ func TestGetFlag_NotFound(t *testing.T) {
 	assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 }
 
-func TestAuditLog_OldValueRecorded(t *testing.T) {
+func TestAuditLog_StateTransitionRecorded(t *testing.T) {
 	t.Parallel()
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "STRING", Layer: "GLOBAL"},
+		{FlagType: "STRING"},
 	})
 
-	err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_ENABLED, stringValue("v1"), "admin")
+	err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_KILLED, "admin")
 	require.NoError(t, err)
-	err = store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_ENABLED, stringValue("v2"), "admin")
-	require.NoError(t, err)
-
-	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: tf.FlagID(1), Limit: 1})
-	require.NoError(t, err)
-	require.Len(t, entries, 1)
-	require.NotNil(t, entries[0].OldValue)
-	assert.Equal(t, "v1", entries[0].OldValue.GetStringValue())
-	require.NotNil(t, entries[0].NewValue)
-	assert.Equal(t, "v2", entries[0].NewValue.GetStringValue())
-}
-
-func TestAuditLog_OverrideLifecycle(t *testing.T) {
-	t.Parallel()
-	store, pool := setupTestStore(t)
-	ctx := context.Background()
-	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "STRING", Layer: "USER"},
-	})
-
-	err := store.SetFlagOverride(ctx, tf.FlagID(1), "user-1", pbflagsv1.State_STATE_ENABLED, stringValue("v1"), "admin")
-	require.NoError(t, err)
-	err = store.SetFlagOverride(ctx, tf.FlagID(1), "user-1", pbflagsv1.State_STATE_ENABLED, stringValue("v2"), "admin")
-	require.NoError(t, err)
-	err = store.RemoveFlagOverride(ctx, tf.FlagID(1), "user-1", "admin")
+	err = store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_DEFAULT, "admin")
 	require.NoError(t, err)
 
-	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: tf.FlagID(1), Limit: 10})
+	entries, err := store.GetAuditLog(ctx, AuditLogFilter{FlagID: tf.FlagID(1), Limit: 2})
 	require.NoError(t, err)
-	require.Len(t, entries, 3)
-	assert.Equal(t, "REMOVE_OVERRIDE", entries[0].Action)
-	assert.Equal(t, "UPDATE_OVERRIDE", entries[1].Action)
-	assert.Equal(t, "CREATE_OVERRIDE", entries[2].Action)
+	require.Len(t, entries, 2)
+	require.Equal(t, "UPDATE_STATE", entries[0].Action)
+	require.Equal(t, "UPDATE_STATE", entries[1].Action)
 }
 
 func TestAuditLog_LimitCap(t *testing.T) {
@@ -621,11 +377,11 @@ func TestAuditLog_LimitCap(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "GLOBAL"},
+		{FlagType: "BOOL"},
 	})
 
 	for i := 0; i < 5; i++ {
-		err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
+		err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_KILLED, "admin")
 		require.NoError(t, err)
 	}
 
@@ -639,11 +395,11 @@ func TestAuditLog_LimitClampedAt1000(t *testing.T) {
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "GLOBAL"},
+		{FlagType: "BOOL"},
 	})
 
 	for i := 0; i < 3; i++ {
-		err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_ENABLED, boolValue(true), "admin")
+		err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_KILLED, "admin")
 		require.NoError(t, err)
 	}
 
@@ -653,55 +409,58 @@ func TestAuditLog_LimitClampedAt1000(t *testing.T) {
 	assert.Len(t, entries, 3)
 }
 
-func TestAllFlagTypes(t *testing.T) {
+func TestAllFlagTypes_KillAndUnkill(t *testing.T) {
 	t.Parallel()
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "GLOBAL"},
-		{FlagType: "STRING", Layer: "GLOBAL"},
-		{FlagType: "INT64", Layer: "GLOBAL"},
-		{FlagType: "DOUBLE", Layer: "GLOBAL"},
+		{FlagType: "BOOL"},
+		{FlagType: "STRING"},
+		{FlagType: "INT64"},
+		{FlagType: "DOUBLE"},
 	})
 
-	tests := []struct {
-		fieldNum int
-		value    *pbflagsv1.FlagValue
-		check    func(*pbflagsv1.FlagValue) bool
-	}{
-		{1, boolValue(true), func(v *pbflagsv1.FlagValue) bool { return v.GetBoolValue() }},
-		{2, stringValue("hello"), func(v *pbflagsv1.FlagValue) bool { return v.GetStringValue() == "hello" }},
-		{3, int64Value(42), func(v *pbflagsv1.FlagValue) bool { return v.GetInt64Value() == 42 }},
-		{4, doubleValue(3.14159), func(v *pbflagsv1.FlagValue) bool { return v.GetDoubleValue() == 3.14159 }},
-	}
-
-	for _, tt := range tests {
-		flagID := tf.FlagID(tt.fieldNum)
+	for i := 1; i <= 4; i++ {
+		flagID := tf.FlagID(i)
 		t.Run(flagID, func(t *testing.T) {
-			err := store.UpdateFlagState(ctx, flagID, pbflagsv1.State_STATE_ENABLED, tt.value, "admin")
+			// Kill the flag.
+			err := store.UpdateFlagState(ctx, flagID, pbflagsv1.State_STATE_KILLED, "admin")
 			require.NoError(t, err)
 			resp, err := store.GetFlagState(ctx, flagID)
 			require.NoError(t, err)
-			assert.True(t, tt.check(resp.Flag.Value), "value check failed for %s", flagID)
+			assert.Equal(t, pbflagsv1.State_STATE_KILLED, resp.Flag.State)
+
+			// Unkill.
+			err = store.UpdateFlagState(ctx, flagID, pbflagsv1.State_STATE_DEFAULT, "admin")
+			require.NoError(t, err)
+			resp, err = store.GetFlagState(ctx, flagID)
+			require.NoError(t, err)
+			assert.Equal(t, pbflagsv1.State_STATE_DEFAULT, resp.Flag.State)
 		})
 	}
 }
 
-func TestFlagValueRoundtrip(t *testing.T) {
+func TestFlagStateRoundtrip(t *testing.T) {
 	t.Parallel()
 	store, pool := setupTestStore(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "STRING", Layer: "USER"},
+		{FlagType: "STRING"},
 	})
 
-	original := stringValue("test-roundtrip-üñïçöðé-value")
-	err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_ENABLED, original, "admin")
+	// Kill and verify.
+	err := store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_KILLED, "admin")
 	require.NoError(t, err)
-
 	resp, err := store.GetFlagState(ctx, tf.FlagID(1))
 	require.NoError(t, err)
-	assert.True(t, proto.Equal(original, resp.Flag.Value), "roundtrip mismatch: expected %v, got %v", original, resp.Flag.Value)
+	assert.Equal(t, pbflagsv1.State_STATE_KILLED, resp.Flag.State)
+
+	// Unkill and verify.
+	err = store.UpdateFlagState(ctx, tf.FlagID(1), pbflagsv1.State_STATE_DEFAULT, "admin")
+	require.NoError(t, err)
+	resp, err = store.GetFlagState(ctx, tf.FlagID(1))
+	require.NoError(t, err)
+	assert.Equal(t, pbflagsv1.State_STATE_DEFAULT, resp.Flag.State)
 }
 
 func TestAdversarial_ConcurrentMutations(t *testing.T) {
@@ -709,33 +468,20 @@ func TestAdversarial_ConcurrentMutations(t *testing.T) {
 	env := setupTestEnv(t)
 	ctx := context.Background()
 	tf := testdb.CreateTestFeature(t, env.pool, []testdb.FlagSpec{
-		{FlagType: "STRING", Layer: "USER"},
+		{FlagType: "STRING"},
 	})
 
 	const goroutines = 10
 	var wg sync.WaitGroup
-	errs := make(chan error, goroutines*3)
+	errs := make(chan error, goroutines*2)
 
 	// Concurrent state updates.
 	for i := range goroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			states := []pbflagsv1.State{pbflagsv1.State_STATE_ENABLED, pbflagsv1.State_STATE_DEFAULT, pbflagsv1.State_STATE_KILLED}
-			err := env.store.UpdateFlagState(ctx, tf.FlagID(1), states[i%3], stringValue("val"), "worker")
-			if err != nil {
-				errs <- err
-			}
-		}()
-	}
-
-	// Concurrent override creation for different entities.
-	for i := range goroutines {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			err := env.store.SetFlagOverride(ctx, tf.FlagID(1), fmt.Sprintf("entity-%d", i),
-				pbflagsv1.State_STATE_ENABLED, stringValue("override"), "worker")
+			states := []pbflagsv1.State{pbflagsv1.State_STATE_DEFAULT, pbflagsv1.State_STATE_KILLED}
+			err := env.store.UpdateFlagState(ctx, tf.FlagID(1), states[i%2], "worker")
 			if err != nil {
 				errs <- err
 			}
@@ -765,142 +511,8 @@ func TestAdversarial_ConcurrentMutations(t *testing.T) {
 	resp, err := env.store.GetFlagState(ctx, tf.FlagID(1))
 	require.NoError(t, err)
 	validStates := map[pbflagsv1.State]bool{
-		pbflagsv1.State_STATE_ENABLED: true,
 		pbflagsv1.State_STATE_DEFAULT: true,
 		pbflagsv1.State_STATE_KILLED:  true,
 	}
 	assert.True(t, validStates[resp.Flag.State])
-}
-
-func TestAdversarial_ConcurrentOverrideUpsert(t *testing.T) {
-	t.Parallel()
-	store, pool := setupTestStore(t)
-	ctx := context.Background()
-	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "STRING", Layer: "USER"},
-	})
-
-	const goroutines = 10
-	var wg sync.WaitGroup
-	for i := range goroutines {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			err := store.SetFlagOverride(ctx, tf.FlagID(1), "user-1",
-				pbflagsv1.State_STATE_ENABLED, stringValue(fmt.Sprintf("v%d", i)), "worker")
-			assert.NoError(t, err)
-		}()
-	}
-	wg.Wait()
-
-	// Should have exactly 1 override (not 10).
-	resp, err := store.GetOverrides(ctx, "user-1", []string{tf.FlagID(1)})
-	require.NoError(t, err)
-	assert.Len(t, resp.Overrides, 1)
-}
-
-func TestValidateFlagValueType(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name    string
-		value   *pbflagsv1.FlagValue
-		ft      pbflagsv1.FlagType
-		wantErr bool
-	}{
-		{
-			name:    "nil value, any type",
-			value:   nil,
-			ft:      pbflagsv1.FlagType_FLAG_TYPE_BOOL,
-			wantErr: false,
-		},
-		{
-			name:    "bool value + BOOL type",
-			value:   boolValue(true),
-			ft:      pbflagsv1.FlagType_FLAG_TYPE_BOOL,
-			wantErr: false,
-		},
-		{
-			name:    "bool value + STRING type",
-			value:   boolValue(true),
-			ft:      pbflagsv1.FlagType_FLAG_TYPE_STRING,
-			wantErr: true,
-		},
-		{
-			name:    "string value + STRING type",
-			value:   stringValue("hello"),
-			ft:      pbflagsv1.FlagType_FLAG_TYPE_STRING,
-			wantErr: false,
-		},
-		{
-			name:    "int64 value + INT64 type",
-			value:   int64Value(42),
-			ft:      pbflagsv1.FlagType_FLAG_TYPE_INT64,
-			wantErr: false,
-		},
-		{
-			name:    "double value + DOUBLE type",
-			value:   doubleValue(3.14),
-			ft:      pbflagsv1.FlagType_FLAG_TYPE_DOUBLE,
-			wantErr: false,
-		},
-		{
-			name: "string_list value + STRING_LIST type",
-			value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringListValue{
-				StringListValue: &pbflagsv1.StringList{Values: []string{"a", "b"}},
-			}},
-			ft:      pbflagsv1.FlagType_FLAG_TYPE_STRING_LIST,
-			wantErr: false,
-		},
-		{
-			name: "string_list value + STRING type (scalar/list mismatch)",
-			value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringListValue{
-				StringListValue: &pbflagsv1.StringList{Values: []string{"a"}},
-			}},
-			ft:      pbflagsv1.FlagType_FLAG_TYPE_STRING,
-			wantErr: true,
-		},
-		{
-			name: "int64_list value + INT64_LIST type",
-			value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64ListValue{
-				Int64ListValue: &pbflagsv1.Int64List{Values: []int64{1, 2, 3}},
-			}},
-			ft:      pbflagsv1.FlagType_FLAG_TYPE_INT64_LIST,
-			wantErr: false,
-		},
-		{
-			name: "bool_list value + BOOL_LIST type",
-			value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolListValue{
-				BoolListValue: &pbflagsv1.BoolList{Values: []bool{true, false}},
-			}},
-			ft:      pbflagsv1.FlagType_FLAG_TYPE_BOOL_LIST,
-			wantErr: false,
-		},
-		{
-			name: "double_list value + DOUBLE_LIST type",
-			value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleListValue{
-				DoubleListValue: &pbflagsv1.DoubleList{Values: []float64{1.1, 2.2}},
-			}},
-			ft:      pbflagsv1.FlagType_FLAG_TYPE_DOUBLE_LIST,
-			wantErr: false,
-		},
-		{
-			name: "int64_list value + DOUBLE_LIST type (element type mismatch)",
-			value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64ListValue{
-				Int64ListValue: &pbflagsv1.Int64List{Values: []int64{1, 2}},
-			}},
-			ft:      pbflagsv1.FlagType_FLAG_TYPE_DOUBLE_LIST,
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateFlagValueType(tt.value, tt.ft)
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
 }

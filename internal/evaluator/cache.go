@@ -20,14 +20,6 @@ type CachedFlagState struct {
 	DimMeta    CachedDimMeta     // dimension classification metadata (nil for flags without conditions)
 }
 
-// CachedOverride holds a cached per-entity override.
-type CachedOverride struct {
-	FlagID   string
-	EntityID string
-	State    pbflagsv1.State
-	Value    *pbflagsv1.FlagValue
-}
-
 // KillSet holds the current set of globally killed flags.
 type KillSet struct {
 	FlagIDs map[string]struct{}
@@ -46,32 +38,26 @@ func (ks *KillSet) IsKilled(flagID string) bool {
 //
 // Ristretto caches provide fast lookups with TTL-based freshness. When an entry
 // expires, it is evicted. To satisfy the design requirement that stale data is
-// served indefinitely during server outages, a parallel staleFlagMap and
-// staleOverrideMap retain the last-known values without TTL. These maps are
-// consulted only when the Ristretto cache misses AND the server fetch fails.
+// served indefinitely during server outages, a parallel staleFlagMap retains
+// the last-known values without TTL. The stale map is consulted only when the
+// Ristretto cache misses AND the server fetch fails.
 type CacheStore struct {
-	flagCache     *ristretto.Cache[string, *CachedFlagState]
-	overrideCache *ristretto.Cache[string, *CachedOverride]
+	flagCache *ristretto.Cache[string, *CachedFlagState]
 
-	staleFlagMu      sync.RWMutex
-	staleFlagMap     map[string]*CachedFlagState
-	staleOverrideMu  sync.RWMutex
-	staleOverrideMap map[string]*CachedOverride
+	staleFlagMu  sync.RWMutex
+	staleFlagMap map[string]*CachedFlagState
 
 	killSetMu sync.RWMutex
 	killSet   *KillSet
 
 	flagTTL       time.Duration
-	overrideTTL   time.Duration
 	jitterPercent int
 }
 
 // CacheStoreConfig configures cache sizes and TTLs.
 type CacheStoreConfig struct {
-	FlagTTL         time.Duration
-	OverrideTTL     time.Duration
-	OverrideMaxSize int64
-	JitterPercent   int
+	FlagTTL       time.Duration
+	JitterPercent int
 }
 
 // NewCacheStore creates a cache store.
@@ -85,58 +71,39 @@ func NewCacheStore(cfg CacheStoreConfig) (*CacheStore, error) {
 		return nil, err
 	}
 
-	overrideCache, err := ristretto.NewCache(&ristretto.Config[string, *CachedOverride]{
-		NumCounters: cfg.OverrideMaxSize * 10,
-		MaxCost:     cfg.OverrideMaxSize,
-		BufferItems: 64,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	return &CacheStore{
-		flagCache:        flagCache,
-		overrideCache:    overrideCache,
-		staleFlagMap:     make(map[string]*CachedFlagState),
-		staleOverrideMap: make(map[string]*CachedOverride),
-		killSet:          &KillSet{FlagIDs: make(map[string]struct{})},
-		flagTTL:          cfg.FlagTTL,
-		overrideTTL:      cfg.OverrideTTL,
-		jitterPercent:    cfg.JitterPercent,
+		flagCache:     flagCache,
+		staleFlagMap:  make(map[string]*CachedFlagState),
+		killSet:       &KillSet{FlagIDs: make(map[string]struct{})},
+		flagTTL:       cfg.FlagTTL,
+		jitterPercent: cfg.JitterPercent,
 	}, nil
 }
 
 // Close releases cache resources.
 func (s *CacheStore) Close() {
 	s.flagCache.Close()
-	s.overrideCache.Close()
 }
 
-// FlushAll evicts all entries from both the hot caches (Ristretto) and the
-// stale fallback maps, forcing cold-start fetches on the next evaluation.
+// FlushAll evicts all entries from the hot cache (Ristretto) and the stale
+// fallback map, forcing cold-start fetches on the next evaluation.
 func (s *CacheStore) FlushAll() {
 	s.flagCache.Clear()
-	s.overrideCache.Clear()
 	s.staleFlagMu.Lock()
 	s.staleFlagMap = make(map[string]*CachedFlagState)
 	s.staleFlagMu.Unlock()
-	s.staleOverrideMu.Lock()
-	s.staleOverrideMap = make(map[string]*CachedOverride)
-	s.staleOverrideMu.Unlock()
 }
 
-// FlushHot evicts entries from the hot caches (Ristretto) only. The stale
-// fallback maps are preserved, simulating natural TTL expiry.
+// FlushHot evicts entries from the hot cache (Ristretto) only. The stale
+// fallback map is preserved, simulating natural TTL expiry.
 func (s *CacheStore) FlushHot() {
 	s.flagCache.Clear()
-	s.overrideCache.Clear()
 }
 
-// WaitAll blocks until both Ristretto caches have processed all pending
+// WaitAll blocks until the Ristretto cache has processed all pending
 // writes and evictions.
 func (s *CacheStore) WaitAll() {
 	s.flagCache.Wait()
-	s.overrideCache.Wait()
 }
 
 // GetKillSet returns the current kill set.
@@ -191,47 +158,6 @@ func (s *CacheStore) CachedFlagCount() int32 {
 		return 0
 	}
 	return int32(m.KeysAdded() - m.KeysEvicted())
-}
-
-// OverrideCacheSize returns the approximate number of cached overrides.
-func (s *CacheStore) OverrideCacheSize() int64 {
-	m := s.overrideCache.Metrics
-	if m == nil {
-		return 0
-	}
-	return int64(m.KeysAdded() - m.KeysEvicted())
-}
-
-// GetOverride returns the cached override, or nil on miss.
-// When overrideTTL is 0 (write-through mode), always returns nil to force a fresh fetch.
-func (s *CacheStore) GetOverride(flagID, entityID string) *CachedOverride {
-	if s.overrideTTL <= 0 {
-		return nil
-	}
-	val, ok := s.overrideCache.Get(flagID + ":" + entityID)
-	if !ok {
-		return nil
-	}
-	return val
-}
-
-// SetOverride caches an override with TTL + jitter.
-// When overrideTTL is 0 (write-through mode), only the stale fallback map is populated.
-func (s *CacheStore) SetOverride(o *CachedOverride) {
-	key := o.FlagID + ":" + o.EntityID
-	if s.overrideTTL > 0 {
-		s.overrideCache.SetWithTTL(key, o, 1, s.jitteredTTL(s.overrideTTL))
-	}
-	s.staleOverrideMu.Lock()
-	s.staleOverrideMap[key] = o
-	s.staleOverrideMu.Unlock()
-}
-
-// GetStaleOverride returns the last-known override from the stale fallback map.
-func (s *CacheStore) GetStaleOverride(flagID, entityID string) *CachedOverride {
-	s.staleOverrideMu.RLock()
-	defer s.staleOverrideMu.RUnlock()
-	return s.staleOverrideMap[flagID+":"+entityID]
 }
 
 func (s *CacheStore) jitteredTTL(base time.Duration) time.Duration {

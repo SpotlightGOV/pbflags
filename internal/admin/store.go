@@ -3,10 +3,8 @@ package admin
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	pbflagspb "github.com/SpotlightGOV/pbflags/gen/pbflags"
@@ -46,14 +44,13 @@ type FlagExtra struct {
 
 // GetFlagState returns the state and value for a single flag.
 func (s *Store) GetFlagState(ctx context.Context, flagID string) (*pbflagsv1.GetFlagStateResponse, error) {
-	var state string
-	var valueBytes []byte
+	var killedAt *time.Time
 	var archivedAt *time.Time
 
 	err := s.pool.QueryRow(ctx, `
-		SELECT state, value, archived_at
+		SELECT killed_at, archived_at
 		FROM feature_flags.flags
-		WHERE flag_id = $1`, flagID).Scan(&state, &valueBytes, &archivedAt)
+		WHERE flag_id = $1`, flagID).Scan(&killedAt, &archivedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -61,16 +58,15 @@ func (s *Store) GetFlagState(ctx context.Context, flagID string) (*pbflagsv1.Get
 		return nil, fmt.Errorf("query flag %s: %w", flagID, err)
 	}
 
-	val, err := unmarshalFlagValue(valueBytes)
-	if err != nil {
-		s.logger.Warn("failed to unmarshal flag value", "flag_id", flagID, "error", err)
+	st := pbflagsv1.State_STATE_DEFAULT
+	if killedAt != nil {
+		st = pbflagsv1.State_STATE_KILLED
 	}
 
 	return &pbflagsv1.GetFlagStateResponse{
 		Flag: &pbflagsv1.FlagState{
 			FlagId: flagID,
-			State:  parseState(state),
-			Value:  val,
+			State:  st,
 		},
 		Archived: archivedAt != nil,
 	}, nil
@@ -81,7 +77,7 @@ func (s *Store) GetKilledFlags(ctx context.Context) (*pbflagsv1.GetKilledFlagsRe
 	resp := &pbflagsv1.GetKilledFlagsResponse{}
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT flag_id FROM feature_flags.flags WHERE state = 'KILLED'`)
+		SELECT flag_id FROM feature_flags.flags WHERE killed_at IS NOT NULL`)
 	if err != nil {
 		return nil, fmt.Errorf("query killed flags: %w", err)
 	}
@@ -96,61 +92,17 @@ func (s *Store) GetKilledFlags(ctx context.Context) (*pbflagsv1.GetKilledFlagsRe
 	return resp, rows.Err()
 }
 
-// GetOverrides returns overrides for a specific entity.
-func (s *Store) GetOverrides(ctx context.Context, entityID string, flagIDs []string) (*pbflagsv1.GetOverridesResponse, error) {
-	resp := &pbflagsv1.GetOverridesResponse{}
-
-	var rows pgx.Rows
-	var err error
-	if len(flagIDs) == 0 {
-		rows, err = s.pool.Query(ctx, `
-			SELECT flag_id, entity_id, state, value
-			FROM feature_flags.flag_overrides
-			WHERE entity_id = $1`, entityID)
-	} else {
-		rows, err = s.pool.Query(ctx, `
-			SELECT flag_id, entity_id, state, value
-			FROM feature_flags.flag_overrides
-			WHERE entity_id = $1 AND flag_id = ANY($2)`, entityID, flagIDs)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("query overrides: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var flagID, eid, state string
-		var valueBytes []byte
-		if err := rows.Scan(&flagID, &eid, &state, &valueBytes); err != nil {
-			return nil, err
-		}
-		val, err := unmarshalFlagValue(valueBytes)
-		if err != nil {
-			s.logger.Warn("failed to unmarshal override value", "flag_id", flagID, "entity_id", eid, "error", err)
-		}
-		resp.Overrides = append(resp.Overrides, &pbflagsv1.OverrideState{
-			FlagId:   flagID,
-			EntityId: eid,
-			State:    parseState(state),
-			Value:    val,
-		})
-	}
-	return resp, rows.Err()
-}
-
-// UpdateFlagState sets the state (and optionally value) for a flag.
-func (s *Store) UpdateFlagState(ctx context.Context, flagID string, state pbflagsv1.State, value *pbflagsv1.FlagValue, actor string) error {
+// UpdateFlagState sets the killed state for a flag (kill or unkill).
+func (s *Store) UpdateFlagState(ctx context.Context, flagID string, state pbflagsv1.State, actor string) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	var oldState string
-	var oldValueBytes []byte
-	var flagTypeStr string
+	var oldKilledAt *time.Time
 	err = tx.QueryRow(ctx, `
-		SELECT state, value, flag_type FROM feature_flags.flags WHERE flag_id = $1`, flagID).Scan(&oldState, &oldValueBytes, &flagTypeStr)
+		SELECT killed_at FROM feature_flags.flags WHERE flag_id = $1`, flagID).Scan(&oldKilledAt)
 	if err == pgx.ErrNoRows {
 		return fmt.Errorf("flag %s not found", flagID)
 	}
@@ -158,266 +110,33 @@ func (s *Store) UpdateFlagState(ctx context.Context, flagID string, state pbflag
 		return fmt.Errorf("read old state: %w", err)
 	}
 
-	if err := validateFlagValueType(value, parseFlagType(flagTypeStr)); err != nil {
-		return fmt.Errorf("flag %s: %w", flagID, err)
+	oldState := pbflagsv1.State_STATE_DEFAULT
+	if oldKilledAt != nil {
+		oldState = pbflagsv1.State_STATE_KILLED
 	}
 
-	valueBytes, err := marshalFlagValue(value)
-	if err != nil {
-		return fmt.Errorf("marshal value: %w", err)
+	switch state {
+	case pbflagsv1.State_STATE_KILLED:
+		_, err = tx.Exec(ctx, `
+			UPDATE feature_flags.flags SET killed_at = now(), updated_at = now()
+			WHERE flag_id = $1`, flagID)
+	default:
+		_, err = tx.Exec(ctx, `
+			UPDATE feature_flags.flags SET killed_at = NULL, updated_at = now()
+			WHERE flag_id = $1`, flagID)
 	}
-
-	stateStr := stateToString(state)
-	_, err = tx.Exec(ctx, `
-		UPDATE feature_flags.flags
-		SET state = $2, value = $3, updated_at = now()
-		WHERE flag_id = $1`, flagID, stateStr, valueBytes)
 	if err != nil {
 		return fmt.Errorf("update flag state: %w", err)
 	}
 
-	oldVal, umErr := unmarshalFlagValue(oldValueBytes)
-	if umErr != nil {
-		s.logger.Warn("failed to unmarshal old flag value for audit", "flag_id", flagID, "error", umErr)
-	}
-	if err := insertAuditLog(ctx, tx, flagID, "UPDATE_STATE", oldVal, value, actor); err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
-}
-
-// SetFlagOverride upserts a per-entity override.
-func (s *Store) SetFlagOverride(ctx context.Context, flagID, entityID string, state pbflagsv1.State, value *pbflagsv1.FlagValue, actor string) error {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	var layerStr, flagTypeStr string
-	err = tx.QueryRow(ctx, `
-		SELECT layer, flag_type FROM feature_flags.flags WHERE flag_id = $1`, flagID).Scan(&layerStr, &flagTypeStr)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("flag %s not found", flagID)
-	}
-	if err != nil {
-		return fmt.Errorf("read flag layer: %w", err)
-	}
-	if err := validateFlagValueType(value, parseFlagType(flagTypeStr)); err != nil {
-		return fmt.Errorf("flag %s: %w", flagID, err)
-	}
-	if isGlobalLayer(layerStr) {
-		return fmt.Errorf("flag %s has GLOBAL layer and does not support per-entity overrides", flagID)
-	}
-	if state == pbflagsv1.State_STATE_KILLED {
-		return fmt.Errorf("per-entity kill is not supported; use global kill instead")
-	}
-
-	valueBytes, err := marshalFlagValue(value)
-	if err != nil {
-		return fmt.Errorf("marshal value: %w", err)
-	}
-
-	var oldValueBytes []byte
-	action := "CREATE_OVERRIDE"
-	err = tx.QueryRow(ctx, `
-		SELECT value FROM feature_flags.flag_overrides
-		WHERE flag_id = $1 AND entity_id = $2`, flagID, entityID).Scan(&oldValueBytes)
-	if err == nil {
-		action = "UPDATE_OVERRIDE"
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("read old override: %w", err)
-	}
-
-	stateStr := stateToString(state)
+	// Record the state transition in the audit log using string representations.
+	oldStr := stateToString(oldState)
+	newStr := stateToString(state)
 	_, err = tx.Exec(ctx, `
-		INSERT INTO feature_flags.flag_overrides (flag_id, entity_id, state, value)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (flag_id, entity_id) DO UPDATE SET
-			state = EXCLUDED.state,
-			value = EXCLUDED.value,
-			updated_at = now()`, flagID, entityID, stateStr, valueBytes)
+		INSERT INTO feature_flags.flag_audit_log (flag_id, action, old_value, new_value, actor)
+		VALUES ($1, 'UPDATE_STATE', $2, $3, $4)`, flagID, []byte(oldStr), []byte(newStr), actor)
 	if err != nil {
-		return fmt.Errorf("upsert override: %w", err)
-	}
-
-	oldVal, umErr := unmarshalFlagValue(oldValueBytes)
-	if umErr != nil {
-		s.logger.Warn("failed to unmarshal old override value for audit", "flag_id", flagID, "error", umErr)
-	}
-	if err := insertAuditLog(ctx, tx, flagID, action, oldVal, value, actor); err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
-}
-
-// BulkOverride represents a single entity override for batch import.
-type BulkOverride struct {
-	EntityID string
-	Value    *pbflagsv1.FlagValue
-}
-
-// BulkOverrideResult reports the outcome of a batch override import.
-type BulkOverrideResult struct {
-	Created int
-	Updated int
-}
-
-// SetFlagOverrides upserts multiple per-entity overrides in a single
-// transaction using pipelined queries. It validates the flag once, then
-// batch-inserts all overrides and their audit log entries.
-func (s *Store) SetFlagOverrides(ctx context.Context, flagID string, overrides []BulkOverride, state pbflagsv1.State, actor string) (*BulkOverrideResult, error) {
-	if len(overrides) == 0 {
-		return &BulkOverrideResult{}, nil
-	}
-	if state == pbflagsv1.State_STATE_KILLED {
-		return nil, fmt.Errorf("per-entity kill is not supported; use global kill instead")
-	}
-
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	// Validate flag once.
-	var layerStr, flagTypeStr string
-	err = tx.QueryRow(ctx, `
-		SELECT layer, flag_type FROM feature_flags.flags WHERE flag_id = $1`, flagID).Scan(&layerStr, &flagTypeStr)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("flag %s not found", flagID)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read flag layer: %w", err)
-	}
-	if isGlobalLayer(layerStr) {
-		return nil, fmt.Errorf("flag %s has GLOBAL layer and does not support per-entity overrides", flagID)
-	}
-	ft := parseFlagType(flagTypeStr)
-
-	// Validate all values up-front before touching the database.
-	type prepared struct {
-		entityID   string
-		valueBytes []byte
-		value      *pbflagsv1.FlagValue
-	}
-	items := make([]prepared, 0, len(overrides))
-	for i, o := range overrides {
-		if err := validateFlagValueType(o.Value, ft); err != nil {
-			return nil, fmt.Errorf("row %d (%s): %w", i+1, o.EntityID, err)
-		}
-		vb, err := marshalFlagValue(o.Value)
-		if err != nil {
-			return nil, fmt.Errorf("row %d (%s): marshal value: %w", i+1, o.EntityID, err)
-		}
-		items = append(items, prepared{entityID: o.EntityID, valueBytes: vb, value: o.Value})
-	}
-
-	// Determine which entity_ids already have overrides (for audit action).
-	entityIDs := make([]string, len(items))
-	for i, it := range items {
-		entityIDs[i] = it.entityID
-	}
-	rows, err := tx.Query(ctx, `
-		SELECT entity_id FROM feature_flags.flag_overrides
-		WHERE flag_id = $1 AND entity_id = ANY($2)`, flagID, entityIDs)
-	if err != nil {
-		return nil, fmt.Errorf("check existing overrides: %w", err)
-	}
-	existing := make(map[string]bool)
-	for rows.Next() {
-		var eid string
-		if err := rows.Scan(&eid); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		existing[eid] = true
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	// Pipeline upserts + audit entries via pgx.Batch.
-	stateStr := stateToString(state)
-	batch := &pgx.Batch{}
-	for _, it := range items {
-		batch.Queue(`
-			INSERT INTO feature_flags.flag_overrides (flag_id, entity_id, state, value)
-			VALUES ($1, $2, $3, $4)
-			ON CONFLICT (flag_id, entity_id) DO UPDATE SET
-				state = EXCLUDED.state,
-				value = EXCLUDED.value,
-				updated_at = now()`, flagID, it.entityID, stateStr, it.valueBytes)
-
-		action := "CREATE_OVERRIDE"
-		if existing[it.entityID] {
-			action = "UPDATE_OVERRIDE"
-		}
-		newBytes, _ := marshalFlagValue(it.value)
-		batch.Queue(`
-			INSERT INTO feature_flags.flag_audit_log (flag_id, action, old_value, new_value, actor)
-			VALUES ($1, $2, $3, $4, $5)`, flagID, action, nil, newBytes, actor)
-	}
-
-	br := tx.SendBatch(ctx, batch)
-	result := &BulkOverrideResult{}
-	for _, it := range items {
-		if _, err := br.Exec(); err != nil {
-			br.Close()
-			return nil, fmt.Errorf("upsert %s: %w", it.entityID, err)
-		}
-		if _, err := br.Exec(); err != nil {
-			br.Close()
-			return nil, fmt.Errorf("audit %s: %w", it.entityID, err)
-		}
-		if existing[it.entityID] {
-			result.Updated++
-		} else {
-			result.Created++
-		}
-	}
-	br.Close()
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("commit: %w", err)
-	}
-	return result, nil
-}
-
-// RemoveFlagOverride deletes a per-entity override.
-func (s *Store) RemoveFlagOverride(ctx context.Context, flagID, entityID, actor string) error {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	var oldValueBytes []byte
-	err = tx.QueryRow(ctx, `
-		SELECT value FROM feature_flags.flag_overrides
-		WHERE flag_id = $1 AND entity_id = $2`, flagID, entityID).Scan(&oldValueBytes)
-	if errors.Is(err, pgx.ErrNoRows) {
-		oldValueBytes = nil
-	} else if err != nil {
-		return fmt.Errorf("read old override for audit: %w", err)
-	}
-
-	_, err = tx.Exec(ctx, `
-		DELETE FROM feature_flags.flag_overrides
-		WHERE flag_id = $1 AND entity_id = $2`, flagID, entityID)
-	if err != nil {
-		return fmt.Errorf("delete override: %w", err)
-	}
-
-	oldVal, umErr := unmarshalFlagValue(oldValueBytes)
-	if umErr != nil {
-		s.logger.Warn("failed to unmarshal old override value for audit", "flag_id", flagID, "error", umErr)
-	}
-	if err := insertAuditLog(ctx, tx, flagID, "REMOVE_OVERRIDE", oldVal, nil, actor); err != nil {
-		return err
+		return fmt.Errorf("insert audit log: %w", err)
 	}
 
 	return tx.Commit(ctx)
@@ -429,7 +148,7 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, m
 	rows, err := s.pool.Query(ctx, `
 		SELECT f.feature_id, f.description, f.owner,
 		       fl.flag_id, fl.display_name, fl.description,
-		       fl.flag_type, fl.layer, fl.state, fl.value,
+		       fl.flag_type, fl.killed_at,
 		       fl.default_value, fl.supported_values,
 		       fl.archived_at IS NOT NULL as archived,
 		       COALESCE(CASE WHEN jsonb_typeof(fl.conditions) = 'array' THEN jsonb_array_length(fl.conditions) ELSE 0 END, 0) as condition_count
@@ -448,15 +167,16 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, m
 	for rows.Next() {
 		var featureID, fDesc, fOwner string
 		var flagID, flagDisplayName, flagDesc string
-		var flagType, layer, state string
-		var valueBytes, defaultBytes, supportedBytes []byte
+		var flagType string
+		var killedAt *time.Time
+		var defaultBytes, supportedBytes []byte
 		var archived bool
 		var condCount int
 
 		if err := rows.Scan(
 			&featureID, &fDesc, &fOwner,
 			&flagID, &flagDisplayName, &flagDesc,
-			&flagType, &layer, &state, &valueBytes,
+			&flagType, &killedAt,
 			&defaultBytes, &supportedBytes,
 			&archived, &condCount,
 		); err != nil {
@@ -474,10 +194,6 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, m
 			order = append(order, featureID)
 		}
 
-		val, err := unmarshalFlagValue(valueBytes)
-		if err != nil {
-			s.logger.Warn("failed to unmarshal flag value", "flag_id", flagID, "error", err)
-		}
 		defaultVal, err := unmarshalFlagValue(defaultBytes)
 		if err != nil {
 			s.logger.Warn("failed to unmarshal default value", "flag_id", flagID, "error", err)
@@ -487,14 +203,17 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, m
 			s.logger.Warn("failed to unmarshal supported_values", "flag_id", flagID, "error", err)
 		}
 
+		st := pbflagsv1.State_STATE_DEFAULT
+		if killedAt != nil {
+			st = pbflagsv1.State_STATE_KILLED
+		}
+
 		fd := &pbflagsv1.FlagDetail{
 			FlagId:          flagID,
 			DisplayName:     flagDisplayName,
 			Description:     flagDesc,
 			FlagType:        parseFlagType(flagType),
-			Layer:           layer,
-			State:           parseState(state),
-			CurrentValue:    val,
+			State:           st,
 			DefaultValue:    defaultVal,
 			SupportedValues: supportedVals,
 			Archived:        archived,
@@ -516,22 +235,23 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, m
 	return result, condCounts, nil
 }
 
-// GetFlag returns details for a single flag including overrides.
+// GetFlag returns details for a single flag.
 func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDetail, *FlagExtra, error) {
-	var displayName, description, flagType, layer, state string
-	var valueBytes, defaultBytes, supportedBytes []byte
+	var displayName, description, flagType string
+	var killedAt *time.Time
+	var defaultBytes, supportedBytes []byte
 	var archivedAt *time.Time
 	var conditionsJSON []byte
 	var syncSHA *string
 
 	err := s.pool.QueryRow(ctx, `
-		SELECT f.display_name, f.description, f.flag_type, f.layer, f.state, f.value,
+		SELECT f.display_name, f.description, f.flag_type, f.killed_at,
 		       f.default_value, f.supported_values, f.archived_at,
 		       f.conditions, ft.sync_sha
 		FROM feature_flags.flags f
 		LEFT JOIN feature_flags.features ft ON ft.feature_id = f.feature_id
 		WHERE f.flag_id = $1`, flagID).Scan(
-		&displayName, &description, &flagType, &layer, &state, &valueBytes,
+		&displayName, &description, &flagType, &killedAt,
 		&defaultBytes, &supportedBytes, &archivedAt,
 		&conditionsJSON, &syncSHA)
 	if err == pgx.ErrNoRows {
@@ -541,10 +261,6 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 		return nil, nil, fmt.Errorf("query flag: %w", err)
 	}
 
-	val, err := unmarshalFlagValue(valueBytes)
-	if err != nil {
-		s.logger.Warn("failed to unmarshal flag value", "flag_id", flagID, "error", err)
-	}
 	defaultVal, err := unmarshalFlagValue(defaultBytes)
 	if err != nil {
 		s.logger.Warn("failed to unmarshal default value", "flag_id", flagID, "error", err)
@@ -554,14 +270,17 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 		s.logger.Warn("failed to unmarshal supported_values", "flag_id", flagID, "error", err)
 	}
 
+	st := pbflagsv1.State_STATE_DEFAULT
+	if killedAt != nil {
+		st = pbflagsv1.State_STATE_KILLED
+	}
+
 	fd := &pbflagsv1.FlagDetail{
 		FlagId:          flagID,
 		DisplayName:     displayName,
 		Description:     description,
 		FlagType:        parseFlagType(flagType),
-		Layer:           layer,
-		State:           parseState(state),
-		CurrentValue:    val,
+		State:           st,
 		DefaultValue:    defaultVal,
 		SupportedValues: supportedVals,
 		Archived:        archivedAt != nil,
@@ -587,32 +306,7 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 		}
 	}
 
-	rows, err := s.pool.Query(ctx, `
-		SELECT entity_id, state, value
-		FROM feature_flags.flag_overrides
-		WHERE flag_id = $1`, flagID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("query overrides: %w", err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var eid, oState string
-		var oValueBytes []byte
-		if err := rows.Scan(&eid, &oState, &oValueBytes); err != nil {
-			return nil, nil, err
-		}
-		oVal, err := unmarshalFlagValue(oValueBytes)
-		if err != nil {
-			s.logger.Warn("failed to unmarshal override value", "flag_id", flagID, "entity_id", eid, "error", err)
-		}
-		fd.Overrides = append(fd.Overrides, &pbflagsv1.FlagOverrideDetail{
-			EntityId: eid,
-			State:    parseState(oState),
-			Value:    oVal,
-		})
-	}
-
-	return fd, extra, rows.Err()
+	return fd, extra, nil
 }
 
 // AuditLogFilter specifies optional filters for audit log queries.
@@ -692,31 +386,6 @@ func (s *Store) GetAuditLog(ctx context.Context, filter AuditLogFilter) ([]*pbfl
 	return entries, rows.Err()
 }
 
-func insertAuditLog(ctx context.Context, tx pgx.Tx, flagID, action string, oldVal, newVal *pbflagsv1.FlagValue, actor string) error {
-	oldBytes, err := marshalFlagValue(oldVal)
-	if err != nil {
-		return fmt.Errorf("marshal old value for audit: %w", err)
-	}
-	newBytes, err := marshalFlagValue(newVal)
-	if err != nil {
-		return fmt.Errorf("marshal new value for audit: %w", err)
-	}
-	_, err = tx.Exec(ctx, `
-		INSERT INTO feature_flags.flag_audit_log (flag_id, action, old_value, new_value, actor)
-		VALUES ($1, $2, $3, $4, $5)`, flagID, action, oldBytes, newBytes, actor)
-	if err != nil {
-		return fmt.Errorf("insert audit log: %w", err)
-	}
-	return nil
-}
-
-func marshalFlagValue(v *pbflagsv1.FlagValue) ([]byte, error) {
-	if v == nil || v.Value == nil {
-		return nil, nil
-	}
-	return proto.Marshal(v)
-}
-
 func unmarshalFlagValue(b []byte) (*pbflagsv1.FlagValue, error) {
 	if len(b) == 0 {
 		return nil, nil
@@ -773,55 +442,4 @@ func stateToString(st pbflagsv1.State) string {
 	default:
 		return "DEFAULT"
 	}
-}
-
-func parseState(s string) pbflagsv1.State {
-	switch s {
-	case "ENABLED":
-		return pbflagsv1.State_STATE_ENABLED
-	case "DEFAULT":
-		return pbflagsv1.State_STATE_DEFAULT
-	case "KILLED":
-		return pbflagsv1.State_STATE_KILLED
-	default:
-		return pbflagsv1.State_STATE_UNSPECIFIED
-	}
-}
-
-func isGlobalLayer(s string) bool {
-	return s == "" || strings.EqualFold(s, "GLOBAL")
-}
-
-// validateFlagValueType checks that a FlagValue's oneof variant matches the
-// declared FlagType. Returns nil if the value is nil or the types match.
-func validateFlagValueType(value *pbflagsv1.FlagValue, flagType pbflagsv1.FlagType) error {
-	if value == nil || value.Value == nil {
-		return nil
-	}
-	expected := flagType
-	var actual pbflagsv1.FlagType
-	switch value.Value.(type) {
-	case *pbflagsv1.FlagValue_BoolValue:
-		actual = pbflagsv1.FlagType_FLAG_TYPE_BOOL
-	case *pbflagsv1.FlagValue_StringValue:
-		actual = pbflagsv1.FlagType_FLAG_TYPE_STRING
-	case *pbflagsv1.FlagValue_Int64Value:
-		actual = pbflagsv1.FlagType_FLAG_TYPE_INT64
-	case *pbflagsv1.FlagValue_DoubleValue:
-		actual = pbflagsv1.FlagType_FLAG_TYPE_DOUBLE
-	case *pbflagsv1.FlagValue_BoolListValue:
-		actual = pbflagsv1.FlagType_FLAG_TYPE_BOOL_LIST
-	case *pbflagsv1.FlagValue_StringListValue:
-		actual = pbflagsv1.FlagType_FLAG_TYPE_STRING_LIST
-	case *pbflagsv1.FlagValue_Int64ListValue:
-		actual = pbflagsv1.FlagType_FLAG_TYPE_INT64_LIST
-	case *pbflagsv1.FlagValue_DoubleListValue:
-		actual = pbflagsv1.FlagType_FLAG_TYPE_DOUBLE_LIST
-	default:
-		return fmt.Errorf("unknown FlagValue variant")
-	}
-	if actual != expected {
-		return fmt.Errorf("value type %s does not match flag type %s", actual, expected)
-	}
-	return nil
 }

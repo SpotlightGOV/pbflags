@@ -67,8 +67,7 @@ func TestEvaluate_IncrementsEvaluationCounter(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{
 			FlagID: "f/1",
-			State:  pbflagsv1.State_STATE_ENABLED,
-			Value:  boolVal(true),
+			State:  pbflagsv1.State_STATE_DEFAULT,
 		},
 	}
 	eval := NewEvaluator(cache, fetcher, slog.Default(), m, noopTracer())
@@ -88,7 +87,7 @@ func TestEvaluate_IncrementsEvaluationCounter(t *testing.T) {
 			for _, lp := range metric.GetLabel() {
 				labels[lp.GetName()] = lp.GetValue()
 			}
-			assert.Equal(t, "global", labels["source"])
+			assert.Equal(t, "default", labels["source"])
 			assert.Equal(t, "ok", labels["status"])
 			return
 		}

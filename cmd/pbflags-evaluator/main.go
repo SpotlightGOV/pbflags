@@ -174,10 +174,8 @@ func run(cfg evaluator.Config, logger *slog.Logger) error {
 	// ── Cache + Evaluator ───────────────────────────────────────────
 
 	cache, err := evaluator.NewCacheStore(evaluator.CacheStoreConfig{
-		FlagTTL:         cfg.Cache.FlagTTL,
-		OverrideTTL:     cfg.Cache.OverrideTTL,
-		OverrideMaxSize: cfg.Cache.OverrideMaxSize,
-		JitterPercent:   cfg.Cache.JitterPercent,
+		FlagTTL:       cfg.Cache.FlagTTL,
+		JitterPercent: cfg.Cache.JitterPercent,
 	})
 	if err != nil {
 		return fmt.Errorf("create cache: %w", err)
@@ -200,14 +198,6 @@ func run(cfg evaluator.Config, logger *slog.Logger) error {
 	// ── HTTP server ─────────────────────────────────────────────────
 
 	svc := evaluator.NewService(eval, tracker, cache, state)
-
-	prometheus.MustRegister(prometheus.NewGaugeFunc(
-		prometheus.GaugeOpts{
-			Name: "pbflags_override_cache_size",
-			Help: "Approximate entries in the override LRU cache.",
-		},
-		func() float64 { return float64(cache.OverrideCacheSize()) },
-	))
 
 	serverOtelInt, err := otelconnect.NewInterceptor()
 	if err != nil {

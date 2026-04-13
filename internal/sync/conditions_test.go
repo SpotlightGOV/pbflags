@@ -80,18 +80,25 @@ func TestCompileFlag(t *testing.T) {
 		entry := configfile.FlagEntry{
 			Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}},
 		}
-		condJSON, dimJSON, valueBytes, _, err := compileFlag("email_enabled", entry, compiler, boundedDims)
+		condJSON, dimJSON, _, err := compileFlag("email_enabled", entry, compiler, boundedDims)
 		if err != nil {
 			t.Fatalf("compileFlag: %v", err)
 		}
-		if condJSON != nil {
-			t.Error("expected nil condJSON for static value")
+		if condJSON == nil {
+			t.Fatal("expected non-nil condJSON for static value")
+		}
+		var conds []flagfmt.StoredCondition
+		if err := json.Unmarshal(condJSON, &conds); err != nil {
+			t.Fatalf("unmarshal conditions: %v", err)
+		}
+		if len(conds) != 1 {
+			t.Fatalf("got %d conditions, want 1", len(conds))
+		}
+		if conds[0].CEL != nil {
+			t.Errorf("static value condition CEL should be nil, got %v", conds[0].CEL)
 		}
 		if dimJSON != nil {
 			t.Error("expected nil dimJSON for static value")
-		}
-		if valueBytes == nil {
-			t.Error("expected non-nil valueBytes for static value")
 		}
 	})
 
@@ -102,7 +109,7 @@ func TestCompileFlag(t *testing.T) {
 				{When: "", Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: "weekly"}}},
 			},
 		}
-		condJSON, dimJSON, _, warnings, err := compileFlag("digest_frequency", entry, compiler, boundedDims)
+		condJSON, dimJSON, warnings, err := compileFlag("digest_frequency", entry, compiler, boundedDims)
 		if err != nil {
 			t.Fatalf("compileFlag: %v", err)
 		}
@@ -151,7 +158,7 @@ func TestCompileFlag(t *testing.T) {
 				{When: "", Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: false}}},
 			},
 		}
-		_, _, _, warnings, err := compileFlag("test_flag", entry, compiler, boundedDims)
+		_, _, warnings, err := compileFlag("test_flag", entry, compiler, boundedDims)
 		if err != nil {
 			t.Fatalf("compileFlag: %v", err)
 		}
@@ -167,8 +174,8 @@ func TestSyncConditionsIntegration(t *testing.T) {
 
 	// Create a test feature with two flags.
 	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "GLOBAL"},
-		{FlagType: "STRING", Layer: "GLOBAL"},
+		{FlagType: "BOOL"},
+		{FlagType: "STRING"},
 	})
 
 	// Build descriptor set from example protos.
@@ -242,16 +249,30 @@ flags:
 		t.Error("cel_version should be set")
 	}
 
-	// Static flag should have NULL conditions.
+	// Static flag should now have a single-entry condition chain (no CEL).
 	var staticCond []byte
+	var staticCelVersion *string
 	err = pool.QueryRow(ctx,
-		`SELECT conditions FROM feature_flags.flags WHERE flag_id = $1`,
+		`SELECT conditions, cel_version FROM feature_flags.flags WHERE flag_id = $1`,
 		tf.FlagIDs[0],
-	).Scan(&staticCond)
+	).Scan(&staticCond, &staticCelVersion)
 	if err != nil {
 		t.Fatalf("query static flag: %v", err)
 	}
-	if staticCond != nil {
-		t.Error("static flag should have NULL conditions")
+	if staticCond == nil {
+		t.Fatal("static flag should have non-nil conditions")
+	}
+	var staticConds []flagfmt.StoredCondition
+	if err := json.Unmarshal(staticCond, &staticConds); err != nil {
+		t.Fatalf("unmarshal static conditions: %v", err)
+	}
+	if len(staticConds) != 1 {
+		t.Fatalf("got %d static conditions, want 1", len(staticConds))
+	}
+	if staticConds[0].CEL != nil {
+		t.Errorf("static condition CEL should be nil, got %v", staticConds[0].CEL)
+	}
+	if staticCelVersion == nil || *staticCelVersion == "" {
+		t.Error("static flag cel_version should be set")
 	}
 }

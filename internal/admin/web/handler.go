@@ -371,28 +371,12 @@ func (h *Handler) updateFlagState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var value *pbflagsv1.FlagValue
-	if valueStr := r.FormValue("value"); valueStr != "" {
-		flagTypeStr := r.FormValue("flag_type")
-		var err error
-		value, err = parseFlagValue(flagTypeStr, valueStr)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("invalid value: %v", err), http.StatusBadRequest)
-			return
-		}
-	}
-
-	if state == pbflagsv1.State_STATE_ENABLED && value == nil {
-		http.Error(w, "a value is required when enabling a flag", http.StatusBadRequest)
-		return
-	}
-
 	actor := r.FormValue("actor")
 	if actor == "" {
 		actor = "admin-ui"
 	}
 
-	if err := h.store.UpdateFlagState(r.Context(), flagID, state, value, actor); err != nil {
+	if err := h.store.UpdateFlagState(r.Context(), flagID, state, actor); err != nil {
 		h.serverError(w, "update flag state", err)
 		return
 	}

@@ -124,15 +124,7 @@ func (s *Service) GetKilledFlags(ctx context.Context, _ *connect.Request[pbflags
 	return connect.NewResponse(resp), nil
 }
 
-// GetOverrides fetches overrides for an entity via the StateServer.
-func (s *Service) GetOverrides(ctx context.Context, req *connect.Request[pbflagsv1.GetOverridesRequest]) (*connect.Response[pbflagsv1.GetOverridesResponse], error) {
-	entityID := req.Msg.EntityId
-	if entityID == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
-	}
-	resp, err := s.state.GetOverridesProto(ctx, entityID, req.Msg.FlagIds)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-	return connect.NewResponse(resp), nil
+// GetOverrides returns an empty response. The overrides table has been removed.
+func (s *Service) GetOverrides(_ context.Context, _ *connect.Request[pbflagsv1.GetOverridesRequest]) (*connect.Response[pbflagsv1.GetOverridesResponse], error) {
+	return connect.NewResponse(&pbflagsv1.GetOverridesResponse{}), nil
 }

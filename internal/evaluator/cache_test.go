@@ -70,57 +70,6 @@ func TestCacheStore_StaleFlagState_MissReturnsNil(t *testing.T) {
 	require.Nil(t, cs.GetStaleFlagState("nonexistent"), "expected nil stale for missing flag")
 }
 
-func TestCacheStore_Override_SetAndGet(t *testing.T) {
-	cs := newTestCache(t)
-
-	override := &CachedOverride{
-		FlagID:   "feature/1",
-		EntityID: "user-42",
-		State:    pbflagsv1.State_STATE_ENABLED,
-		Value:    &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64Value{Int64Value: 99}},
-	}
-	cs.SetOverride(override)
-	waitCaches(cs)
-
-	got := cs.GetOverride("feature/1", "user-42")
-	require.NotNil(t, got, "expected cached override")
-	require.Equal(t, int64(99), got.Value.GetInt64Value(), "override value")
-}
-
-func TestCacheStore_Override_TTLExpiry(t *testing.T) {
-	cs := newTestCache(t)
-
-	override := &CachedOverride{
-		FlagID:   "feature/1",
-		EntityID: "user-1",
-		State:    pbflagsv1.State_STATE_ENABLED,
-		Value:    &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}},
-	}
-	cs.SetOverride(override)
-	waitCaches(cs)
-	require.NotNil(t, cs.GetOverride("feature/1", "user-1"), "expected override before TTL")
-
-	time.Sleep(100 * time.Millisecond)
-	require.Nil(t, cs.GetOverride("feature/1", "user-1"), "expected nil after TTL")
-}
-
-func TestCacheStore_StaleOverride_SurvivesTTL(t *testing.T) {
-	cs := newTestCache(t)
-
-	override := &CachedOverride{
-		FlagID:   "feature/1",
-		EntityID: "user-1",
-		State:    pbflagsv1.State_STATE_ENABLED,
-		Value:    &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleValue{DoubleValue: 3.14}},
-	}
-	cs.SetOverride(override)
-	time.Sleep(100 * time.Millisecond)
-
-	stale := cs.GetStaleOverride("feature/1", "user-1")
-	require.NotNil(t, stale, "expected stale override to survive TTL")
-	require.Equal(t, 3.14, stale.Value.GetDoubleValue(), "stale override value")
-}
-
 func TestCacheStore_KillSet_SetAndGet(t *testing.T) {
 	cs := newTestCache(t)
 
@@ -163,10 +112,8 @@ func TestKillSet_NilSafe(t *testing.T) {
 
 func TestCacheStore_JitteredTTL_NoJitter(t *testing.T) {
 	cs, err := NewCacheStore(CacheStoreConfig{
-		FlagTTL:         time.Second,
-		OverrideTTL:     time.Second,
-		OverrideMaxSize: 10,
-		JitterPercent:   0,
+		FlagTTL:       time.Second,
+		JitterPercent: 0,
 	})
 	require.NoError(t, err)
 	defer cs.Close()
@@ -178,10 +125,8 @@ func TestCacheStore_JitteredTTL_NoJitter(t *testing.T) {
 func newWriteThroughCache(t *testing.T) *CacheStore {
 	t.Helper()
 	cs, err := NewCacheStore(CacheStoreConfig{
-		FlagTTL:         0,
-		OverrideTTL:     0,
-		OverrideMaxSize: 100,
-		JitterPercent:   0,
+		FlagTTL:       0,
+		JitterPercent: 0,
 	})
 	require.NoError(t, err)
 	t.Cleanup(cs.Close)
@@ -217,43 +162,10 @@ func TestCacheStore_WriteThrough_FlagStaleMapPopulated(t *testing.T) {
 	require.Equal(t, "hello", stale.Value.GetStringValue())
 }
 
-func TestCacheStore_WriteThrough_OverrideGetAlwaysMisses(t *testing.T) {
-	cs := newWriteThroughCache(t)
-
-	override := &CachedOverride{
-		FlagID:   "feature/1",
-		EntityID: "user-42",
-		State:    pbflagsv1.State_STATE_ENABLED,
-		Value:    &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64Value{Int64Value: 99}},
-	}
-	cs.SetOverride(override)
-	waitCaches(cs)
-
-	require.Nil(t, cs.GetOverride("feature/1", "user-42"), "write-through: hot cache should always miss")
-}
-
-func TestCacheStore_WriteThrough_OverrideStaleMapPopulated(t *testing.T) {
-	cs := newWriteThroughCache(t)
-
-	override := &CachedOverride{
-		FlagID:   "feature/1",
-		EntityID: "user-42",
-		State:    pbflagsv1.State_STATE_ENABLED,
-		Value:    &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleValue{DoubleValue: 3.14}},
-	}
-	cs.SetOverride(override)
-
-	stale := cs.GetStaleOverride("feature/1", "user-42")
-	require.NotNil(t, stale, "write-through: stale map should still be populated")
-	require.Equal(t, 3.14, stale.Value.GetDoubleValue())
-}
-
 func TestCacheStore_JitteredTTL_WithJitter(t *testing.T) {
 	cs, err := NewCacheStore(CacheStoreConfig{
-		FlagTTL:         time.Second,
-		OverrideTTL:     time.Second,
-		OverrideMaxSize: 10,
-		JitterPercent:   20,
+		FlagTTL:       time.Second,
+		JitterPercent: 20,
 	})
 	require.NoError(t, err)
 	defer cs.Close()

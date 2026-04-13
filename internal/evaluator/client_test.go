@@ -177,60 +177,6 @@ func TestFetchFlagState_Timeout(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// FetchOverrides
-// ---------------------------------------------------------------------------
-
-func TestFetchOverrides_Success(t *testing.T) {
-	mock := &mockEvalClient{
-		getOverridesFn: func(_ context.Context, req *connect.Request[pbflagsv1.GetOverridesRequest]) (*connect.Response[pbflagsv1.GetOverridesResponse], error) {
-			return connect.NewResponse(&pbflagsv1.GetOverridesResponse{
-				Overrides: []*pbflagsv1.OverrideState{
-					{
-						FlagId:   "feat/1",
-						EntityId: req.Msg.EntityId,
-						State:    pbflagsv1.State_STATE_ENABLED,
-					},
-				},
-			}), nil
-		},
-	}
-	c := newTestClient(mock)
-
-	overrides, err := c.FetchOverrides(context.Background(), "user-42", []string{"feat/1"})
-	require.NoError(t, err)
-	require.Len(t, overrides, 1)
-	assert.Equal(t, "feat/1", overrides[0].FlagID)
-	assert.Equal(t, "user-42", overrides[0].EntityID)
-	assert.Equal(t, pbflagsv1.State_STATE_ENABLED, overrides[0].State)
-}
-
-func TestFetchOverrides_Error(t *testing.T) {
-	mock := &mockEvalClient{
-		getOverridesFn: func(_ context.Context, _ *connect.Request[pbflagsv1.GetOverridesRequest]) (*connect.Response[pbflagsv1.GetOverridesResponse], error) {
-			return nil, connect.NewError(connect.CodeUnavailable, errors.New("network error"))
-		},
-	}
-	c := newTestClient(mock)
-
-	_, err := c.FetchOverrides(context.Background(), "user-42", []string{"feat/1"})
-	require.Error(t, err)
-	assert.Equal(t, int32(1), c.tracker.ConsecutiveFailures())
-}
-
-func TestFetchOverrides_Empty(t *testing.T) {
-	mock := &mockEvalClient{
-		getOverridesFn: func(_ context.Context, _ *connect.Request[pbflagsv1.GetOverridesRequest]) (*connect.Response[pbflagsv1.GetOverridesResponse], error) {
-			return connect.NewResponse(&pbflagsv1.GetOverridesResponse{}), nil
-		},
-	}
-	c := newTestClient(mock)
-
-	overrides, err := c.FetchOverrides(context.Background(), "user-42", nil)
-	require.NoError(t, err)
-	assert.Empty(t, overrides)
-}
-
-// ---------------------------------------------------------------------------
 // Health tracking integration
 // ---------------------------------------------------------------------------
 

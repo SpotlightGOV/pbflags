@@ -117,7 +117,6 @@ func (f *TestFeature) FlagID(fieldNum int) string {
 // FlagSpec describes one flag to create within a test feature.
 type FlagSpec struct {
 	FlagType string // e.g. "BOOL", "STRING", "INT64", "DOUBLE"
-	Layer    string // e.g. "USER", "GLOBAL"
 }
 
 // CreateTestFeature inserts a uniquely-named feature and its flags into the
@@ -144,9 +143,9 @@ func CreateTestFeature(t *testing.T, pool *pgxpool.Pool, specs []FlagSpec) *Test
 	for i, spec := range specs {
 		flagID := fmt.Sprintf("%s/%d", featureID, i+1)
 		_, err := pool.Exec(ctx, `
-			INSERT INTO feature_flags.flags (flag_id, feature_id, field_number, flag_type, layer, state)
-			VALUES ($1, $2, $3, $4, $5, 'DEFAULT')`,
-			flagID, featureID, i+1, spec.FlagType, spec.Layer)
+			INSERT INTO feature_flags.flags (flag_id, feature_id, field_number, flag_type)
+			VALUES ($1, $2, $3, $4)`,
+			flagID, featureID, i+1, spec.FlagType)
 		if err != nil {
 			t.Fatalf("testdb: create flag %s: %v", flagID, err)
 		}
@@ -155,10 +154,9 @@ func CreateTestFeature(t *testing.T, pool *pgxpool.Pool, specs []FlagSpec) *Test
 
 	t.Cleanup(func() {
 		ctx := context.Background()
-		// Delete in FK order: audit log (no FK but references flag_id), overrides, flags, feature.
+		// Delete in FK order: audit log (no FK but references flag_id), flags, feature.
 		for _, fid := range tf.FlagIDs {
 			pool.Exec(ctx, `DELETE FROM feature_flags.flag_audit_log WHERE flag_id = $1`, fid)
-			pool.Exec(ctx, `DELETE FROM feature_flags.flag_overrides WHERE flag_id = $1`, fid)
 		}
 		pool.Exec(ctx, `DELETE FROM feature_flags.flags WHERE feature_id = $1`, featureID)
 		pool.Exec(ctx, `DELETE FROM feature_flags.features WHERE feature_id = $1`, featureID)

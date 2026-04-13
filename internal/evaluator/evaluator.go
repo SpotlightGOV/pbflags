@@ -17,12 +17,10 @@ import (
 // Fetcher fetches flag state from the remote flag server on demand.
 type Fetcher interface {
 	FetchFlagState(ctx context.Context, flagID string) (*CachedFlagState, error)
-	FetchOverrides(ctx context.Context, entityID string, flagIDs []string) ([]*CachedOverride, error)
 }
 
-// Evaluator resolves flag values using the full precedence chain:
-// kill set → per-entity override → global state → stale cache → compiled default.
-// Note: per-entity kills are not supported; overrides can only be ENABLED or DEFAULT.
+// Evaluator resolves flag values using the precedence chain:
+// kill set → conditions (CEL) → global state → stale cache → compiled default.
 type Evaluator struct {
 	cache           *CacheStore
 	condCache       *ConditionCache // nil when condition caching is not configured
@@ -31,10 +29,9 @@ type Evaluator struct {
 	logger          *slog.Logger
 	metrics         *Metrics
 	tracer          trace.Tracer
-	inlineKillCheck bool          // when true, fetch flag state before overrides to check kills
+	inlineKillCheck bool          // when true, fetch flag state eagerly to check kills
 	fetchTimeout    time.Duration // timeout for background refresh fetches
 	flagGroup       singleflight.Group
-	overrideGroup   singleflight.Group
 }
 
 // EvaluatorOption configures optional Evaluator behavior.
@@ -42,7 +39,7 @@ type EvaluatorOption func(*Evaluator)
 
 // WithInlineKillCheck enables inline kill checking. Use this when the kill
 // set poller is not running (e.g. flagTTL <= killTTL) so kills are still
-// checked before overrides by fetching each flag's state eagerly.
+// checked by fetching each flag's state eagerly.
 func WithInlineKillCheck() EvaluatorOption {
 	return func(e *Evaluator) { e.inlineKillCheck = true }
 }
@@ -109,7 +106,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, flagID, entityID string) (valu
 	}
 
 	// 2. Inline kill check: when the kill set poller is not running,
-	//    fetch state now and check killed before overrides.
+	//    fetch state now and check killed eagerly.
 	var prefetched *CachedFlagState
 	if e.inlineKillCheck {
 		fetched, err := e.fetcher.FetchFlagState(ctx, flagID)
@@ -122,14 +119,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, flagID, entityID string) (valu
 		}
 	}
 
-	// 3. Per-entity override (if applicable).
-	if entityID != "" {
-		if val, src, ok := e.resolveOverride(ctx, flagID, entityID); ok {
-			return val, src
-		}
-	}
-
-	// 4. Global state.
+	// 3. Global state — conditions and default handle the actual value.
 	if prefetched != nil {
 		return e.evalFlagState(prefetched)
 	}
@@ -204,61 +194,6 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 	return val, src
 }
 
-func (e *Evaluator) resolveOverride(
-	ctx context.Context,
-	flagID, entityID string,
-) (*pbflagsv1.FlagValue, pbflagsv1.EvaluationSource, bool) {
-	override := e.cache.GetOverride(flagID, entityID)
-	if override != nil {
-		e.metrics.CacheHitsTotal.WithLabelValues("overrides").Inc()
-		trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("cache_hit", true))
-	} else {
-		e.metrics.CacheMissesTotal.WithLabelValues("overrides").Inc()
-
-		// Stale-while-revalidate: if we have a stale value, return it
-		// immediately and refresh in the background.
-		if stale := e.cache.GetStaleOverride(flagID, entityID); stale != nil {
-			e.backgroundRefreshOverride(entityID, flagID)
-			return e.evalOverride(stale, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_STALE)
-		}
-
-		// Cold start: no stale value, must block on fetch.
-		fetched, err := e.fetcher.FetchOverrides(ctx, entityID, []string{flagID})
-		if err != nil {
-			e.logger.Debug("override fetch failed", "flag_id", flagID, "entity_id", entityID, "error", err)
-			return nil, 0, false
-		}
-		for _, o := range fetched {
-			e.cache.SetOverride(o)
-			if o.FlagID == flagID {
-				override = o
-			}
-		}
-	}
-
-	if override == nil {
-		return nil, 0, false
-	}
-
-	return e.evalOverride(override, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_OVERRIDE)
-}
-
-func (e *Evaluator) evalOverride(
-	override *CachedOverride,
-	freshSource pbflagsv1.EvaluationSource,
-) (*pbflagsv1.FlagValue, pbflagsv1.EvaluationSource, bool) {
-	switch override.State {
-	case pbflagsv1.State_STATE_KILLED, pbflagsv1.State_STATE_DEFAULT:
-		return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, true
-	case pbflagsv1.State_STATE_ENABLED:
-		if override.Value != nil {
-			return override.Value, freshSource, true
-		}
-		return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, true
-	}
-	return nil, 0, false
-}
-
 func (e *Evaluator) resolveGlobal(
 	ctx context.Context,
 	flagID string,
@@ -309,28 +244,20 @@ func (e *Evaluator) evalFlagState(state *CachedFlagState) (*pbflagsv1.FlagValue,
 }
 
 // evalFlagStateWithSource evaluates flag state with a caller-specified source
-// label for enabled values (e.g. GLOBAL for fresh, STALE for background refresh).
-func (e *Evaluator) evalFlagStateWithSource(state *CachedFlagState, freshSource pbflagsv1.EvaluationSource) (*pbflagsv1.FlagValue, pbflagsv1.EvaluationSource) {
+// label (e.g. GLOBAL for fresh, STALE for background refresh).
+// The global state no longer carries a value — conditions and compiled defaults
+// handle actual values. This method checks killed and archived status only.
+func (e *Evaluator) evalFlagStateWithSource(state *CachedFlagState, _ pbflagsv1.EvaluationSource) (*pbflagsv1.FlagValue, pbflagsv1.EvaluationSource) {
 	if state == nil {
 		return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT
 	}
-
 	if state.Archived {
-		if state.Value != nil {
-			return state.Value, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_ARCHIVED
-		}
 		return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT
 	}
-
-	switch state.State {
-	case pbflagsv1.State_STATE_DEFAULT, pbflagsv1.State_STATE_KILLED:
+	if state.State == pbflagsv1.State_STATE_KILLED {
 		return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT
-	case pbflagsv1.State_STATE_ENABLED:
-		if state.Value != nil {
-			return state.Value, freshSource
-		}
 	}
-
+	// No global value — conditions and default handle everything.
 	return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT
 }
 
@@ -352,30 +279,6 @@ func (e *Evaluator) backgroundRefreshFlag(flagID string) {
 				e.setFlagState(fetched)
 			}
 			e.metrics.BackgroundRefreshes.WithLabelValues("flags", "ok").Inc()
-			return nil, nil
-		})
-	}()
-}
-
-// backgroundRefreshOverride triggers a singleflight-guarded background fetch
-// for a per-entity override. The result is written to the cache for the next caller.
-func (e *Evaluator) backgroundRefreshOverride(entityID, flagID string) {
-	key := flagID + ":" + entityID
-	go func() {
-		_, _, _ = e.overrideGroup.Do(key, func() (any, error) {
-			ctx, cancel := context.WithTimeout(context.Background(), e.fetchTimeout)
-			defer cancel()
-
-			fetched, err := e.fetcher.FetchOverrides(ctx, entityID, []string{flagID})
-			if err != nil {
-				e.logger.Debug("background override refresh failed", "flag_id", flagID, "entity_id", entityID, "error", err)
-				e.metrics.BackgroundRefreshes.WithLabelValues("overrides", "error").Inc()
-				return nil, err
-			}
-			for _, o := range fetched {
-				e.cache.SetOverride(o)
-			}
-			e.metrics.BackgroundRefreshes.WithLabelValues("overrides", "ok").Inc()
 			return nil, nil
 		})
 	}()

@@ -35,10 +35,10 @@ type testEnv struct {
 // e2eSpecs returns the standard set of flag specs for E2E tests.
 func e2eSpecs() []testdb.FlagSpec {
 	return []testdb.FlagSpec{
-		{FlagType: "BOOL", Layer: "USER"},     // flag 1: supports per-entity overrides
-		{FlagType: "STRING", Layer: "GLOBAL"}, // flag 2
-		{FlagType: "INT64", Layer: "GLOBAL"},  // flag 3
-		{FlagType: "DOUBLE", Layer: "GLOBAL"}, // flag 4
+		{FlagType: "BOOL"},   // flag 1: supports per-entity overrides
+		{FlagType: "STRING"}, // flag 2
+		{FlagType: "INT64"},  // flag 3
+		{FlagType: "DOUBLE"}, // flag 4
 	}
 }
 
