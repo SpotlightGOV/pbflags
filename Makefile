@@ -1,4 +1,4 @@
-.PHONY: help generate build test test-e2e lint fmt setup clean docker dev dev-db release-notes release
+.PHONY: help generate build test test-e2e lint fmt setup clean docker dev dev-db dev-seed release-notes release
 
 .DEFAULT_GOAL := help
 
@@ -8,6 +8,7 @@ help:
 	@echo ""
 	@echo "Development:"
 	@echo "  dev             Start admin server locally with live asset reloading (standalone mode)"
+	@echo "  dev-seed        Sync demo conditions into the running dev database (second terminal)"
 	@echo "  dev-db          Start only the PostgreSQL container for local development"
 	@echo ""
 	@echo "Build:"
@@ -132,13 +133,28 @@ endif
 	echo "Release notes staged: $$NOTES"; \
 	echo "Commit when ready, or run 'make release' to finish the release."
 
+# Build descriptors.pb from proto sources for local development.
+dev/descriptors.pb: $(wildcard proto/**/*.proto)
+	buf build proto -o dev/descriptors.pb
+
+# Seed the running dev database with demo flag conditions via the sync binary.
+# Call from a second terminal after `make dev` is running.
+dev-seed: dev/descriptors.pb
+	go run ./cmd/pbflags-sync \
+		--database=postgres://admin:admin@localhost:5433/pbflags?sslmode=disable \
+		--descriptors=dev/descriptors.pb \
+		--config=dev/config
+	@echo "Demo data synced. Refresh the admin UI."
+
 # Run the admin server locally with live asset reloading (standalone mode).
 # CSS/template changes take effect on browser refresh; Go changes need a restart.
-dev: dev-db
+# Uses dev/descriptors.pb (built from proto/) so conditions can be synced.
+dev: dev-db dev/descriptors.pb
 	go run ./cmd/pbflags-admin \
 		--standalone \
 		--database=postgres://admin:admin@localhost:5433/pbflags?sslmode=disable \
-		--descriptors=internal/evaluator/testdata/descriptors.pb \
+		--descriptors=dev/descriptors.pb \
+		--config=dev/config \
 		--evaluator-listen=localhost:9201 \
 		--listen=localhost:9200 \
 		--env-name=local \

@@ -1,0 +1,43 @@
+# Demo conditions config for the notifications feature.
+# Exercises condition chains, static values, and otherwise clauses.
+feature: notifications
+
+flags:
+  email_enabled:
+    conditions:
+      - when: "ctx.is_internal"
+        value: true
+      - when: "ctx.plan == 3"
+        value: true
+      - otherwise: false
+
+  digest_frequency:
+    conditions:
+      - when: "ctx.plan == 3"
+        value: "hourly"
+      - when: "ctx.plan == 2"
+        value: "daily"
+      - otherwise: "weekly"
+
+  max_retries:
+    conditions:
+      - when: "ctx.is_internal"
+        value: 10
+      - when: "ctx.plan == 3"
+        value: 5
+      - otherwise: 3
+
+  score_threshold:
+    value: 0.75
+
+  notification_emails:
+    value:
+      - ops@example.com
+      - alerts@example.com
+
+  retry_delays:
+    value:
+      - 1
+      - 5
+      - 30
+      - 120

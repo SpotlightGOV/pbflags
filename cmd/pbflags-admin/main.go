@@ -75,6 +75,7 @@ func main() {
 	evaluatorListen := fs.String("evaluator-listen", "", "Evaluator listen address (default :9201, empty to disable)")
 	standalone := fs.Bool("standalone", false, "Run all roles in one process (admin + evaluator + sync + migrations)")
 	descriptors := fs.String("descriptors", "", "Path to descriptors.pb (requires --standalone)")
+	configDir := fs.String("config", "", "Directory of YAML flag config files (standalone; syncs conditions on startup)")
 	killTTL := fs.Duration("cache-kill-ttl", 0, "Kill set cache TTL (default 30s)")
 	flagTTL := fs.Duration("cache-flag-ttl", 0, "Global flag state cache TTL (default 10m)")
 	overrideTTL := fs.Duration("cache-override-ttl", 0, "Per-entity override cache TTL (default 10m)")
@@ -119,7 +120,7 @@ func main() {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	if err := run(cfg, *standalone, *devAssets, logger); err != nil {
+	if err := run(cfg, *standalone, *configDir, *devAssets, logger); err != nil {
 		logger.Error("fatal", "error", err)
 		os.Exit(1)
 	}
@@ -137,7 +138,7 @@ func setDurationEnvIfFlag(key string, d time.Duration) {
 	}
 }
 
-func run(cfg evaluator.Config, standalone bool, devAssetsDir string, logger *slog.Logger) error {
+func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, logger *slog.Logger) error {
 	mode := "normal"
 	if standalone {
 		mode = "standalone"
@@ -210,14 +211,32 @@ func run(cfg evaluator.Config, standalone bool, devAssetsDir string, logger *slo
 			return fmt.Errorf("connect for sync: %w", err)
 		}
 		result, err := defsync.SyncDefinitions(ctx, syncConn, defs, logger)
-		syncConn.Close(ctx)
 		if err != nil {
+			syncConn.Close(ctx)
 			return fmt.Errorf("sync definitions: %w", err)
 		}
 		logger.Info("definitions synced",
 			"features", result.Features,
 			"flags_upserted", result.FlagsUpserted,
 			"flags_archived", result.FlagsArchived)
+
+		if configDir != "" {
+			descriptorData, readErr := os.ReadFile(cfg.Descriptors)
+			if readErr != nil {
+				syncConn.Close(ctx)
+				return fmt.Errorf("read descriptors for conditions: %w", readErr)
+			}
+			condResult, condErr := defsync.SyncConditions(ctx, syncConn, configDir, descriptorData, defs, logger, "")
+			if condErr != nil {
+				syncConn.Close(ctx)
+				return fmt.Errorf("sync conditions: %w", condErr)
+			}
+			for _, w := range condResult.Warnings {
+				logger.Warn(w)
+			}
+			logger.Info("conditions synced", "flags_updated", condResult.FlagsUpdated)
+		}
+		syncConn.Close(ctx)
 	}
 
 	// ── Cache + Evaluator ───────────────────────────────────────────

@@ -7,6 +7,9 @@ release-notes.md
 /pbflags-sync
 /protoc-gen-pbflags
 
+# Dev build artifacts
+dev/descriptors.pb
+
 # E2E test traces (Playwright)
 internal/e2e/testdata/
 
