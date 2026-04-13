@@ -3,5 +3,7 @@
   "backend": "dolt",
   "dolt_mode": "server",
   "dolt_database": "pb",
-  "project_id": "205a2032-31f1-4718-8063-20b28b63499c"
+  "project_id": "205a2032-31f1-4718-8063-20b28b63499c",
+  "dolt_host": "127.0.0.1",
+  "dolt_user": "root"
 }
