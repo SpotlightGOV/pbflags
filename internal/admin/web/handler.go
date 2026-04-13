@@ -301,6 +301,7 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 		"FlagID", flagID,
 		"Feature", strings.Split(flagID, "/")[0],
 		"Conditions", extra.Conditions,
+		"ConditionsError", extra.ConditionsError,
 		"SyncSHA", extra.SyncSHA,
 	)
 
@@ -410,13 +411,14 @@ func (h *Handler) updateFlagState(w http.ResponseWriter, r *http.Request) {
 			h.logger.Error("get audit log after state update", "flag_id", flagID, "error", err)
 		}
 		h.render(w, "flag_content", map[string]any{
-			"Flag":       flag,
-			"Audit":      entries,
-			"Page":       "flag",
-			"FlagID":     flagID,
-			"Feature":    strings.Split(flagID, "/")[0],
-			"Conditions": extra.Conditions,
-			"SyncSHA":    extra.SyncSHA,
+			"Flag":            flag,
+			"Audit":           entries,
+			"Page":            "flag",
+			"FlagID":          flagID,
+			"Feature":         strings.Split(flagID, "/")[0],
+			"Conditions":      extra.Conditions,
+			"ConditionsError": extra.ConditionsError,
+			"SyncSHA":         extra.SyncSHA,
 		})
 		return
 	}
@@ -781,11 +783,20 @@ func flagIDEscape(id string) string {
 
 // safeSlice returns s[lo:hi], clamping indices to the string length.
 func safeSlice(s string, lo, hi int) string {
+	if lo < 0 {
+		lo = 0
+	}
+	if hi < 0 {
+		hi = 0
+	}
 	if lo > len(s) {
 		lo = len(s)
 	}
 	if hi > len(s) {
 		hi = len(s)
+	}
+	if lo > hi {
+		lo = hi
 	}
 	return s[lo:hi]
 }

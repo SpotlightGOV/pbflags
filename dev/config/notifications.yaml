@@ -7,15 +7,15 @@ flags:
     conditions:
       - when: "ctx.is_internal"
         value: true
-      - when: "ctx.plan == 3"
+      - when: "ctx.plan == PlanLevel.ENTERPRISE"
         value: true
       - otherwise: false
 
   digest_frequency:
     conditions:
-      - when: "ctx.plan == 3"
+      - when: "ctx.plan == PlanLevel.ENTERPRISE"
         value: "hourly"
-      - when: "ctx.plan == 2"
+      - when: "ctx.plan == PlanLevel.PRO"
         value: "daily"
       - otherwise: "weekly"
 

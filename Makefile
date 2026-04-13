@@ -134,7 +134,7 @@ endif
 	echo "Commit when ready, or run 'make release' to finish the release."
 
 # Build descriptors.pb from proto sources for local development.
-dev/descriptors.pb: $(wildcard proto/**/*.proto)
+dev/descriptors.pb: $(shell find proto -name '*.proto' -type f)
 	buf build proto -o dev/descriptors.pb
 
 # Seed the running dev database with demo flag conditions via the sync binary.

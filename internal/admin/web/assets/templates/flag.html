@@ -33,6 +33,15 @@
   </div>
 </div>
 
+{{if .ConditionsError}}
+<div class="detail-section detail-section-error">
+  <div class="detail-section-body">
+    <span class="error-label">Conditions error</span>
+    <span class="error-message">{{.ConditionsError}}</span>
+  </div>
+</div>
+{{end}}
+
 <!-- Configuration -->
 <div class="detail-section" id="conditions-section">
   {{if .Conditions}}

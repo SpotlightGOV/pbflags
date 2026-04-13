@@ -40,8 +40,9 @@ type FlagCondition struct {
 
 // FlagExtra holds non-proto data loaded alongside a FlagDetail.
 type FlagExtra struct {
-	Conditions []FlagCondition
-	SyncSHA    string
+	Conditions      []FlagCondition
+	ConditionsError string
+	SyncSHA         string
 }
 
 // GetFlagState returns the state and value for a single flag.
@@ -529,7 +530,7 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 		       f.default_value, f.supported_values, f.archived_at,
 		       f.conditions, ft.sync_sha
 		FROM feature_flags.flags f
-		JOIN feature_flags.features ft ON ft.feature_id = f.feature_id
+		LEFT JOIN feature_flags.features ft ON ft.feature_id = f.feature_id
 		WHERE f.flag_id = $1`, flagID).Scan(
 		&displayName, &description, &flagType, &layer, &state, &valueBytes,
 		&defaultBytes, &supportedBytes, &archivedAt,
@@ -579,6 +580,7 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 		var entries []condEntry
 		if err := json.Unmarshal(conditionsJSON, &entries); err != nil {
 			s.logger.Warn("failed to unmarshal conditions", "flag_id", flagID, "error", err)
+			extra.ConditionsError = err.Error()
 		} else {
 			for _, e := range entries {
 				fc := FlagCondition{Value: formatConditionValue(e.Value)}
