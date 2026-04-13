@@ -102,13 +102,13 @@ func findFeatureConfig(configDir, featureID string, flagTypes map[string]pbflags
 		path := filepath.Join(configDir, entry.Name())
 		data, err := os.ReadFile(path)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("read %s: %w", entry.Name(), err)
 		}
 		var peek struct {
 			Feature string `yaml:"feature"`
 		}
 		if err := yaml.Unmarshal(data, &peek); err != nil {
-			continue
+			return nil, fmt.Errorf("parse %s: %w", entry.Name(), err)
 		}
 		if peek.Feature != featureID {
 			continue
@@ -135,8 +135,14 @@ func formatFlagValue(fv *pbflagsv1.FlagValue) string {
 		return fmt.Sprintf("%d", v.Int64Value)
 	case *pbflagsv1.FlagValue_DoubleValue:
 		return fmt.Sprintf("%g", v.DoubleValue)
+	case *pbflagsv1.FlagValue_BoolListValue:
+		return fmt.Sprintf("%v", v.BoolListValue.GetValues())
 	case *pbflagsv1.FlagValue_StringListValue:
 		return fmt.Sprintf("%v", v.StringListValue.GetValues())
+	case *pbflagsv1.FlagValue_Int64ListValue:
+		return fmt.Sprintf("%v", v.Int64ListValue.GetValues())
+	case *pbflagsv1.FlagValue_DoubleListValue:
+		return fmt.Sprintf("%v", v.DoubleListValue.GetValues())
 	default:
 		return fmt.Sprintf("%v", fv)
 	}

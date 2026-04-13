@@ -10,6 +10,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/google/cel-go/cel"
+
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/internal/celenv"
 	"github.com/SpotlightGOV/pbflags/internal/codegen/contextutil"
@@ -57,6 +59,8 @@ func Validate(descriptorData []byte, configDir string) (*ValidateResult, error) 
 		featureFlags[d.FeatureID][d.Name] = d.FlagType
 	}
 
+	boundedDims := celenv.BoundedDimsFromDescriptor(contextMsg)
+
 	entries, err := os.ReadDir(configDir)
 	if err != nil {
 		return nil, fmt.Errorf("read config directory: %w", err)
@@ -71,7 +75,7 @@ func Validate(descriptorData []byte, configDir string) (*ValidateResult, error) 
 		result.Files++
 		path := filepath.Join(configDir, entry.Name())
 
-		fileErrors, fileWarnings, flagCount := validateFile(path, featureFlags, compiler)
+		fileErrors, fileWarnings, flagCount := validateFile(path, featureFlags, compiler, boundedDims)
 		result.Flags += flagCount
 		result.Errors = append(result.Errors, fileErrors...)
 		result.Warnings = append(result.Warnings, fileWarnings...)
@@ -84,6 +88,7 @@ func validateFile(
 	path string,
 	featureFlags map[string]map[string]pbflagsv1.FlagType,
 	compiler *celenv.Compiler,
+	boundedDims map[string]bool,
 ) (errs []string, warns []string, flagCount int) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -113,14 +118,33 @@ func validateFile(
 
 	flagCount = len(cfg.Flags)
 
-	// Compile CEL expressions.
+	// Compile CEL expressions and classify dimensions.
 	for flagName, entry := range cfg.Flags {
+		var asts []*cel.Ast
+		var values []*pbflagsv1.FlagValue
 		for i, cond := range entry.Conditions {
 			if cond.When == "" {
+				asts = append(asts, nil)
+				values = append(values, cond.Value)
 				continue
 			}
-			if _, compileErr := compiler.Compile(cond.When); compileErr != nil {
+			compiled, compileErr := compiler.Compile(cond.When)
+			if compileErr != nil {
 				errs = append(errs, fmt.Sprintf("%s: flag %q condition %d: %v", filepath.Base(path), flagName, i, compileErr))
+				asts = append(asts, nil)
+			} else {
+				asts = append(asts, compiled.AST)
+			}
+			values = append(values, cond.Value)
+		}
+
+		// Warn on unbounded dimensions (same as sync would).
+		if len(asts) > 0 {
+			dimMeta := celenv.ClassifyDimensions(asts, values, boundedDims)
+			for dimName, meta := range dimMeta {
+				if meta.Classification == celenv.Unbounded {
+					warns = append(warns, fmt.Sprintf("%s: flag %q: dimension %q is unbounded (cache will use LRU)", filepath.Base(path), flagName, dimName))
+				}
 			}
 		}
 	}
