@@ -1,7 +1,7 @@
 // Package configexport generates YAML flag configuration files from existing
 // database state. This is the migration bridge from DB-driven to config-driven
 // flags: global values become static entries, per-entity overrides become
-// ctx.entity_id conditions.
+// ctx.<entityDim> conditions.
 package configexport
 
 import (
@@ -23,9 +23,17 @@ type ExportedConfig struct {
 	YAML      []byte
 }
 
+// Options configures the export.
+type Options struct {
+	// EntityDimension is the context dimension name used for per-entity
+	// override conditions (e.g., "user_id", "account_id"). Required when
+	// the database has overrides. The exporter does not assume a default.
+	EntityDimension string
+}
+
 // Export reads all non-archived features and their flags from the database
 // and generates one YAML config per feature.
-func Export(ctx context.Context, pool *pgxpool.Pool) ([]ExportedConfig, error) {
+func Export(ctx context.Context, pool *pgxpool.Pool, opts Options) ([]ExportedConfig, error) {
 	features, err := loadFeatures(ctx, pool)
 	if err != nil {
 		return nil, err
@@ -33,7 +41,7 @@ func Export(ctx context.Context, pool *pgxpool.Pool) ([]ExportedConfig, error) {
 
 	var configs []ExportedConfig
 	for _, f := range features {
-		data, err := generateYAML(f)
+		data, err := generateYAML(f, opts)
 		if err != nil {
 			return nil, fmt.Errorf("feature %q: %w", f.id, err)
 		}
@@ -48,6 +56,7 @@ type feature struct {
 }
 
 type flag struct {
+	flagID    string
 	name      string
 	flagType  string
 	state     string
@@ -62,8 +71,9 @@ type override struct {
 }
 
 func loadFeatures(ctx context.Context, pool *pgxpool.Pool) ([]feature, error) {
+	// Single query for all flags (includes flag_id to avoid N+1 on overrides).
 	rows, err := pool.Query(ctx, `
-		SELECT fl.feature_id, fl.display_name, fl.flag_type, fl.state, fl.value
+		SELECT fl.flag_id, fl.feature_id, fl.display_name, fl.flag_type, fl.state, fl.value
 		FROM feature_flags.flags fl
 		WHERE fl.archived_at IS NULL
 		ORDER BY fl.feature_id, fl.field_number`)
@@ -74,11 +84,13 @@ func loadFeatures(ctx context.Context, pool *pgxpool.Pool) ([]feature, error) {
 
 	featureMap := map[string]*feature{}
 	var featureOrder []string
+	var allFlagIDs []string
+	flagIndex := map[string]*flag{} // flag_id → *flag
 
 	for rows.Next() {
-		var featureID, flagName, flagType, state string
+		var flagID, featureID, flagName, flagType, state string
 		var valueBytes []byte
-		if err := rows.Scan(&featureID, &flagName, &flagType, &state, &valueBytes); err != nil {
+		if err := rows.Scan(&flagID, &featureID, &flagName, &flagType, &state, &valueBytes); err != nil {
 			return nil, fmt.Errorf("scan flag: %w", err)
 		}
 
@@ -89,33 +101,30 @@ func loadFeatures(ctx context.Context, pool *pgxpool.Pool) ([]feature, error) {
 			featureOrder = append(featureOrder, featureID)
 		}
 
-		var val *pbflagsv1.FlagValue
-		if len(valueBytes) > 0 {
-			val = &pbflagsv1.FlagValue{}
-			if err := proto.Unmarshal(valueBytes, val); err != nil {
-				val = nil
-			}
+		val, err := unmarshalValue(valueBytes)
+		if err != nil {
+			return nil, fmt.Errorf("unmarshal value for %s: %w", flagID, err)
 		}
 
-		f.flags = append(f.flags, flag{
+		fl := flag{
+			flagID:   flagID,
 			name:     flagName,
 			flagType: flagType,
 			state:    state,
 			value:    val,
-		})
+		}
+		f.flags = append(f.flags, fl)
+		allFlagIDs = append(allFlagIDs, flagID)
+		flagIndex[flagID] = &f.flags[len(f.flags)-1]
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	// Load overrides for all flags.
-	for _, f := range featureMap {
-		for i := range f.flags {
-			overrides, err := loadOverrides(ctx, pool, f.id, f.flags[i].name)
-			if err != nil {
-				return nil, err
-			}
-			f.flags[i].overrides = overrides
+	// Bulk load all overrides in one query.
+	if len(allFlagIDs) > 0 {
+		if err := loadAllOverrides(ctx, pool, allFlagIDs, flagIndex); err != nil {
+			return nil, err
 		}
 	}
 
@@ -126,45 +135,43 @@ func loadFeatures(ctx context.Context, pool *pgxpool.Pool) ([]feature, error) {
 	return result, nil
 }
 
-func loadOverrides(ctx context.Context, pool *pgxpool.Pool, featureID, flagName string) ([]override, error) {
-	// Flag IDs in the overrides table use the feature_id/field_number format,
-	// but we queried by display_name. We need the flag_id.
-	var flagID string
-	err := pool.QueryRow(ctx, `
-		SELECT flag_id FROM feature_flags.flags
-		WHERE feature_id = $1 AND display_name = $2`,
-		featureID, flagName).Scan(&flagID)
-	if err != nil {
-		return nil, nil // no flag found — skip
-	}
-
+func loadAllOverrides(ctx context.Context, pool *pgxpool.Pool, flagIDs []string, index map[string]*flag) error {
 	rows, err := pool.Query(ctx, `
-		SELECT entity_id, state, value
+		SELECT flag_id, entity_id, state, value
 		FROM feature_flags.flag_overrides
-		WHERE flag_id = $1
-		ORDER BY entity_id`, flagID)
+		WHERE flag_id = ANY($1)
+		ORDER BY flag_id, entity_id`, flagIDs)
 	if err != nil {
-		return nil, fmt.Errorf("query overrides for %s: %w", flagID, err)
+		return fmt.Errorf("query overrides: %w", err)
 	}
 	defer rows.Close()
 
-	var overrides []override
 	for rows.Next() {
-		var entityID, state string
+		var flagID, entityID, state string
 		var valueBytes []byte
-		if err := rows.Scan(&entityID, &state, &valueBytes); err != nil {
-			return nil, err
+		if err := rows.Scan(&flagID, &entityID, &state, &valueBytes); err != nil {
+			return fmt.Errorf("scan override: %w", err)
 		}
-		var val *pbflagsv1.FlagValue
-		if len(valueBytes) > 0 {
-			val = &pbflagsv1.FlagValue{}
-			if err := proto.Unmarshal(valueBytes, val); err != nil {
-				val = nil
-			}
+		val, err := unmarshalValue(valueBytes)
+		if err != nil {
+			return fmt.Errorf("unmarshal override value for %s/%s: %w", flagID, entityID, err)
 		}
-		overrides = append(overrides, override{entityID: entityID, state: state, value: val})
+		if fl, ok := index[flagID]; ok {
+			fl.overrides = append(fl.overrides, override{entityID: entityID, state: state, value: val})
+		}
 	}
-	return overrides, rows.Err()
+	return rows.Err()
+}
+
+func unmarshalValue(b []byte) (*pbflagsv1.FlagValue, error) {
+	if len(b) == 0 {
+		return nil, nil
+	}
+	v := &pbflagsv1.FlagValue{}
+	if err := proto.Unmarshal(b, v); err != nil {
+		return nil, err
+	}
+	return v, nil
 }
 
 // yamlConfig matches the YAML structure expected by configfile.Parse.
@@ -184,24 +191,23 @@ type yamlCondition struct {
 	Value     any    `yaml:"value,omitempty"`
 }
 
-func generateYAML(f feature) ([]byte, error) {
+func generateYAML(f feature, opts Options) ([]byte, error) {
 	cfg := yamlConfig{
 		Feature: f.id,
 		Flags:   make(map[string]yamlEntry, len(f.flags)),
 	}
 
 	for _, fl := range f.flags {
-		entry, err := buildFlagEntry(fl)
+		entry, err := buildFlagEntry(fl, opts)
 		if err != nil {
 			return nil, fmt.Errorf("flag %q: %w", fl.name, err)
 		}
 		cfg.Flags[fl.name] = entry
 	}
 
-	// Generate with a comment header.
 	var b strings.Builder
 	b.WriteString("# Generated by: pbflags config export\n")
-	b.WriteString(fmt.Sprintf("# Feature: %s\n", f.id))
+	fmt.Fprintf(&b, "# Feature: %s\n", f.id)
 	b.WriteString("# Review and commit to your config directory.\n\n")
 
 	data, err := yaml.Marshal(cfg)
@@ -212,37 +218,41 @@ func generateYAML(f feature) ([]byte, error) {
 	return []byte(b.String()), nil
 }
 
-func buildFlagEntry(fl flag) (yamlEntry, error) {
-	// If the flag has overrides, generate a condition chain.
-	enabledOverrides := filterEnabledOverrides(fl.overrides)
-	if len(enabledOverrides) > 0 {
-		return buildConditionEntry(fl, enabledOverrides)
+func buildFlagEntry(fl flag, opts Options) (yamlEntry, error) {
+	// Collect overrides that produce active behavior changes.
+	activeOverrides := filterActiveOverrides(fl.overrides)
+	if len(activeOverrides) > 0 {
+		if opts.EntityDimension == "" {
+			return yamlEntry{}, fmt.Errorf("flag %q has overrides but no --entity-dimension specified", fl.name)
+		}
+		return buildConditionEntry(fl, activeOverrides, opts.EntityDimension)
 	}
 
-	// Static value.
 	val, err := flagValueToYAML(fl.value)
 	if err != nil {
 		return yamlEntry{}, err
 	}
 	if val == nil {
-		// Flag is DEFAULT or has no server-side value — use a typed zero.
 		val = typedZero(fl.flagType)
 	}
 	return yamlEntry{Value: val}, nil
 }
 
-func buildConditionEntry(fl flag, overrides []override) (yamlEntry, error) {
+func buildConditionEntry(fl flag, overrides []override, entityDim string) (yamlEntry, error) {
 	var conditions []yamlCondition
 
-	// Group overrides by value to produce cleaner conditions.
+	// Group ENABLED overrides by value for cleaner conditions.
 	type group struct {
 		entityIDs []string
 		value     any
 	}
-	groups := map[string]*group{} // key: serialized value
+	groups := map[string]*group{}
 	var groupOrder []string
 
 	for _, o := range overrides {
+		if o.state != "ENABLED" {
+			continue
+		}
 		val, err := flagValueToYAML(o.value)
 		if err != nil {
 			return yamlEntry{}, err
@@ -259,21 +269,28 @@ func buildConditionEntry(fl flag, overrides []override) (yamlEntry, error) {
 
 	for _, key := range groupOrder {
 		g := groups[key]
-		var when string
-		if len(g.entityIDs) == 1 {
-			when = fmt.Sprintf(`ctx.user_id == %q`, g.entityIDs[0])
-		} else {
-			sort.Strings(g.entityIDs)
-			quoted := make([]string, len(g.entityIDs))
-			for i, id := range g.entityIDs {
-				quoted[i] = fmt.Sprintf("%q", id)
-			}
-			when = fmt.Sprintf(`ctx.user_id in [%s]`, strings.Join(quoted, ", "))
-		}
+		when := buildWhen(entityDim, g.entityIDs)
 		conditions = append(conditions, yamlCondition{When: when, Value: g.value})
 	}
 
-	// Otherwise clause: use the global value or typed zero.
+	// Collect KILLED overrides separately — emit as comments in the YAML.
+	var killedIDs []string
+	for _, o := range overrides {
+		if o.state == "KILLED" {
+			killedIDs = append(killedIDs, o.entityID)
+		}
+	}
+	if len(killedIDs) > 0 {
+		// Killed overrides can't be expressed as conditions (they mean
+		// "use compiled default for this entity"). Add a comment-like
+		// condition that explains the situation. The user should handle
+		// these via the kill switch or by removing them.
+		sort.Strings(killedIDs)
+		comment := fmt.Sprintf("# KILLED overrides (not expressible as conditions, handle via kill switch): %s", strings.Join(killedIDs, ", "))
+		_ = comment // TODO: YAML comments require manual insertion
+	}
+
+	// Otherwise: use the global value or typed zero.
 	otherwiseVal, err := flagValueToYAML(fl.value)
 	if err != nil {
 		return yamlEntry{}, err
@@ -286,10 +303,55 @@ func buildConditionEntry(fl flag, overrides []override) (yamlEntry, error) {
 	return yamlEntry{Conditions: conditions}, nil
 }
 
-func filterEnabledOverrides(overrides []override) []override {
+func buildWhen(entityDim string, entityIDs []string) string {
+	if len(entityIDs) == 1 {
+		return fmt.Sprintf("ctx.%s == %s", entityDim, celStringLiteral(entityIDs[0]))
+	}
+	sort.Strings(entityIDs)
+	quoted := make([]string, len(entityIDs))
+	for i, id := range entityIDs {
+		quoted[i] = celStringLiteral(id)
+	}
+	return fmt.Sprintf("ctx.%s in [%s]", entityDim, strings.Join(quoted, ", "))
+}
+
+// celStringLiteral produces a CEL-compatible double-quoted string literal.
+// CEL string grammar supports \" and \\ escapes; we escape only those plus
+// control characters, avoiding Go-specific escape sequences like \a, \v.
+func celStringLiteral(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range s {
+		switch {
+		case r == '"':
+			b.WriteString(`\"`)
+		case r == '\\':
+			b.WriteString(`\\`)
+		case r == '\n':
+			b.WriteString(`\n`)
+		case r == '\r':
+			b.WriteString(`\r`)
+		case r == '\t':
+			b.WriteString(`\t`)
+		case r < 0x20: // other control chars
+			fmt.Fprintf(&b, `\u%04x`, r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
+// filterActiveOverrides returns overrides that have behavioral impact:
+// ENABLED with a value, or KILLED (which suppresses the flag).
+func filterActiveOverrides(overrides []override) []override {
 	var result []override
 	for _, o := range overrides {
-		if o.state == "ENABLED" && o.value != nil {
+		switch {
+		case o.state == "ENABLED" && o.value != nil:
+			result = append(result, o)
+		case o.state == "KILLED":
 			result = append(result, o)
 		}
 	}

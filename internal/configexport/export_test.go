@@ -21,16 +21,14 @@ func TestExport_StaticValues(t *testing.T) {
 		{FlagType: "STRING", Layer: "GLOBAL"},
 	})
 
-	// Set display_name (proto field name) and values.
 	val1, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}})
 	val2, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: "weekly"}})
 	pool.Exec(ctx, `UPDATE feature_flags.flags SET display_name='email_enabled', state='ENABLED', value=$2 WHERE flag_id=$1`, tf.FlagIDs[0], val1)
 	pool.Exec(ctx, `UPDATE feature_flags.flags SET display_name='digest_frequency', state='ENABLED', value=$2 WHERE flag_id=$1`, tf.FlagIDs[1], val2)
 
-	configs, err := Export(ctx, pool)
+	configs, err := Export(ctx, pool, Options{})
 	require.NoError(t, err)
 
-	// Find our feature.
 	var found *ExportedConfig
 	for i := range configs {
 		if configs[i].FeatureID == tf.FeatureID {
@@ -54,16 +52,14 @@ func TestExport_WithOverrides(t *testing.T) {
 		{FlagType: "BOOL", Layer: "USER"},
 	})
 
-	// Set global value.
 	globalVal, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: false}})
 	pool.Exec(ctx, `UPDATE feature_flags.flags SET display_name='enabled', state='ENABLED', value=$2 WHERE flag_id=$1`, tf.FlagIDs[0], globalVal)
 
-	// Set per-entity override.
 	overrideVal, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}})
 	pool.Exec(ctx, `INSERT INTO feature_flags.flag_overrides (flag_id, entity_id, state, value) VALUES ($1, 'user-99', 'ENABLED', $2)`,
 		tf.FlagIDs[0], overrideVal)
 
-	configs, err := Export(ctx, pool)
+	configs, err := Export(ctx, pool, Options{EntityDimension: "account_id"})
 	require.NoError(t, err)
 
 	var found *ExportedConfig
@@ -77,8 +73,28 @@ func TestExport_WithOverrides(t *testing.T) {
 
 	yaml := string(found.YAML)
 	require.Contains(t, yaml, "conditions:")
-	require.Contains(t, yaml, `ctx.user_id == "user-99"`)
+	require.Contains(t, yaml, `ctx.account_id == "user-99"`) // uses configured dimension
 	require.Contains(t, yaml, "otherwise:")
+}
+
+func TestExport_RequiresEntityDimension(t *testing.T) {
+	_, pool := testdb.Require(t)
+	ctx := context.Background()
+
+	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{
+		{FlagType: "BOOL", Layer: "USER"},
+	})
+
+	globalVal, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: false}})
+	pool.Exec(ctx, `UPDATE feature_flags.flags SET display_name='enabled', state='ENABLED', value=$2 WHERE flag_id=$1`, tf.FlagIDs[0], globalVal)
+
+	overrideVal, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}})
+	pool.Exec(ctx, `INSERT INTO feature_flags.flag_overrides (flag_id, entity_id, state, value) VALUES ($1, 'user-1', 'ENABLED', $2)`,
+		tf.FlagIDs[0], overrideVal)
+
+	_, err := Export(ctx, pool, Options{}) // no EntityDimension
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "entity-dimension")
 }
 
 func TestFlagValueToYAML(t *testing.T) {
@@ -105,6 +121,25 @@ func TestFlagValueToYAML(t *testing.T) {
 	}
 }
 
+func TestCelStringLiteral(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"hello", `"hello"`},
+		{`has"quote`, `"has\"quote"`},
+		{"back\\slash", `"back\\slash"`},
+		{"new\nline", `"new\nline"`},
+		{"tab\there", `"tab\there"`},
+		{"\x01ctrl", `"\u0001ctrl"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			got := celStringLiteral(tt.in)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestBuildConditionEntry_GroupsOverrides(t *testing.T) {
 	fl := flag{
 		name:     "test_flag",
@@ -117,7 +152,7 @@ func TestBuildConditionEntry_GroupsOverrides(t *testing.T) {
 		},
 	}
 
-	entry, err := buildFlagEntry(fl)
+	entry, err := buildFlagEntry(fl, Options{EntityDimension: "user_id"})
 	require.NoError(t, err)
 	require.Len(t, entry.Conditions, 3) // 2 groups + otherwise
 
