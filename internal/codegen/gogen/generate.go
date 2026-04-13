@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/SpotlightGOV/pbflags/internal/codegen/contextutil"
-	"github.com/SpotlightGOV/pbflags/internal/codegen/layerutil"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -15,17 +14,6 @@ import (
 
 // Generate produces Go flag client code for all feature messages in the plugin request.
 func Generate(plugin *protogen.Plugin, packagePrefix string) error {
-	layers, err := layerutil.DiscoverLayers(plugin)
-	if err != nil {
-		return err
-	}
-
-	if layers != nil {
-		if err := generateLayersPackage(plugin, layers, packagePrefix); err != nil {
-			return fmt.Errorf("generating layers package: %w", err)
-		}
-	}
-
 	ctxDef, err := contextutil.DiscoverContext(plugin)
 	if err != nil {
 		return fmt.Errorf("discovering evaluation context: %w", err)
@@ -49,7 +37,7 @@ func Generate(plugin *protogen.Plugin, packagePrefix string) error {
 			if feat == nil {
 				continue
 			}
-			if err := generateFeature(plugin, msg, feat, packagePrefix, layers); err != nil {
+			if err := generateFeature(plugin, msg, feat, packagePrefix); err != nil {
 				return fmt.Errorf("generating %s: %w", feat.id, err)
 			}
 		}
@@ -72,12 +60,11 @@ type flagInfo struct {
 	oneofType   string
 	defaultVal  string
 	hasDefault  bool
-	isList      bool   // true for repeated (list-valued) flags
-	layerName   string // empty = global; otherwise the lowercase layer name (e.g., "user", "entity")
+	isList      bool // true for repeated (list-valued) flags
 }
 
-func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featureInfo, packagePrefix string, layers *layerutil.LayerDef) error {
-	flags, err := extractFlags(msg, layers)
+func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featureInfo, packagePrefix string) error {
+	flags, err := extractFlags(msg)
 	if err != nil {
 		return err
 	}
@@ -404,10 +391,10 @@ func parseFeatureMessage(b []byte) *featureInfo {
 	return info
 }
 
-func extractFlags(msg *protogen.Message, layers *layerutil.LayerDef) ([]flagInfo, error) {
+func extractFlags(msg *protogen.Message) ([]flagInfo, error) {
 	var flags []flagInfo
 	for _, field := range msg.Fields {
-		fl, err := extractFlagFromField(field, layers)
+		fl, err := extractFlagFromField(field)
 		if err != nil {
 			return nil, err
 		}
@@ -418,7 +405,7 @@ func extractFlags(msg *protogen.Message, layers *layerutil.LayerDef) ([]flagInfo
 	return flags, nil
 }
 
-func extractFlagFromField(field *protogen.Field, layers *layerutil.LayerDef) (*flagInfo, error) {
+func extractFlagFromField(field *protogen.Field) (*flagInfo, error) {
 	opts := field.Desc.Options()
 	if opts == nil {
 		return nil, nil
@@ -428,7 +415,6 @@ func extractFlagFromField(field *protogen.Field, layers *layerutil.LayerDef) (*f
 	rm := protoMsg.ProtoReflect()
 
 	var found bool
-	var layerStr string
 	var defaultVal string
 	var hasDefault bool
 
@@ -438,8 +424,6 @@ func extractFlagFromField(field *protogen.Field, layers *layerutil.LayerDef) (*f
 			m := v.Message()
 			m.Range(func(innerFd protoreflect.FieldDescriptor, innerV protoreflect.Value) bool {
 				switch innerFd.Name() {
-				case "layer":
-					layerStr = innerV.String()
 				case "default":
 					defaultVal, hasDefault = extractDefaultReflect(innerV.Message())
 				}
@@ -455,22 +439,9 @@ func extractFlagFromField(field *protogen.Field, layers *layerutil.LayerDef) (*f
 		if len(unk) == 0 {
 			return nil, nil
 		}
-		found, layerStr, defaultVal, hasDefault = parseFlagFromUnknown(unk, field.Desc.Kind())
+		found, defaultVal, hasDefault = parseFlagFromUnknown(unk, field.Desc.Kind())
 		if !found {
 			return nil, nil
-		}
-	}
-
-	// Validate the layer against the discovered enum (if layers are defined).
-	var resolvedLayerName string
-	if layerStr != "" && layers != nil {
-		lv, ok := layers.ResolveLayer(layerStr)
-		if !ok {
-			return nil, fmt.Errorf("flag %s.%s: layer %q does not match any value in the %s enum",
-				field.Parent.Desc.Name(), field.Desc.Name(), layerStr, layers.EnumName)
-		}
-		if !lv.IsGlobal {
-			resolvedLayerName = lv.LayerName
 		}
 	}
 
@@ -489,7 +460,6 @@ func extractFlagFromField(field *protogen.Field, layers *layerutil.LayerDef) (*f
 		defaultVal:  defaultVal,
 		hasDefault:  hasDefault,
 		isList:      isList,
-		layerName:   resolvedLayerName,
 	}, nil
 }
 
@@ -570,7 +540,7 @@ func extractListDefaultReflect(fieldName protoreflect.Name, listMsg protoreflect
 	return "", false
 }
 
-func parseFlagFromUnknown(b []byte, fieldKind protoreflect.Kind) (found bool, layerStr string, defaultVal string, hasDefault bool) {
+func parseFlagFromUnknown(b []byte, fieldKind protoreflect.Kind) (found bool, defaultVal string, hasDefault bool) {
 	for len(b) > 0 {
 		num, typ, n := protowire.ConsumeTag(b)
 		if n < 0 {
@@ -583,7 +553,7 @@ func parseFlagFromUnknown(b []byte, fieldKind protoreflect.Kind) (found bool, la
 				return
 			}
 			found = true
-			layerStr, defaultVal, hasDefault = parseFlagOptionsMessage(data, fieldKind)
+			defaultVal, hasDefault = parseFlagOptionsMessage(data, fieldKind)
 			return
 		}
 		n = skipField(b, typ)
@@ -595,34 +565,21 @@ func parseFlagFromUnknown(b []byte, fieldKind protoreflect.Kind) (found bool, la
 	return
 }
 
-func parseFlagOptionsMessage(b []byte, fieldKind protoreflect.Kind) (layerStr string, defaultVal string, hasDefault bool) {
+func parseFlagOptionsMessage(b []byte, fieldKind protoreflect.Kind) (defaultVal string, hasDefault bool) {
 	for len(b) > 0 {
 		num, typ, n := protowire.ConsumeTag(b)
 		if n < 0 {
 			return
 		}
 		b = b[n:]
-		switch num {
-		case 2:
-			if typ == protowire.BytesType {
-				data, n := protowire.ConsumeBytes(b)
-				if n < 0 {
-					return
-				}
-				b = b[n:]
-				defaultVal, hasDefault = parseFlagDefault(data, fieldKind)
-				continue
+		if num == 2 && typ == protowire.BytesType {
+			data, n := protowire.ConsumeBytes(b)
+			if n < 0 {
+				return
 			}
-		case 5: // string layer field
-			if typ == protowire.BytesType {
-				data, n := protowire.ConsumeBytes(b)
-				if n < 0 {
-					return
-				}
-				b = b[n:]
-				layerStr = string(data)
-				continue
-			}
+			b = b[n:]
+			defaultVal, hasDefault = parseFlagDefault(data, fieldKind)
+			continue
 		}
 		n = skipField(b, typ)
 		if n < 0 {
