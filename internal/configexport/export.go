@@ -273,7 +273,9 @@ func buildConditionEntry(fl flag, overrides []override, entityDim string) (yamlE
 		conditions = append(conditions, yamlCondition{When: when, Value: g.value})
 	}
 
-	// Collect KILLED overrides separately — emit as comments in the YAML.
+	// KILLED overrides: emit a condition returning the typed zero (compiled
+	// default) for those entities, preserving the "this entity is suppressed"
+	// semantics from the DB.
 	var killedIDs []string
 	for _, o := range overrides {
 		if o.state == "KILLED" {
@@ -281,13 +283,9 @@ func buildConditionEntry(fl flag, overrides []override, entityDim string) (yamlE
 		}
 	}
 	if len(killedIDs) > 0 {
-		// Killed overrides can't be expressed as conditions (they mean
-		// "use compiled default for this entity"). Add a comment-like
-		// condition that explains the situation. The user should handle
-		// these via the kill switch or by removing them.
 		sort.Strings(killedIDs)
-		comment := fmt.Sprintf("# KILLED overrides (not expressible as conditions, handle via kill switch): %s", strings.Join(killedIDs, ", "))
-		_ = comment // TODO: YAML comments require manual insertion
+		when := buildWhen(entityDim, killedIDs)
+		conditions = append(conditions, yamlCondition{When: when, Value: typedZero(fl.flagType)})
 	}
 
 	// Otherwise: use the global value or typed zero.
