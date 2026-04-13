@@ -23,7 +23,128 @@ This order matters because `pbflags-admin` and `pbflags-evaluator` do not run mi
 
 ## Version-specific upgrade guides
 
+- [Conditions and config-driven flags (v0.16.0)](#conditions-and-config-driven-flags-v0160) — migrating from overrides to YAML conditions
+- [Evaluation context dimensions (v0.15.0)](#evaluation-context-dimensions-v0150) — replacing layers with context dimensions
 - [User-defined layers](upgrade-guide-user-defined-layers.md) — migrating from hardcoded to user-defined layer enums (v0.6.0)
+
+---
+
+## Conditions and config-driven flags (v0.16.0)
+
+This release replaces the per-entity override system with YAML-based condition
+chains using CEL expressions. The admin UI is now read-only — flag behavior is
+managed entirely through config files in git.
+
+### What changed
+
+- The `flag_overrides` table is **dropped**. Per-entity overrides no longer exist.
+- The `flags.state` column (ENABLED/DEFAULT/KILLED) is replaced by `killed_at TIMESTAMP NULL`.
+  NULL means live, non-NULL means killed. The kill switch is the only runtime control.
+- The `flags.value` and `flags.layer` columns are **dropped**.
+  Flag values are now determined by the `conditions` JSONB column (set by the sync pipeline).
+- The admin UI is **read-only**. The kill switch still works; value editing and override
+  management are removed.
+- The `layerutil` package and `(pbflags.layers)` codegen extension are removed.
+
+### Before you upgrade
+
+**Export your current state.** If you have per-entity overrides or admin-UI-set values,
+export them before running the migration:
+
+```bash
+pbflags-sync config export \
+  --database=$PBFLAGS_DATABASE \
+  --descriptors=descriptors.pb \
+  --entity-dimension=user_id \
+  --output=config/
+```
+
+This generates one YAML file per feature with your current values and overrides
+converted to condition chains. Review and commit these files — they become your
+source of truth.
+
+If you have no overrides or admin-set values (all flags use compiled defaults),
+you can skip the export and write config files from scratch.
+
+### YAML config format
+
+Each feature gets a YAML file. Flags can have a static value or a condition chain:
+
+```yaml
+feature: notifications
+flags:
+  email_enabled:
+    conditions:
+      - when: "ctx.is_internal"
+        value: true
+      - when: "ctx.plan == PlanLevel.ENTERPRISE"
+        value: true
+      - otherwise: false
+
+  score_threshold:
+    value: 0.75
+```
+
+CEL expressions reference fields from your `EvaluationContext` proto message via the
+`ctx.` prefix. Enum values use prefix-stripped aliases (e.g., `PlanLevel.ENTERPRISE`).
+
+### Sync pipeline
+
+Pass `--config` to `pbflags-sync` to compile YAML configs into the database:
+
+```bash
+pbflags-sync \
+  --database=$PBFLAGS_DATABASE \
+  --descriptors=descriptors.pb \
+  --config=config/ \
+  --sha=$(git rev-parse HEAD)
+```
+
+The `--sha` flag records the git commit in the database; the admin UI displays it
+as a badge on flag detail pages. In standalone mode, `pbflags-admin` also accepts
+`--config` to sync conditions on startup.
+
+### Validate before deploying
+
+```bash
+pbflags-sync validate --descriptors=descriptors.pb --config=config/
+```
+
+This checks YAML syntax, CEL expression compilation, and type compatibility without
+touching the database. Run it in CI before merge.
+
+### Database migration
+
+Migration 006 runs automatically via `pbflags-sync` or `pbflags-admin --standalone`.
+It:
+
+1. Adds `killed_at TIMESTAMP` to flags
+2. Migrates `state='KILLED'` rows to `killed_at = updated_at`
+3. Drops the `state`, `value`, and `layer` columns
+4. Drops the `flag_overrides` table
+
+**This migration is irreversible in practice** — exported data can be restored from
+the YAML config files, but the override table data is gone. Export first.
+
+### Generated code
+
+Layer parameters were removed from generated method signatures in v0.15.0. If you
+skipped that migration, see the [v0.15.0 guide](#evaluation-context-dimensions-v0150).
+
+No additional generated code changes in v0.16.0.
+
+### Migration checklist
+
+1. **Export** existing overrides and admin-set values with `config export`.
+2. **Write YAML configs** for each feature (or use the exported files as a starting point).
+3. **Validate** configs with `pbflags-sync validate`.
+4. **Deploy `pbflags-sync`** with `--config` pointing to your config directory.
+   Migration 006 runs automatically and is backwards-compatible with the previous schema
+   until conditions are synced.
+5. **Deploy `pbflags-admin`** with `--config` if using standalone mode.
+6. **Verify** the admin UI shows condition chains on flag detail pages and the sync SHA badge.
+7. **Remove** any code that calls override APIs (`SetFlagOverride`, `RemoveFlagOverride`).
+   These now return `Unimplemented`.
 
 ---
 
