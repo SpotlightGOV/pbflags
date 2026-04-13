@@ -48,21 +48,22 @@ managed entirely through config files in git.
 
 ### Before you upgrade
 
-**Export your current database values.** If you have admin-UI-set values, export
-them before running the migration:
+**Export your current database values.** If you have per-entity overrides or
+admin-UI-set values, export them before running the migration:
 
 ```bash
 pbflags-sync export \
   --database=$PBFLAGS_DATABASE \
-  --output=config/
+  --entity-dimension=user_id \
+  --output=./features
 ```
 
-This generates one YAML file per feature with static `value:` entries derived
-from the database. Review and commit these files — they become your source of
-truth.
+This generates one YAML file per feature with your current values and overrides
+converted to condition chains. Review and commit these files — they become your
+source of truth.
 
-If you have no admin-set values (all flags use compiled defaults), you can skip
-the export and write config files from scratch.
+If you have no overrides or admin-set values (all flags use compiled defaults),
+you can skip the export and write config files from scratch.
 
 ### YAML config format
 

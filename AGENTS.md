@@ -110,9 +110,7 @@ On failure, Playwright traces are saved to `internal/e2e/testdata/traces/` — o
 
 Go 1.22+ `http.ServeMux` panics if a `{name...}` wildcard is not the last segment. The admin UI uses flag IDs containing `/`, so wildcards are placed last:
 
-- `POST /api/flags/state/{flagID...}`
-- `POST /api/flags/overrides/{flagID...}`
-- `DELETE /api/flags/overrides/entity/{entityID}/{flagID...}`
+- `POST /api/flags/state/{flagID...}` — kill/unkill a flag (the only mutation route)
 
 ## Database migrations
 

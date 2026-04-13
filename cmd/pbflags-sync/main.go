@@ -193,6 +193,7 @@ func runShow(args []string) {
 func runExport(args []string) {
 	fs := flag.NewFlagSet("export", flag.ExitOnError)
 	database := fs.String("database", "", "PostgreSQL connection string")
+	entityDim := fs.String("entity-dimension", "", "context dimension for per-entity override conditions (e.g., user_id)")
 	outputDir := fs.String("output", "", "directory to write YAML files (default: stdout)")
 	fs.Parse(args)
 
@@ -212,7 +213,9 @@ func runExport(args []string) {
 	}
 	defer pool.Close()
 
-	configs, err := configexport.Export(ctx, pool, configexport.Options{})
+	configs, err := configexport.Export(ctx, pool, configexport.Options{
+		EntityDimension: *entityDim,
+	})
 	if err != nil {
 		slog.Error("export failed", "error", err)
 		os.Exit(1)
