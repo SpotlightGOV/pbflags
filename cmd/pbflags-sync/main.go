@@ -9,11 +9,14 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/SpotlightGOV/pbflags/db"
 	"github.com/SpotlightGOV/pbflags/internal/configcli"
+	"github.com/SpotlightGOV/pbflags/internal/configexport"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 	"github.com/SpotlightGOV/pbflags/internal/flagfile"
 	"github.com/SpotlightGOV/pbflags/internal/projectconfig"
@@ -27,7 +30,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Check for subcommands: "validate" or "show".
+	// Check for subcommands.
 	if len(args) > 0 {
 		switch args[0] {
 		case "validate":
@@ -35,6 +38,9 @@ func main() {
 			return
 		case "show":
 			runShow(args[1:])
+			return
+		case "export":
+			runExport(args[1:])
 			return
 		}
 	}
@@ -181,6 +187,53 @@ func runShow(args []string) {
 	if err := configcli.Show(descData, *configDir, fs.Args()[0], os.Stdout); err != nil {
 		slog.Error("show failed", "error", err)
 		os.Exit(1)
+	}
+}
+
+func runExport(args []string) {
+	fs := flag.NewFlagSet("export", flag.ExitOnError)
+	database := fs.String("database", "", "PostgreSQL connection string")
+	outputDir := fs.String("output", "", "directory to write YAML files (default: stdout)")
+	fs.Parse(args)
+
+	if *database == "" {
+		*database = os.Getenv("PBFLAGS_DATABASE")
+	}
+	if *database == "" {
+		slog.Error("--database or PBFLAGS_DATABASE is required for export")
+		os.Exit(1)
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, *database)
+	if err != nil {
+		slog.Error("connect to database", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	configs, err := configexport.Export(ctx, pool, configexport.Options{})
+	if err != nil {
+		slog.Error("export failed", "error", err)
+		os.Exit(1)
+	}
+
+	if *outputDir != "" {
+		os.MkdirAll(*outputDir, 0o755)
+		for _, c := range configs {
+			path := filepath.Join(*outputDir, c.FeatureID+".yaml")
+			if err := os.WriteFile(path, c.YAML, 0o644); err != nil {
+				slog.Error("write file", "path", path, "error", err)
+				os.Exit(1)
+			}
+			fmt.Printf("wrote %s\n", path)
+		}
+	} else {
+		for _, c := range configs {
+			fmt.Printf("# feature: %s\n", c.FeatureID)
+			os.Stdout.Write(c.YAML)
+			fmt.Println("---")
+		}
 	}
 }
 

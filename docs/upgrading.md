@@ -52,7 +52,7 @@ managed entirely through config files in git.
 export them before running the migration:
 
 ```bash
-pbflags-sync config export \
+pbflags-sync export \
   --database=$PBFLAGS_DATABASE \
   --descriptors=descriptors.pb \
   --entity-dimension=user_id \
@@ -135,7 +135,7 @@ No additional generated code changes in v0.16.0.
 
 ### Migration checklist
 
-1. **Export** existing overrides and admin-set values with `config export`.
+1. **Export** existing overrides and admin-set values with `export`.
 2. **Write YAML configs** for each feature (or use the exported files as a starting point).
 3. **Validate** configs with `pbflags-sync validate`.
 4. **Deploy `pbflags-sync`** with `--features` pointing to your config directory.
