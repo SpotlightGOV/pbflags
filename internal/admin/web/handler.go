@@ -71,6 +71,8 @@ func NewHandler(store *admin.Store, logger *slog.Logger, env ...EnvConfig) (*Han
 		"json":               toJSON,
 		"flagIDEscape":       flagIDEscape,
 		"dict":               dict,
+		"inc":                func(i int) int { return i + 1 },
+		"slice":              safeSlice,
 	}
 
 	var ec EnvConfig
@@ -152,9 +154,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	// htmx API endpoints. Wildcards must be the final path segment (Go 1.22+ ServeMux);
 	// patterns like /api/flags/{flagID...}/state panic at registration.
 	inner.HandleFunc("POST /api/flags/state/{flagID...}", h.updateFlagState)
-	inner.HandleFunc("POST /api/flags/overrides/{flagID...}", h.setOverride)
-	inner.HandleFunc("POST /api/flags/overrides/bulk/{flagID...}", h.bulkImportOverrides)
-	inner.HandleFunc("DELETE /api/flags/overrides/entity/{entityID}/{flagID...}", h.removeOverride)
+	// Override routes removed — overrides are now conditions managed via config files.
 
 	mux.Handle("/", h.csrfProtect(inner))
 }
@@ -277,7 +277,7 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	flag, err := h.store.GetFlag(r.Context(), flagID)
+	flag, extra, err := h.store.GetFlag(r.Context(), flagID)
 	if err != nil {
 		h.serverError(w, "get flag", err)
 		return
@@ -298,6 +298,8 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 		"Audit", entries,
 		"FlagID", flagID,
 		"Feature", strings.Split(flagID, "/")[0],
+		"Conditions", extra.Conditions,
+		"SyncSHA", extra.SyncSHA,
 	)
 
 	if r.Header.Get("HX-Request") == "true" {
@@ -393,7 +395,7 @@ func (h *Handler) updateFlagState(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Re-fetch the flag after update.
-	flag, err := h.store.GetFlag(r.Context(), flagID)
+	flag, extra, err := h.store.GetFlag(r.Context(), flagID)
 	if err != nil {
 		h.serverError(w, "get flag after update", err)
 		return
@@ -406,187 +408,19 @@ func (h *Handler) updateFlagState(w http.ResponseWriter, r *http.Request) {
 			h.logger.Error("get audit log after state update", "flag_id", flagID, "error", err)
 		}
 		h.render(w, "flag_content", map[string]any{
-			"Flag":    flag,
-			"Audit":   entries,
-			"Page":    "flag",
-			"FlagID":  flagID,
-			"Feature": strings.Split(flagID, "/")[0],
+			"Flag":       flag,
+			"Audit":      entries,
+			"Page":       "flag",
+			"FlagID":     flagID,
+			"Feature":    strings.Split(flagID, "/")[0],
+			"Conditions": extra.Conditions,
+			"SyncSHA":    extra.SyncSHA,
 		})
 		return
 	}
 
 	// Otherwise render just the table row (dashboard view).
 	h.render(w, "flag_row", map[string]any{"Flag": flag})
-}
-
-func (h *Handler) setOverride(w http.ResponseWriter, r *http.Request) {
-	flagID := r.PathValue("flagID")
-	if !validFlagID.MatchString(flagID) {
-		http.Error(w, "invalid flag_id format", http.StatusBadRequest)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad form", http.StatusBadRequest)
-		return
-	}
-
-	entityID := r.FormValue("entity_id")
-	if entityID == "" {
-		http.Error(w, "entity_id required", http.StatusBadRequest)
-		return
-	}
-
-	stateStr := r.FormValue("state")
-	state := parseStateString(stateStr)
-	if state == pbflagsv1.State_STATE_UNSPECIFIED {
-		http.Error(w, "invalid state", http.StatusBadRequest)
-		return
-	}
-
-	var value *pbflagsv1.FlagValue
-	if valueStr := r.FormValue("value"); valueStr != "" {
-		flagTypeStr := r.FormValue("flag_type")
-		var err error
-		value, err = parseFlagValue(flagTypeStr, valueStr)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("invalid value: %v", err), http.StatusBadRequest)
-			return
-		}
-	}
-
-	actor := r.FormValue("actor")
-	if actor == "" {
-		actor = "admin-ui"
-	}
-
-	if err := h.store.SetFlagOverride(r.Context(), flagID, entityID, state, value, actor); err != nil {
-		h.serverError(w, "set override", err)
-		return
-	}
-
-	// Re-render the full overrides section.
-	flag, err := h.store.GetFlag(r.Context(), flagID)
-	if err != nil {
-		h.serverError(w, "get flag after override", err)
-		return
-	}
-
-	h.render(w, "overrides_section", map[string]any{"Flag": flag})
-}
-
-func (h *Handler) removeOverride(w http.ResponseWriter, r *http.Request) {
-	flagID := r.PathValue("flagID")
-	if !validFlagID.MatchString(flagID) {
-		http.Error(w, "invalid flag_id format", http.StatusBadRequest)
-		return
-	}
-	entityID := r.PathValue("entityID")
-	if !validEntityPathSegment(entityID) {
-		http.Error(w, "invalid entity_id", http.StatusBadRequest)
-		return
-	}
-
-	actor := "admin-ui"
-	if err := h.store.RemoveFlagOverride(r.Context(), flagID, entityID, actor); err != nil {
-		h.serverError(w, "remove override", err)
-		return
-	}
-
-	// Re-render overrides section.
-	flag, err := h.store.GetFlag(r.Context(), flagID)
-	if err != nil {
-		h.serverError(w, "get flag after remove", err)
-		return
-	}
-
-	h.render(w, "overrides_section", map[string]any{"Flag": flag})
-}
-
-// bulkImportOverrides accepts a JSON payload of entity_id:value pairs and
-// upserts them as overrides for the given flag. Returns a JSON summary.
-func (h *Handler) bulkImportOverrides(w http.ResponseWriter, r *http.Request) {
-	flagID := r.PathValue("flagID")
-	if !validFlagID.MatchString(flagID) {
-		writeJSON(w, http.StatusBadRequest, bulkResult{Errors: []string{"invalid flag_id format"}})
-		return
-	}
-
-	var req struct {
-		Pairs    []bulkPair `json:"pairs"`
-		FlagType string     `json:"flag_type"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, bulkResult{Errors: []string{"invalid JSON: " + err.Error()}})
-		return
-	}
-	if len(req.Pairs) == 0 {
-		writeJSON(w, http.StatusBadRequest, bulkResult{Errors: []string{"no pairs provided"}})
-		return
-	}
-
-	// Parse pairs into BulkOverride values, collecting per-row errors.
-	var result bulkResult
-	result.Total = len(req.Pairs)
-
-	overrides := make([]admin.BulkOverride, 0, len(req.Pairs))
-	for i, p := range req.Pairs {
-		if p.EntityID == "" {
-			result.Failed++
-			result.Errors = append(result.Errors, fmt.Sprintf("row %d: empty entity_id", i+1))
-			continue
-		}
-		var value *pbflagsv1.FlagValue
-		if p.Value != "" {
-			var err error
-			value, err = parseFlagValue(req.FlagType, p.Value)
-			if err != nil {
-				result.Failed++
-				result.Errors = append(result.Errors, fmt.Sprintf("row %d (%s): %v", i+1, p.EntityID, err))
-				continue
-			}
-		}
-		overrides = append(overrides, admin.BulkOverride{EntityID: p.EntityID, Value: value})
-	}
-
-	if len(overrides) > 0 {
-		br, err := h.store.SetFlagOverrides(r.Context(), flagID, overrides, pbflagsv1.State_STATE_ENABLED, "admin-ui/bulk-import")
-		if err != nil {
-			result.Failed += len(overrides)
-			result.Errors = append(result.Errors, err.Error())
-		} else {
-			result.Created = br.Created
-			result.Updated = br.Updated
-		}
-	}
-
-	h.logger.Info("bulk override import",
-		"flag_id", flagID,
-		"total", result.Total,
-		"created", result.Created,
-		"updated", result.Updated,
-		"failed", result.Failed,
-	)
-
-	writeJSON(w, http.StatusOK, result)
-}
-
-type bulkPair struct {
-	EntityID string `json:"entity_id"`
-	Value    string `json:"value"`
-}
-
-type bulkResult struct {
-	Total   int      `json:"total"`
-	Created int      `json:"created"`
-	Updated int      `json:"updated"`
-	Failed  int      `json:"failed"`
-	Errors  []string `json:"errors,omitempty"`
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
 }
 
 // ---------------------------------------------------------------------------
@@ -951,6 +785,17 @@ func dict(pairs ...any) map[string]any {
 
 func flagIDEscape(id string) string {
 	return strings.ReplaceAll(id, "/", "-")
+}
+
+// safeSlice returns s[lo:hi], clamping indices to the string length.
+func safeSlice(s string, lo, hi int) string {
+	if lo > len(s) {
+		lo = len(s)
+	}
+	if hi > len(s) {
+		hi = len(s)
+	}
+	return s[lo:hi]
 }
 
 func countFlags(features []*pbflagsv1.FeatureDetail) int {

@@ -335,7 +335,7 @@ func TestGetFlag(t *testing.T) {
 	err = store.SetFlagOverride(ctx, tf.FlagID(1), "user-1", pbflagsv1.State_STATE_ENABLED, boolValue(false), "admin")
 	require.NoError(t, err)
 
-	flag, err := store.GetFlag(ctx, tf.FlagID(1))
+	flag, _, err := store.GetFlag(ctx, tf.FlagID(1))
 	require.NoError(t, err)
 	require.NotNil(t, flag)
 	require.Equal(t, pbflagsv1.State_STATE_ENABLED, flag.State)
@@ -344,7 +344,7 @@ func TestGetFlag(t *testing.T) {
 	require.Equal(t, "user-1", flag.Overrides[0].EntityId)
 
 	// Non-existent flag returns nil.
-	flag, err = store.GetFlag(ctx, "nonexistent")
+	flag, _, err = store.GetFlag(ctx, "nonexistent")
 	require.NoError(t, err)
 	require.Nil(t, flag)
 }
@@ -360,7 +360,7 @@ func TestGetFlag_Archived(t *testing.T) {
 	_, err := pool.Exec(ctx, `UPDATE feature_flags.flags SET archived_at = now() WHERE flag_id = $1`, tf.FlagID(1))
 	require.NoError(t, err)
 
-	flag, err := store.GetFlag(ctx, tf.FlagID(1))
+	flag, _, err := store.GetFlag(ctx, tf.FlagID(1))
 	require.NoError(t, err)
 	require.NotNil(t, flag)
 	require.True(t, flag.Archived)

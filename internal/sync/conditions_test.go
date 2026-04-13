@@ -203,7 +203,7 @@ flags:
 	defer conn.Close(ctx)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	result, err := SyncConditions(ctx, conn, configDir, descData, defs, logger)
+	result, err := SyncConditions(ctx, conn, configDir, descData, defs, logger, "")
 	if err != nil {
 		t.Fatalf("SyncConditions: %v", err)
 	}

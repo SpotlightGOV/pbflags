@@ -34,7 +34,7 @@ func (a *AdminService) GetFlag(ctx context.Context, req *connect.Request[pbflags
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
 	}
 
-	flag, err := a.store.GetFlag(ctx, flagID)
+	flag, _, err := a.store.GetFlag(ctx, flagID)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

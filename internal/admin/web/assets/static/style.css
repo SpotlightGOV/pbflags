@@ -316,11 +316,10 @@ body {
   background: rgba(91, 127, 255, 0.03);
 }
 
-.col-flag { width: 25%; }
-.col-type { width: 8%; }
-.col-layer { width: 8%; }
-.col-value { width: 19%; }
-.col-actions { width: 40%; text-align: right; }
+.col-flag { width: 40%; }
+.col-type { width: 10%; }
+.col-value-ro { width: 30%; }
+.col-actions-ro { width: 20%; text-align: right; }
 
 /* Flag name link */
 .flag-name {
@@ -745,6 +744,93 @@ body {
 .value-input-hidden {
   opacity: 0.25;
   pointer-events: none;
+}
+
+/* Sync SHA badge */
+.badge-sync {
+  color: var(--text-muted);
+  background: var(--bg-root);
+  border: 1px solid var(--border-dim);
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+/* Condition chain table */
+.condition-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.condition-table th {
+  text-align: left;
+  padding: 8px 20px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--bg-root);
+  border-bottom: 1px solid var(--border);
+}
+
+.condition-table td {
+  padding: 10px 20px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border-dim);
+  vertical-align: middle;
+}
+
+.condition-table tr:last-child td {
+  border-bottom: none;
+}
+
+.condition-table tr:hover td {
+  background: rgba(91, 127, 255, 0.03);
+}
+
+.cond-col-num { width: 48px; }
+.cond-col-expr { width: auto; }
+.cond-col-val { width: 200px; }
+
+.cond-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.cond-cel {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+  background: rgba(91, 127, 255, 0.06);
+  padding: 3px 8px;
+  border-radius: 2px;
+  border: 1px solid rgba(91, 127, 255, 0.12);
+  word-break: break-word;
+}
+
+.cond-otherwise {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
+.cond-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.condition-row-otherwise td {
+  background: var(--bg-root);
+}
+
+.condition-row-otherwise .cond-value {
+  color: var(--text-muted);
 }
 
 /* Override table */

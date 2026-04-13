@@ -56,6 +56,7 @@ func SyncConditions(
 	descriptorData []byte,
 	defs []evaluator.FlagDef,
 	logger *slog.Logger,
+	sha string,
 ) (ConditionResult, error) {
 	files, _, err := evaluator.ParseDescriptorSet(descriptorData)
 	if err != nil {
@@ -121,6 +122,18 @@ func SyncConditions(
 		}
 		if tag.RowsAffected() > 0 {
 			logger.Info("cleared stale conditions", "feature", featureID, "flags", tag.RowsAffected())
+		}
+	}
+
+	// Update sync_sha for processed features.
+	if sha != "" {
+		for featureID := range processedFeatures {
+			if _, err := tx.Exec(ctx,
+				`UPDATE feature_flags.features SET sync_sha = $2, updated_at = now() WHERE feature_id = $1`,
+				featureID, sha,
+			); err != nil {
+				return ConditionResult{}, fmt.Errorf("update sync_sha for %q: %w", featureID, err)
+			}
 		}
 	}
 

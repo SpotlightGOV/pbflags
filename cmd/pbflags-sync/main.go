@@ -42,6 +42,7 @@ func main() {
 	database := fs.String("database", "", "PostgreSQL connection string (or PBFLAGS_DATABASE)")
 	descriptors := fs.String("descriptors", "", "path to descriptors.pb (or PBFLAGS_DESCRIPTORS)")
 	configDir := fs.String("config", "", "directory of YAML flag config files (or PBFLAGS_CONFIG)")
+	sha := fs.String("sha", "", "Git commit SHA to record on synced features (or PBFLAGS_SHA)")
 	fs.Parse(args)
 
 	if *database == "" {
@@ -53,6 +54,9 @@ func main() {
 	if *configDir == "" {
 		*configDir = os.Getenv("PBFLAGS_CONFIG")
 	}
+	if *sha == "" {
+		*sha = os.Getenv("PBFLAGS_SHA")
+	}
 
 	if *database == "" {
 		slog.Error("--database flag or PBFLAGS_DATABASE env var is required")
@@ -63,7 +67,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := run(context.Background(), *database, *descriptors, *configDir); err != nil {
+	if err := run(context.Background(), *database, *descriptors, *configDir, *sha); err != nil {
 		slog.Error("sync failed", "error", err)
 		os.Exit(1)
 	}
@@ -141,7 +145,7 @@ func runShow(args []string) {
 	}
 }
 
-func run(ctx context.Context, dsn, descriptorPath, configDir string) error {
+func run(ctx context.Context, dsn, descriptorPath, configDir, sha string) error {
 	slog.Info("running database migrations")
 	if err := db.Migrate(ctx, dsn); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
@@ -182,7 +186,7 @@ func run(ctx context.Context, dsn, descriptorPath, configDir string) error {
 	)
 
 	if configDir != "" {
-		condResult, condErr := defsync.SyncConditions(ctx, conn, configDir, descriptorData, defs, logger)
+		condResult, condErr := defsync.SyncConditions(ctx, conn, configDir, descriptorData, defs, logger, sha)
 		if condErr != nil {
 			return fmt.Errorf("sync conditions: %w", condErr)
 		}

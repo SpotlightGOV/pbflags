@@ -2,9 +2,11 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -27,6 +30,18 @@ type Store struct {
 // NewStore creates a Store backed by the given connection pool.
 func NewStore(pool *pgxpool.Pool, logger *slog.Logger) *Store {
 	return &Store{pool: pool, logger: logger}
+}
+
+// FlagCondition represents a single condition in a flag's condition chain.
+type FlagCondition struct {
+	CEL   string // CEL expression; empty string means "otherwise" (default fallback)
+	Value string // formatted display value
+}
+
+// FlagExtra holds non-proto data loaded alongside a FlagDetail.
+type FlagExtra struct {
+	Conditions []FlagCondition
+	SyncSHA    string
 }
 
 // GetFlagState returns the state and value for a single flag.
@@ -495,23 +510,28 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, e
 }
 
 // GetFlag returns details for a single flag including overrides.
-func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDetail, error) {
+func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDetail, *FlagExtra, error) {
 	var displayName, description, flagType, layer, state string
 	var valueBytes, defaultBytes, supportedBytes []byte
 	var archivedAt *time.Time
+	var conditionsJSON []byte
+	var syncSHA *string
 
 	err := s.pool.QueryRow(ctx, `
-		SELECT display_name, description, flag_type, layer, state, value,
-		       default_value, supported_values, archived_at
-		FROM feature_flags.flags
-		WHERE flag_id = $1`, flagID).Scan(
+		SELECT f.display_name, f.description, f.flag_type, f.layer, f.state, f.value,
+		       f.default_value, f.supported_values, f.archived_at,
+		       f.conditions, ft.sync_sha
+		FROM feature_flags.flags f
+		JOIN feature_flags.features ft ON ft.feature_id = f.feature_id
+		WHERE f.flag_id = $1`, flagID).Scan(
 		&displayName, &description, &flagType, &layer, &state, &valueBytes,
-		&defaultBytes, &supportedBytes, &archivedAt)
+		&defaultBytes, &supportedBytes, &archivedAt,
+		&conditionsJSON, &syncSHA)
 	if err == pgx.ErrNoRows {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("query flag: %w", err)
+		return nil, nil, fmt.Errorf("query flag: %w", err)
 	}
 
 	val, err := unmarshalFlagValue(valueBytes)
@@ -540,19 +560,42 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 		Archived:        archivedAt != nil,
 	}
 
+	extra := &FlagExtra{}
+	if syncSHA != nil {
+		extra.SyncSHA = *syncSHA
+	}
+	if conditionsJSON != nil {
+		type condEntry struct {
+			CEL   *string         `json:"cel"`
+			Value json.RawMessage `json:"value"`
+		}
+		var entries []condEntry
+		if err := json.Unmarshal(conditionsJSON, &entries); err != nil {
+			s.logger.Warn("failed to unmarshal conditions", "flag_id", flagID, "error", err)
+		} else {
+			for _, e := range entries {
+				fc := FlagCondition{Value: formatConditionValue(e.Value)}
+				if e.CEL != nil {
+					fc.CEL = *e.CEL
+				}
+				extra.Conditions = append(extra.Conditions, fc)
+			}
+		}
+	}
+
 	rows, err := s.pool.Query(ctx, `
 		SELECT entity_id, state, value
 		FROM feature_flags.flag_overrides
 		WHERE flag_id = $1`, flagID)
 	if err != nil {
-		return nil, fmt.Errorf("query overrides: %w", err)
+		return nil, nil, fmt.Errorf("query overrides: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var eid, oState string
 		var oValueBytes []byte
 		if err := rows.Scan(&eid, &oState, &oValueBytes); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		oVal, err := unmarshalFlagValue(oValueBytes)
 		if err != nil {
@@ -565,7 +608,7 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 		})
 	}
 
-	return fd, rows.Err()
+	return fd, extra, rows.Err()
 }
 
 // AuditLogFilter specifies optional filters for audit log queries.
@@ -743,6 +786,71 @@ func parseState(s string) pbflagsv1.State {
 
 func isGlobalLayer(s string) bool {
 	return s == "" || strings.EqualFold(s, "GLOBAL")
+}
+
+// formatConditionValue formats a protojson-encoded FlagValue for display.
+func formatConditionValue(raw json.RawMessage) string {
+	if raw == nil {
+		return "—"
+	}
+	var fv pbflagsv1.FlagValue
+	if err := protojson.Unmarshal(raw, &fv); err != nil {
+		return string(raw)
+	}
+	return formatFlagValueForDisplay(&fv)
+}
+
+func formatFlagValueForDisplay(v *pbflagsv1.FlagValue) string {
+	if v == nil {
+		return "—"
+	}
+	switch val := v.Value.(type) {
+	case *pbflagsv1.FlagValue_BoolValue:
+		if val.BoolValue {
+			return "true"
+		}
+		return "false"
+	case *pbflagsv1.FlagValue_StringValue:
+		return val.StringValue
+	case *pbflagsv1.FlagValue_Int64Value:
+		return strconv.FormatInt(val.Int64Value, 10)
+	case *pbflagsv1.FlagValue_DoubleValue:
+		return strconv.FormatFloat(val.DoubleValue, 'f', -1, 64)
+	case *pbflagsv1.FlagValue_StringListValue:
+		if val.StringListValue == nil || len(val.StringListValue.Values) == 0 {
+			return "[]"
+		}
+		return "[" + strings.Join(val.StringListValue.Values, ", ") + "]"
+	case *pbflagsv1.FlagValue_Int64ListValue:
+		if val.Int64ListValue == nil || len(val.Int64ListValue.Values) == 0 {
+			return "[]"
+		}
+		parts := make([]string, len(val.Int64ListValue.Values))
+		for i, v := range val.Int64ListValue.Values {
+			parts[i] = strconv.FormatInt(v, 10)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	case *pbflagsv1.FlagValue_DoubleListValue:
+		if val.DoubleListValue == nil || len(val.DoubleListValue.Values) == 0 {
+			return "[]"
+		}
+		parts := make([]string, len(val.DoubleListValue.Values))
+		for i, v := range val.DoubleListValue.Values {
+			parts[i] = strconv.FormatFloat(v, 'f', -1, 64)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	case *pbflagsv1.FlagValue_BoolListValue:
+		if val.BoolListValue == nil || len(val.BoolListValue.Values) == 0 {
+			return "[]"
+		}
+		parts := make([]string, len(val.BoolListValue.Values))
+		for i, v := range val.BoolListValue.Values {
+			parts[i] = strconv.FormatBool(v)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	default:
+		return "—"
+	}
 }
 
 // validateFlagValueType checks that a FlagValue's oneof variant matches the

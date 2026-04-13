@@ -12,9 +12,9 @@
     {{if .Flag.Description}}<div class="flag-description">{{.Flag.Description}}</div>{{end}}
     <div class="flag-detail-badges">
       <span class="badge badge-type">{{typeLabel .Flag.FlagType}}</span>
-      <span class="badge badge-layer {{if hasOverrides .Flag.Layer}}badge-layer-user{{end}}">
-        {{layerLabel .Flag.Layer}}
-      </span>
+      {{if .SyncSHA}}
+        <span class="badge badge-sync" title="Config synced from git commit">{{slice .SyncSHA 0 8}}</span>
+      {{end}}
       <span class="state-pill {{stateClass .Flag.State}}">{{stateLabel .Flag.State}}</span>
     </div>
   </div>
@@ -33,7 +33,41 @@
   </div>
 </div>
 
-<!-- Effective Value -->
+{{if .Conditions}}
+<!-- Condition Chain -->
+<div class="detail-section" id="conditions-section">
+  <div class="detail-section-header">
+    <h3>Condition Chain</h3>
+    <span class="state-hint">Evaluated top-to-bottom; first match wins</span>
+  </div>
+  <table class="condition-table">
+    <thead>
+      <tr>
+        <th class="cond-col-num">#</th>
+        <th class="cond-col-expr">Condition</th>
+        <th class="cond-col-val">Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range $i, $c := .Conditions}}
+      <tr class="condition-row{{if not $c.CEL}} condition-row-otherwise{{end}}">
+        <td class="cond-num">{{inc $i}}</td>
+        <td>
+          {{if $c.CEL}}
+            <code class="cond-cel">{{$c.CEL}}</code>
+          {{else}}
+            <span class="cond-otherwise">otherwise</span>
+          {{end}}
+        </td>
+        <td><span class="cond-value">{{$c.Value}}</span></td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+<!-- Effective Value (read-only) -->
 <div class="detail-section" id="state-section">
   <div class="detail-section-header">
     <h3>Value</h3>
@@ -49,80 +83,14 @@
           {{else}}
             <div class="val val-resolved val-muted">{{resolvedValue .Flag}}</div>
           {{end}}
-        {{else if isBool .Flag.FlagType}}
-          <select class="flag-value-select flag-value-select-lg"
-                  onchange="setFlagFromSelect(this, '{{.Flag.FlagId}}', '{{.Flag.FlagType}}', true)">
-            <option value="" {{if not (isEnabled .Flag.State)}}selected{{end}}>default ({{flagValue .Flag.DefaultValue}})</option>
-            <option value="true" {{if isEnabled .Flag.State}}{{if eq (flagValue .Flag.CurrentValue) "true"}}selected{{end}}{{end}}>true</option>
-            <option value="false" {{if isEnabled .Flag.State}}{{if eq (flagValue .Flag.CurrentValue) "false"}}selected{{end}}{{end}}>false</option>
-          </select>
-        {{else if hasSupportedValues .Flag}}
-          <div class="sv-combo sv-combo-lg{{if isCustomSVValue .Flag}} sv-custom-active{{end}}" data-flag-id="{{.Flag.FlagId}}" data-flag-type="{{.Flag.FlagType}}">
-            <select class="flag-value-select flag-value-select-lg sv-select"
-                    onchange="svSelectChanged(this, true)">
-              <option value="" {{if not (isEnabled .Flag.State)}}selected{{end}}>default ({{flagValue .Flag.DefaultValue}})</option>
-              {{$cur := flagValue .Flag.CurrentValue}}
-              {{$enabled := isEnabled .Flag.State}}
-              {{range supportedOptions .Flag}}
-              <option value="{{.}}" {{if $enabled}}{{if eq $cur .}}selected{{end}}{{end}}>{{.}}</option>
-              {{end}}
-              <option value="__custom__" class="sv-custom-opt">Custom&#x2026;</option>
-            </select>
-            <form class="detail-value-form sv-custom-form"
-                  hx-post="/api/flags/state/{{.Flag.FlagId}}"
-                  hx-target="#content" hx-swap="innerHTML"
-                  hx-vals='{"state":"ENABLED","flag_type":"{{.Flag.FlagType}}"}'>
-              <div class="detail-value-input-group">
-                <input type="text" name="value" class="detail-value-input sv-custom-input"
-                       value="{{if isCustomSVValue .Flag}}{{flagValue .Flag.CurrentValue}}{{end}}"
-                       placeholder="custom value">
-                <button type="submit" class="btn btn-primary">Set</button>
-                <button type="button" class="btn-icon sv-custom-cancel" onclick="svCancelCustom(this)">&times;</button>
-              </div>
-            </form>
-          </div>
         {{else if isListType .Flag.FlagType}}
-          <form class="detail-value-form"
-                hx-post="/api/flags/state/{{.Flag.FlagId}}"
-                hx-target="#content" hx-swap="innerHTML"
-                hx-vals='{"state":"ENABLED","flag_type":"{{.Flag.FlagType}}"}'>
-            <div class="detail-list-editor">
-              <textarea name="value" class="detail-value-textarea" rows="4"
-                        placeholder="one value per line">{{if isEnabled .Flag.State}}{{listForTextarea .Flag.CurrentValue}}{{end}}</textarea>
-              <div class="detail-list-actions">
-                <button type="submit" class="btn btn-primary">Set</button>
-                {{if isEnabled .Flag.State}}
-                  <button type="button" class="btn-icon btn-icon-clear" title="Revert to default"
-                          hx-post="/api/flags/state/{{.Flag.FlagId}}"
-                          hx-target="#content" hx-swap="innerHTML"
-                          hx-vals='{"state":"DEFAULT"}'>&times;</button>
-                {{else}}
-                  <button type="button" class="btn-icon btn-icon-clear" disabled>&times;</button>
-                {{end}}
-                <span class="textarea-hint">{{typeLabel .Flag.FlagType}} &middot; one entry per line</span>
-              </div>
-            </div>
-          </form>
+          {{if isEnabled .Flag.State}}
+            {{template "list_chips" dict "Items" (listItems .Flag.CurrentValue) "Muted" false}}
+          {{else}}
+            {{template "list_chips" dict "Items" (listItems .Flag.DefaultValue) "Muted" true}}
+          {{end}}
         {{else}}
-          <form class="detail-value-form"
-                hx-post="/api/flags/state/{{.Flag.FlagId}}"
-                hx-target="#content" hx-swap="innerHTML"
-                hx-vals='{"state":"ENABLED","flag_type":"{{.Flag.FlagType}}"}'>
-            <div class="detail-value-input-group">
-              <input type="text" name="value" class="detail-value-input"
-                     value="{{if isEnabled .Flag.State}}{{flagValue .Flag.CurrentValue}}{{end}}"
-                     placeholder="{{flagValue .Flag.DefaultValue}}">
-              <button type="submit" class="btn btn-primary">Set</button>
-              {{if isEnabled .Flag.State}}
-                <button type="button" class="btn-icon btn-icon-clear" title="Revert to default"
-                        hx-post="/api/flags/state/{{.Flag.FlagId}}"
-                        hx-target="#content" hx-swap="innerHTML"
-                        hx-vals='{"state":"DEFAULT"}'>&times;</button>
-              {{else}}
-                <button type="button" class="btn-icon btn-icon-clear" disabled>&times;</button>
-              {{end}}
-            </div>
-          </form>
+          <div class="val val-resolved{{if not (isEnabled .Flag.State)}} val-muted{{end}}">{{resolvedValue .Flag}}</div>
         {{end}}
       </div>
       <div class="value-cell">
@@ -140,13 +108,6 @@
     </div>
   </div>
 </div>
-
-<!-- Overrides -->
-{{if hasOverrides .Flag.Layer}}
-<div id="overrides-section">
-  {{template "overrides_section" dict "Flag" .Flag}}
-</div>
-{{end}}
 
 <!-- Audit Log (recent) -->
 <div class="detail-section">
@@ -197,144 +158,5 @@
   {{else}}
     <span class="val val-muted">[]</span>
   {{end}}
-</div>
-{{end}}
-
-{{define "overrides_section"}}
-<div class="detail-section">
-  <div class="detail-section-header">
-    <h3>Overrides</h3>
-    <span class="badge badge-layer badge-layer-user" style="font-size:10px">{{layerLabel .Flag.Layer}} layer</span>
-  </div>
-  {{if .Flag.Overrides}}
-  <table class="override-table">
-    <thead>
-      <tr>
-        <th>{{layerLabel .Flag.Layer}} ID</th>
-        <th>Value</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {{range .Flag.Overrides}}
-      <tr class="override-row">
-        <td><span class="entity-id">{{.EntityId}}</span></td>
-        <td>
-          {{if isListType $.Flag.FlagType}}
-            {{template "list_chips" dict "Items" (listItems .Value) "Muted" false}}
-          {{else}}
-            <span class="value-display">{{flagValue .Value}}</span>
-          {{end}}
-        </td>
-        <td style="text-align:right">
-          <button class="btn btn-sm btn-danger"
-                  hx-delete="/api/flags/overrides/entity/{{.EntityId}}/{{$.Flag.FlagId}}"
-                  hx-target="#overrides-section"
-                  hx-swap="innerHTML"
-                  hx-confirm="Remove override for {{.EntityId}}?">Remove</button>
-        </td>
-      </tr>
-      {{end}}
-    </tbody>
-  </table>
-  {{else}}
-  <div class="empty-state" style="padding: 20px">No overrides configured for this flag.</div>
-  {{end}}
-
-  <form class="override-form"
-        hx-post="/api/flags/overrides/{{.Flag.FlagId}}"
-        hx-target="#overrides-section"
-        hx-swap="innerHTML"
-        hx-vals='{"state":"ENABLED","flag_type":"{{.Flag.FlagType}}"}'>
-    <div class="field">
-      <label>{{layerLabel .Flag.Layer}} ID</label>
-      <input type="text" name="entity_id" placeholder="identifier" required style="width: 140px">
-    </div>
-    <div class="field">
-      <label>Value</label>
-      {{if isBool .Flag.FlagType}}
-        <select name="value" class="flag-value-select">
-          <option value="true">true</option>
-          <option value="false">false</option>
-        </select>
-      {{else if hasSupportedValues .Flag}}
-        <div class="sv-combo sv-combo-override">
-          <select name="value" class="flag-value-select sv-select sv-override-select"
-                  onchange="svOverrideChanged(this)">
-            {{range supportedOptions .Flag}}
-            <option value="{{.}}">{{.}}</option>
-            {{end}}
-            <option value="__custom__" class="sv-custom-opt">Custom&#x2026;</option>
-          </select>
-          <input type="text" name="value" class="sv-custom-input sv-override-custom-input"
-                 placeholder="custom value" disabled style="width: 140px">
-          <button type="button" class="btn-icon sv-custom-cancel sv-override-cancel"
-                  onclick="svOverrideCancelCustom(this)">&times;</button>
-        </div>
-      {{else if isListType .Flag.FlagType}}
-        <textarea name="value" class="override-textarea" rows="3"
-                  placeholder="one value per line"></textarea>
-      {{else}}
-        <input type="text" name="value" placeholder="value" required style="width: 140px">
-      {{end}}
-    </div>
-    <button type="submit" class="btn btn-primary btn-sm">Add Override</button>
-    <button type="button" class="btn btn-sm bulk-import-toggle" onclick="toggleBulkImport(this)">Bulk Import</button>
-  </form>
-
-  <!-- Bulk import panel -->
-  <div class="bulk-import-panel" style="display:none"
-       data-flag-id="{{.Flag.FlagId}}" data-flag-type="{{.Flag.FlagType}}">
-    <div class="bulk-import-header">
-      <div class="bulk-import-tabs">
-        <button class="bulk-tab active" data-tab="paste" onclick="switchBulkTab(this, 'paste')">Paste</button>
-        <button class="bulk-tab" data-tab="upload" onclick="switchBulkTab(this, 'upload')">Upload CSV</button>
-      </div>
-      <button class="btn-icon bulk-import-close" onclick="toggleBulkImport(this)" title="Close">&times;</button>
-    </div>
-
-    <div class="bulk-tab-content" data-tab="paste">
-      <textarea class="bulk-textarea" placeholder="entity_id:value&#10;user-101:true&#10;user-202:false&#10;org-33:enabled"
-                oninput="updateBulkPreview(this)"></textarea>
-      <div class="bulk-format-hint">
-        One per line &mdash; <code>entity_id:value</code> or <code>entity_id,value</code>
-      </div>
-    </div>
-
-    <div class="bulk-tab-content" data-tab="upload" style="display:none">
-      <div class="bulk-dropzone" ondrop="handleBulkDrop(event)" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')">
-        <div class="bulk-dropzone-content">
-          <div class="bulk-dropzone-icon">&#8593;</div>
-          <div class="bulk-dropzone-label">Drop a CSV file here</div>
-          <div class="bulk-dropzone-or">or</div>
-          <label class="btn btn-sm bulk-file-label">
-            Choose File
-            <input type="file" accept=".csv,.tsv,.txt" class="bulk-file-input" onchange="handleBulkFile(this)">
-          </label>
-        </div>
-        <div class="bulk-file-name"></div>
-      </div>
-    </div>
-
-    <div class="bulk-preview">
-      <span class="bulk-preview-count">0 overrides</span>
-      <span class="bulk-preview-errors"></span>
-    </div>
-
-    <div class="bulk-progress" style="display:none">
-      <div class="bulk-progress-track">
-        <div class="bulk-progress-bar"></div>
-      </div>
-      <div class="bulk-progress-label">Importing&hellip;</div>
-    </div>
-
-    <div class="bulk-results" style="display:none"></div>
-
-    <div class="bulk-actions">
-      <button class="btn btn-primary btn-sm bulk-import-btn" onclick="executeBulkImport(this)" disabled>
-        Import Overrides
-      </button>
-    </div>
-  </div>
 </div>
 {{end}}

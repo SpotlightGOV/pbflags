@@ -15,10 +15,6 @@
     <option value="DEFAULT">DEFAULT</option>
     <option value="KILLED">KILLED</option>
   </select>
-  <label>Layer:</label>
-  <select id="filter-layer" onchange="applyDashboardFilters()">
-    <option value="">All</option>
-  </select>
   <span id="filter-count" class="filter-count"></span>
   <button class="btn btn-sm" id="expand-all-btn" onclick="toggleExpandAll()">Expand All</button>
 </div>
@@ -48,9 +44,8 @@
         <tr>
           <th class="col-flag">Flag</th>
           <th class="col-type">Type</th>
-          <th class="col-layer">Layer</th>
-          <th class="col-value">Value</th>
-          <th class="col-actions"></th>
+          <th class="col-value-ro">Value</th>
+          <th class="col-actions-ro"></th>
         </tr>
       </thead>
       <tbody>
@@ -68,7 +63,7 @@
 <tr id="flag-row-{{flagIDEscape .Flag.FlagId}}"
     data-flag="{{.Flag.FlagId}}" data-flag-desc="{{.Flag.Description}}"
     data-flag-name="{{flagLabel .Flag}}"
-    data-state="{{stateLabel .Flag.State}}" data-layer="{{layerLabel .Flag.Layer}}">
+    data-state="{{stateLabel .Flag.State}}">
   <td>
     <a class="flag-name" href="/flags/{{.Flag.FlagId}}"
        hx-get="/flags/{{.Flag.FlagId}}" hx-target="#content" hx-push-url="true">
@@ -78,11 +73,6 @@
     {{if .Flag.Description}}<div class="flag-desc">{{.Flag.Description}}</div>{{end}}
   </td>
   <td><span class="badge badge-type">{{typeLabel .Flag.FlagType}}</span></td>
-  <td>
-    <span class="badge badge-layer {{if hasOverrides .Flag.Layer}}badge-layer-user{{end}}">
-      {{layerLabel .Flag.Layer}}
-    </span>
-  </td>
   <td>
     {{if eq (stateLabel .Flag.State) "KILLED"}}
       <span class="value-display value-killed">{{resolvedValue .Flag}}</span>
@@ -94,71 +84,15 @@
       <span class="value-source">default</span>
     {{end}}
   </td>
-  <td class="col-actions">
+  <td class="col-actions-ro">
     <div class="inline-actions"
          hx-target="#flag-row-{{flagIDEscape .Flag.FlagId}}"
          hx-swap="outerHTML">
       {{if eq (stateLabel .Flag.State) "KILLED"}}
-        {{/* Unkill: revert to default */}}
         <button class="btn btn-sm"
                 hx-post="/api/flags/state/{{.Flag.FlagId}}"
                 hx-vals='{"state":"DEFAULT"}'>Unkill</button>
       {{else}}
-        {{/* Value setter */}}
-        {{if isBool .Flag.FlagType}}
-          <select class="flag-value-select"
-                  onchange="setFlagFromSelect(this, '{{.Flag.FlagId}}', '{{.Flag.FlagType}}')">
-            <option value="" {{if not (isEnabled .Flag.State)}}selected{{end}}>default ({{flagValue .Flag.DefaultValue}})</option>
-            <option value="true" {{if isEnabled .Flag.State}}{{if eq (flagValue .Flag.CurrentValue) "true"}}selected{{end}}{{end}}>true</option>
-            <option value="false" {{if isEnabled .Flag.State}}{{if eq (flagValue .Flag.CurrentValue) "false"}}selected{{end}}{{end}}>false</option>
-          </select>
-        {{else if hasSupportedValues .Flag}}
-          <div class="sv-combo{{if isCustomSVValue .Flag}} sv-custom-active{{end}}" data-flag-id="{{.Flag.FlagId}}" data-flag-type="{{.Flag.FlagType}}">
-            <select class="flag-value-select sv-select"
-                    onchange="svSelectChanged(this)">
-              <option value="" {{if not (isEnabled .Flag.State)}}selected{{end}}>default ({{flagValue .Flag.DefaultValue}})</option>
-              {{$cur := flagValue .Flag.CurrentValue}}
-              {{$enabled := isEnabled .Flag.State}}
-              {{range supportedOptions .Flag}}
-              <option value="{{.}}" {{if $enabled}}{{if eq $cur .}}selected{{end}}{{end}}>{{.}}</option>
-              {{end}}
-              <option value="__custom__" class="sv-custom-opt">Custom&#x2026;</option>
-            </select>
-            <form class="inline-value-form sv-custom-form"
-                  hx-post="/api/flags/state/{{.Flag.FlagId}}"
-                  hx-target="#flag-row-{{flagIDEscape .Flag.FlagId}}"
-                  hx-swap="outerHTML"
-                  hx-vals='{"state":"ENABLED","flag_type":"{{.Flag.FlagType}}"}'>
-              <input type="text" name="value" class="inline-value-input sv-custom-input"
-                     value="{{if isCustomSVValue .Flag}}{{flagValue .Flag.CurrentValue}}{{end}}"
-                     placeholder="custom value">
-              <button type="submit" class="btn btn-sm btn-primary">Set</button>
-              <button type="button" class="btn-icon sv-custom-cancel" onclick="svCancelCustom(this)">&times;</button>
-            </form>
-          </div>
-        {{else if isListType .Flag.FlagType}}
-          <a class="btn btn-sm" href="/flags/{{.Flag.FlagId}}"
-             hx-get="/flags/{{.Flag.FlagId}}" hx-target="#content" hx-push-url="true">Edit List</a>
-        {{else}}
-          <form class="inline-value-form"
-                hx-post="/api/flags/state/{{.Flag.FlagId}}"
-                hx-vals='{"state":"ENABLED","flag_type":"{{.Flag.FlagType}}"}'>
-            <input type="text" name="value"
-                   value="{{if isEnabled .Flag.State}}{{flagValue .Flag.CurrentValue}}{{end}}"
-                   placeholder="{{flagValue .Flag.DefaultValue}}"
-                   class="inline-value-input">
-            <button type="submit" class="btn btn-sm btn-primary">Set</button>
-          </form>
-        {{end}}
-        {{/* Clear to default */}}
-        {{if isEnabled .Flag.State}}
-          <button class="btn-icon btn-icon-clear" title="Revert to default"
-                  hx-post="/api/flags/state/{{.Flag.FlagId}}"
-                  hx-vals='{"state":"DEFAULT"}'>&times;</button>
-        {{else}}
-          <button class="btn-icon btn-icon-clear" disabled>&times;</button>
-        {{end}}
-        {{/* Kill */}}
         <button class="btn-icon btn-icon-kill" title="Kill flag"
                 hx-post="/api/flags/state/{{.Flag.FlagId}}"
                 hx-vals='{"state":"KILLED"}'>&#9724;</button>

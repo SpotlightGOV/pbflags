@@ -297,17 +297,12 @@ func TestHandlerFlagIDValidation(t *testing.T) {
 		{"flagDetail no slash", "noslash", http.MethodGet, h.flagDetail},
 		{"updateFlagState path traversal", "../evil", http.MethodPost, h.updateFlagState},
 		{"updateFlagState no slash", "noslash", http.MethodPost, h.updateFlagState},
-		{"setOverride invalid", "bad id", http.MethodPost, h.setOverride},
-		{"removeOverride invalid", "123/abc", http.MethodDelete, h.removeOverride},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(tt.method, "/test", nil)
 			req.SetPathValue("flagID", tt.flagID)
-			if strings.Contains(tt.name, "removeOverride") {
-				req.SetPathValue("entityID", "entity-1")
-			}
 			w := httptest.NewRecorder()
 
 			tt.fn(w, req)
@@ -315,16 +310,6 @@ func TestHandlerFlagIDValidation(t *testing.T) {
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 		})
 	}
-}
-
-func TestRemoveOverrideRejectsBadEntitySegment(t *testing.T) {
-	h := &Handler{}
-	req := httptest.NewRequest(http.MethodDelete, "/test", nil)
-	req.SetPathValue("flagID", "notifications/1")
-	req.SetPathValue("entityID", "bad/id")
-	w := httptest.NewRecorder()
-	h.removeOverride(w, req)
-	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 // ---------------------------------------------------------------------------
