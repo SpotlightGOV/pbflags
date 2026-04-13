@@ -42,7 +42,7 @@ func main() {
 	fs := flag.NewFlagSet("pbflags-sync", flag.ExitOnError)
 	database := fs.String("database", "", "PostgreSQL connection string (or PBFLAGS_DATABASE)")
 	descriptors := fs.String("descriptors", "", "path to descriptors.pb (or PBFLAGS_DESCRIPTORS)")
-	configDir := fs.String("config", "", "directory of YAML flag config files (or PBFLAGS_CONFIG)")
+	configDir := fs.String("features", "", "directory of YAML flag config files (or PBFLAGS_FEATURES)")
 	sha := fs.String("sha", "", "Git commit SHA to record on synced features (or PBFLAGS_SHA)")
 	fs.Parse(args)
 
@@ -53,7 +53,7 @@ func main() {
 		*descriptors = os.Getenv("PBFLAGS_DESCRIPTORS")
 	}
 	if *configDir == "" {
-		*configDir = os.Getenv("PBFLAGS_CONFIG")
+		*configDir = os.Getenv("PBFLAGS_FEATURES")
 	}
 	if *sha == "" {
 		*sha = os.Getenv("PBFLAGS_SHA")
@@ -89,14 +89,14 @@ func main() {
 func runValidate(args []string) {
 	fs := flag.NewFlagSet("validate", flag.ExitOnError)
 	descriptors := fs.String("descriptors", "", "path to descriptors.pb")
-	configDir := fs.String("config", "", "directory of YAML config files")
+	configDir := fs.String("features", "", "directory of YAML config files")
 	fs.Parse(args)
 
 	if *descriptors == "" {
 		*descriptors = os.Getenv("PBFLAGS_DESCRIPTORS")
 	}
 	if *configDir == "" {
-		*configDir = os.Getenv("PBFLAGS_CONFIG")
+		*configDir = os.Getenv("PBFLAGS_FEATURES")
 	}
 
 	// Load project config for defaults.
@@ -112,7 +112,7 @@ func runValidate(args []string) {
 	}
 
 	if *descriptors == "" || *configDir == "" {
-		slog.Error("--descriptors and --config are required for validate")
+		slog.Error("--descriptors and --features are required for validate")
 		os.Exit(1)
 	}
 
@@ -145,14 +145,14 @@ func runValidate(args []string) {
 func runShow(args []string) {
 	fs := flag.NewFlagSet("show", flag.ExitOnError)
 	descriptors := fs.String("descriptors", "", "path to descriptors.pb")
-	configDir := fs.String("config", "", "directory of YAML config files")
+	configDir := fs.String("features", "", "directory of YAML config files")
 	fs.Parse(args)
 
 	if *descriptors == "" {
 		*descriptors = os.Getenv("PBFLAGS_DESCRIPTORS")
 	}
 	if *configDir == "" {
-		*configDir = os.Getenv("PBFLAGS_CONFIG")
+		*configDir = os.Getenv("PBFLAGS_FEATURES")
 	}
 
 	// Load project config for defaults.
@@ -168,7 +168,7 @@ func runShow(args []string) {
 	}
 
 	if *descriptors == "" || *configDir == "" || len(fs.Args()) == 0 {
-		slog.Error("usage: pbflags-sync show --descriptors=... --config=... <flag>")
+		slog.Error("usage: pbflags-sync show --descriptors=... --features=... <flag>")
 		os.Exit(1)
 	}
 

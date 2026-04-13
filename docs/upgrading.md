@@ -90,24 +90,24 @@ CEL expressions reference fields from your `EvaluationContext` proto message via
 
 ### Sync pipeline
 
-Pass `--config` to `pbflags-sync` to compile YAML configs into the database:
+Pass `--features` to `pbflags-sync` to compile YAML configs into the database:
 
 ```bash
 pbflags-sync \
   --database=$PBFLAGS_DATABASE \
   --descriptors=descriptors.pb \
-  --config=config/ \
+  --features=./features \
   --sha=$(git rev-parse HEAD)
 ```
 
 The `--sha` flag records the git commit in the database; the admin UI displays it
 as a badge on flag detail pages. In standalone mode, `pbflags-admin` also accepts
-`--config` to sync conditions on startup.
+`--features` to sync conditions on startup.
 
 ### Validate before deploying
 
 ```bash
-pbflags-sync validate --descriptors=descriptors.pb --config=config/
+pbflags-sync validate --descriptors=descriptors.pb --features=./features
 ```
 
 This checks YAML syntax, CEL expression compilation, and type compatibility without
@@ -138,10 +138,10 @@ No additional generated code changes in v0.16.0.
 1. **Export** existing overrides and admin-set values with `config export`.
 2. **Write YAML configs** for each feature (or use the exported files as a starting point).
 3. **Validate** configs with `pbflags-sync validate`.
-4. **Deploy `pbflags-sync`** with `--config` pointing to your config directory.
+4. **Deploy `pbflags-sync`** with `--features` pointing to your config directory.
    Migration 006 runs automatically and is backwards-compatible with the previous schema
    until conditions are synced.
-5. **Deploy `pbflags-admin`** with `--config` if using standalone mode.
+5. **Deploy `pbflags-admin`** with `--features` if using standalone mode.
 6. **Verify** the admin UI shows condition chains on flag detail pages and the sync SHA badge.
 7. **Remove** any code that calls override APIs (`SetFlagOverride`, `RemoveFlagOverride`).
    These now return `Unimplemented`.

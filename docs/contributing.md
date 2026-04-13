@@ -79,11 +79,49 @@ Migrations live in `db/migrations/` and use [goose](https://github.com/pressly/g
 
 Go 1.22+ `http.ServeMux` panics at registration if a `{name...}` wildcard segment is not the last segment of the pattern. The admin UI uses flag IDs containing `/` (`feature/field`), so wildcards are placed last:
 
-- `POST /api/flags/state/{flagID...}`
-- `POST /api/flags/overrides/{flagID...}`
-- `DELETE /api/flags/overrides/entity/{entityID}/{flagID...}`
+- `POST /api/flags/state/{flagID...}` — kill/unkill a flag
+
+This is the only mutation route. The admin UI is read-only for flag values and conditions — operators manage flag behavior through YAML config files in git, synced via `pbflags-sync`.
 
 When adding new routes, keep multi-segment IDs in a trailing `{...}` segment only.
+
+## Config CLI subcommands
+
+`pbflags-sync` has two offline subcommands that do not require a database connection:
+
+```bash
+# Validate YAML config files against descriptors (for CI)
+pbflags-sync validate --descriptors=descriptors.pb --features=./features
+
+# Show the compiled condition chain for a single flag
+pbflags-sync show --descriptors=descriptors.pb --features=./features <feature/field>
+```
+
+The main sync command also supports:
+
+- `--features=./features` — directory of YAML flag config files to compile into database conditions
+- `--sha=<hash>` — git commit SHA recorded on synced features (displayed in the admin UI)
+
+Additionally, `pbflags-sync config export` generates YAML from existing database state, useful as a migration bridge when moving from the old override system to YAML configs:
+
+```bash
+pbflags-sync config export \
+  --database=$PBFLAGS_DATABASE \
+  --descriptors=descriptors.pb \
+  --entity-dimension=user_id \
+  > config/exported.yaml
+```
+
+## Project config file
+
+`pbflags-sync` discovers a `.pbflags.yaml` file by walking up from the working directory (similar to `buf.yaml`). Currently supported fields:
+
+```yaml
+# .pbflags.yaml
+features_path: features   # default --features directory for sync/validate/show
+```
+
+When `features_path` is set, `--features` can be omitted from `pbflags-sync`, `validate`, and `show` subcommands.
 
 ## Repository structure
 

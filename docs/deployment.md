@@ -40,8 +40,8 @@ buf build proto -o descriptors.pb
 
 ```bash
 pbflags-admin --standalone \
-  --config=pbflags.toml \
   --descriptors=descriptors.pb \
+  --features=./features \
   --database=postgres://user:pass@localhost:5432/mydb?sslmode=disable \
   --env-name=local
 ```
@@ -73,14 +73,13 @@ In production, the three roles run as separate processes with explicit DB permis
 ```bash
 # 1. CI/CD pipeline (once per change to flag definitions — DDL + R/W):
 pbflags-sync \
-  --config=pbflags.toml \
   --descriptors=descriptors.pb \
+  --features=./features \
   --database=postgres://admin:pass@db:5432/flags \
   --sha=$(git rev-parse HEAD)
 
 # 2. Control plane (one or more instances — R/W, no DDL):
 pbflags-admin \
-  --config=pbflags.toml \
   --database=postgres://app:pass@db:5432/flags
 
 # 3. Evaluators (any number — readonly):

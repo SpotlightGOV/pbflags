@@ -76,10 +76,10 @@ func main() {
 	evaluatorListen := fs.String("evaluator-listen", "", "Evaluator listen address (default :9201, empty to disable)")
 	standalone := fs.Bool("standalone", false, "Run all roles in one process (admin + evaluator + sync + migrations)")
 	descriptors := fs.String("descriptors", "", "Path to descriptors.pb (requires --standalone)")
-	configDir := fs.String("config", "", "Directory of YAML flag config files (standalone; syncs conditions on startup)")
+	configDir := fs.String("features", "", "Directory of YAML flag config files (standalone; syncs conditions on startup)")
 	killTTL := fs.Duration("cache-kill-ttl", 0, "Kill set cache TTL (default 30s)")
 	flagTTL := fs.Duration("cache-flag-ttl", 0, "Global flag state cache TTL (default 10m)")
-	overrideTTL := fs.Duration("cache-override-ttl", 0, "Per-entity override cache TTL (default 10m)")
+	_ = fs.Duration("cache-override-ttl", 0, "Deprecated: overrides removed") // kept for flag-file compat
 	envName := fs.String("env-name", "", "Environment label shown in admin UI")
 	envColor := fs.String("env-color", "", "Accent color for admin UI environment banner (hex)")
 	devAssets := fs.String("dev-assets", "", "Read admin UI assets from disk for live reload (dev only)")
@@ -93,7 +93,7 @@ func main() {
 	setEnvIfFlag("PBFLAGS_ENV_COLOR", *envColor)
 	setDurationEnvIfFlag("PBFLAGS_CACHE_KILL_TTL", *killTTL)
 	setDurationEnvIfFlag("PBFLAGS_CACHE_FLAG_TTL", *flagTTL)
-	setDurationEnvIfFlag("PBFLAGS_CACHE_OVERRIDE_TTL", *overrideTTL)
+	// PBFLAGS_CACHE_OVERRIDE_TTL removed — overrides no longer exist.
 
 	// Load project config for defaults.
 	projCfg, projRoot, projErr := projectconfig.Discover(".")

@@ -38,15 +38,14 @@ If the evaluator returns compiled defaults for every flag, check:
 2. **Definitions not synced**: run `pbflags-sync` to ensure flag definitions are in the database.
 3. **Schema not migrated**: the evaluator checks the schema version on startup. If it failed, it logs an error and exits.
 
-## Flag state changes not taking effect
+## Kill switch not taking effect
 
-Flag state changes made through the admin UI are written to the database immediately. Evaluator instances pick them up through their cache TTLs:
+Kill/unkill changes made through the admin UI are written to the database immediately. Evaluator instances pick them up through their cache TTLs:
 
 - **Kill set**: ~30 second polling interval
-- **Flag state**: 10 minute cache TTL (on-demand fetch on miss)
-- **Overrides**: 10 minute cache TTL (on-demand fetch on miss)
+- **Conditions/values**: 10 minute cache TTL (on-demand fetch on miss)
 
-For emergency shutoffs, use the kill switch — it has the shortest propagation delay.
+The kill switch has the shortest propagation delay, making it the appropriate tool for emergency shutoffs.
 
 ## `--database` vs `--upstream` on evaluator
 
@@ -56,3 +55,35 @@ For emergency shutoffs, use the kill switch — it has the shortest propagation 
 - `--upstream`: proxies to another evaluator over HTTP. Use this for fan-out reduction when you don't want every evaluator to hold a database connection.
 
 Providing both or neither is an error.
+
+## Condition evaluation issues
+
+### Condition chain not taking effect
+
+- Verify the config was synced: check the admin UI for the sync SHA badge on the flag detail page.
+- Run `pbflags-sync validate --descriptors=descriptors.pb --features=./features` to check for compilation errors.
+- Run `pbflags-sync show <flag>` to see the compiled condition chain.
+- Check that `conditions` JSONB is populated: `SELECT conditions FROM feature_flags.flags WHERE flag_id = '<id>'`
+
+### CEL expression errors in logs
+
+The evaluator logs `CEL evaluation error` at WARN level with `flag_id`, `cond_index`, and `cel` fields.
+
+Common causes:
+- Referencing a context field that doesn't exist (e.g., `ctx.foo` when `foo` is not a dimension)
+- Type mismatches (comparing string to int)
+
+Use `pbflags-sync validate` to catch compilation errors before deploy.
+
+### Flag returns default when conditions should match
+
+- Check that the evaluation context is being passed correctly in the request.
+- Verify the condition chain has an `otherwise` clause — without one, the flag falls through to the compiled default.
+- Check if the flag is killed (`killed_at IS NOT NULL`) — killed flags always return the compiled default regardless of conditions.
+
+### Admin UI shows "Conditions error" banner
+
+This means the conditions JSONB in the database is malformed.
+
+- Check the raw JSON: `SELECT conditions FROM feature_flags.flags WHERE flag_id = '<id>'`
+- Re-run `pbflags-sync --features=...` to rewrite the conditions from the YAML source.

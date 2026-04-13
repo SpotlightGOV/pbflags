@@ -53,7 +53,7 @@ package myproject.flags;
 import "pbflags/options.proto";
 
 // Required: exactly one message with this annotation.
-// Each field is an override dimension (user, plan, etc).
+// Each field is an evaluation context dimension (user, plan, etc).
 message EvaluationContext {
   option (pbflags.context) = {};
 
@@ -145,7 +145,60 @@ buf build proto -o descriptors.pb
 
 `pbflags-sync` and `pbflags-admin --standalone` read this descriptor set to discover feature and flag definitions at runtime.
 
-## 8. Use in application code
+## 8. Define flag behavior in YAML config
+
+Flag behavior (who sees what value) is defined in YAML config files, not in the admin UI. The admin UI is read-only — operators use YAML configs checked into git for flag behavior, and the kill switch for emergencies.
+
+Create a config directory (e.g., `config/features/`) with one YAML file per feature:
+
+```yaml
+# config/features/notifications.yaml
+feature: notifications
+flags:
+  email_enabled:
+    conditions:
+      - when: "ctx.is_internal"
+        value: true
+      - otherwise: false
+  score_threshold:
+    value: 0.75
+```
+
+Each flag can have:
+- A `conditions` list — evaluated in order; the first matching `when` CEL expression wins
+- An `otherwise` clause — used when no `when` matches (without one, the flag falls through to the compiled default)
+- A static `value` — shorthand for a single-entry condition chain with no CEL expression
+
+CEL expressions reference evaluation context dimensions via `ctx.<field_name>` (e.g., `ctx.is_internal`, `ctx.plan == PlanLevel.ENTERPRISE`).
+
+### Validate configs in CI
+
+Use `pbflags-sync validate` to catch syntax and CEL compilation errors before deploy:
+
+```bash
+pbflags-sync validate --descriptors=descriptors.pb --features=./features
+```
+
+This checks YAML structure, CEL expression compilation, and value type compatibility against the proto descriptors — all without a database connection.
+
+### Inspect a flag's condition chain
+
+```bash
+pbflags-sync show --descriptors=descriptors.pb --features=./features notifications/email_enabled
+```
+
+### Project config file
+
+To avoid repeating `--features` and `--descriptors` on every command, create a `.pbflags.yaml` at the project root:
+
+```yaml
+# .pbflags.yaml
+features_path: features
+```
+
+When `features_path` is set, `pbflags-sync`, `validate`, and `show` automatically use it as the default `--features` directory.
+
+## 9. Use in application code
 
 ### Go
 
@@ -218,7 +271,7 @@ For Java consumers, add the runtime dependency using the same release version as
 implementation("org.spotlightgov.pbflags:pbflags-java:<pbflags-version>")
 ```
 
-## 9. Run the evaluator
+## 10. Run the evaluator
 
 For local development, the easiest path is standalone mode:
 
@@ -234,13 +287,14 @@ This starts the admin UI and evaluator in one process. The embedded evaluator li
 
 If the consumer project needs the production topology instead of standalone mode, use [deployment.md](deployment.md) after the local integration path is working.
 
-## 10. Verify
+## 11. Verify
 
 - `buf generate --template buf.gen.flags.yaml` succeeds
 - `buf build proto -o descriptors.pb` succeeds
 - The generated `dims/` package or classes exist
+- `pbflags-sync validate --descriptors=descriptors.pb --features=./features` passes (if using YAML configs)
 - `pbflags-admin --standalone --descriptors=descriptors.pb ...` starts cleanly
-- A sample flag read returns the compiled default before any admin changes
+- A sample flag read returns the compiled default before any config changes
 
 ## Common mistakes
 
