@@ -5,8 +5,9 @@ import com.google.protobuf.Message;
 
 /**
  * A single key-value pair in an evaluation context. Dimensions set named fields on the
- * EvaluationContext proto message via reflection. Generated dimension constructors (in the Dims
- * class) return Dimension values; application code should not implement this interface directly.
+ * EvaluationContext proto message via reflection. Generated dimension constructors (in the
+ * Dimensions class) return Dimension values; application code should not implement this interface
+ * directly.
  */
 @FunctionalInterface
 public interface Dimension {
@@ -46,7 +47,7 @@ public interface Dimension {
 
   /**
    * Creates a Dimension that sets an enum field by proto field name and enum value descriptor. Use
-   * the generated Dims class for type-safe enum constructors.
+   * the generated Dimensions class for type-safe enum constructors.
    */
   static Dimension ofEnum(
       String fieldName, com.google.protobuf.Descriptors.EnumValueDescriptor value) {

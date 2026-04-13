@@ -255,11 +255,21 @@ Note: flag methods take only `context.Context` — dimensions are bound on the e
 
 ```java
 import com.yourorg.flags.generated.<Feature>Flags;
+import com.yourorg.flags.generated.Dimensions;
+import com.yourorg.flags.proto.EvaluationContext;
+import com.yourorg.flags.proto.PlanLevel;
+import org.spotlightgov.pbflags.FlagEvaluator;
 import org.spotlightgov.pbflags.FlagEvaluatorClient;
 
 // All formats accepted: "localhost:9201", "http://localhost:9201", "https://host:9201"
-FlagEvaluatorClient eval = new FlagEvaluatorClient("localhost:9201");
-<Feature>Flags <feature> = <Feature>Flags.forEvaluator(eval);
+FlagEvaluatorClient eval =
+    new FlagEvaluatorClient("localhost:9201", EvaluationContext.getDefaultInstance());
+
+FlagEvaluator scoped = eval.with(
+    Dimensions.userId("user-123"),
+    Dimensions.plan(PlanLevel.PLAN_LEVEL_PRO)
+);
+<Feature>Flags <feature> = <Feature>Flags.forEvaluator(scoped);
 boolean val = <feature>.<flagName>().get();
 ```
 
