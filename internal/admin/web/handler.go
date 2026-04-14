@@ -166,6 +166,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	// Launch management.
 	inner.HandleFunc("POST /api/launches/ramp/{launchID}", h.updateLaunchRamp)
 	inner.HandleFunc("POST /api/launches/status/{launchID}", h.updateLaunchStatus)
+	inner.HandleFunc("POST /api/launches/kill/{launchID}", h.killLaunch)
+	inner.HandleFunc("POST /api/launches/unkill/{launchID}", h.unkillLaunch)
 
 	mux.Handle("/", h.csrfProtect(inner))
 }
@@ -965,7 +967,7 @@ func (h *Handler) updateLaunchStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	status := r.FormValue("status")
 	switch status {
-	case "CREATED", "ACTIVE", "BAKED", "COMPLETED", "ABANDONED":
+	case "CREATED", "ACTIVE", "SOAKING", "COMPLETED", "ABANDONED":
 	default:
 		http.Error(w, "invalid status", http.StatusBadRequest)
 		return
@@ -979,5 +981,45 @@ func (h *Handler) updateLaunchStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// killLaunch handles POST /api/launches/kill/{launchID}.
+func (h *Handler) killLaunch(w http.ResponseWriter, r *http.Request) {
+	launchID := r.PathValue("launchID")
+	if launchID == "" {
+		http.Error(w, "missing launch ID", http.StatusBadRequest)
+		return
+	}
+	actor := r.FormValue("actor")
+	if actor == "" {
+		actor = "admin-ui"
+	}
+	if err := h.store.KillLaunch(r.Context(), launchID, actor); err != nil {
+		h.logger.Error("kill launch failed", "launch_id", launchID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("HX-Refresh", "true")
+	w.WriteHeader(http.StatusOK)
+}
+
+// unkillLaunch handles POST /api/launches/unkill/{launchID}.
+func (h *Handler) unkillLaunch(w http.ResponseWriter, r *http.Request) {
+	launchID := r.PathValue("launchID")
+	if launchID == "" {
+		http.Error(w, "missing launch ID", http.StatusBadRequest)
+		return
+	}
+	actor := r.FormValue("actor")
+	if actor == "" {
+		actor = "admin-ui"
+	}
+	if err := h.store.UnkillLaunch(r.Context(), launchID, actor); err != nil {
+		h.logger.Error("unkill launch failed", "launch_id", launchID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("HX-Refresh", "true")
 	w.WriteHeader(http.StatusOK)
 }
