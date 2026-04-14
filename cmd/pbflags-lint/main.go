@@ -93,8 +93,18 @@ func run(baseRef, protoDir string) error {
 		return fmt.Errorf("parsing current descriptors: %w", err)
 	}
 
-	// Check for breaking changes.
+	// Check for breaking changes (flag-level).
 	violations := lint.Check(baseDefs, currentDefs)
+
+	// Check for scope-level breaking changes.
+	baseScopes, baseFeatures, err := lint.ExtractScopesFromDescriptors(baseData)
+	if err == nil {
+		currentScopes, currentFeatures, err := lint.ExtractScopesFromDescriptors(currentData)
+		if err == nil {
+			violations = append(violations, lint.CheckScopes(baseScopes, currentScopes, baseFeatures, currentFeatures)...)
+		}
+	}
+
 	if len(violations) == 0 {
 		return nil
 	}
