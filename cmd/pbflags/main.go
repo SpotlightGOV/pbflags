@@ -32,10 +32,10 @@ import (
 	defsync "github.com/SpotlightGOV/pbflags/internal/sync"
 )
 
-const usage = `pbflags — feature flag CLI
+const usage = `pb — feature flag CLI
 
 Usage:
-  pbflags <command> [flags]
+  pb <command> [flags]
 
 Config commands:
   sync       Sync definitions and conditions to the database
@@ -46,19 +46,16 @@ Config commands:
   load       Load a compiled bundle into the database
 
 Admin commands:
-  list       List features and flags from the admin API
-  get        Show flag detail from the admin API
-  kill       Kill a flag (emergency disable)
-  unkill     Restore a killed flag
-  audit      View audit log
+  flag       Flag operations (list, get, kill, unkill)
   launch     Launch lifecycle (list, get, ramp, status, kill, unkill)
+  audit      View audit log
 
 Auth commands:
   auth login   Save API credentials
   auth status  Show current identity
   auth logout  Remove stored credentials
 
-Run "pbflags <command> -h" for command-specific help.
+Run "pb <command> -h" for command-specific help.
 `
 
 func main() {
@@ -86,24 +83,18 @@ func main() {
 		runCompile(args[1:])
 	case "load":
 		runLoad(args[1:])
-	case "list":
-		runList(args[1:])
-	case "get":
-		runGet(args[1:])
-	case "kill":
-		runKill(args[1:])
-	case "unkill":
-		runUnkill(args[1:])
-	case "audit":
-		runAudit(args[1:])
+	case "flag":
+		runFlag(args[1:])
 	case "launch":
 		runLaunch(args[1:])
+	case "audit":
+		runAudit(args[1:])
 	case "auth":
 		runAuth(args[1:])
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:
-		fmt.Fprintf(os.Stderr, "pbflags: unknown command %q\n\n", args[0])
+		fmt.Fprintf(os.Stderr, "pb: unknown command %q\n\n", args[0])
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(1)
 	}
@@ -141,7 +132,7 @@ func resolveEnv(database, descriptors, configDir, sha *string) {
 // --- sync ---
 
 func runSync(args []string) {
-	fs := flag.NewFlagSet("pbflags sync", flag.ExitOnError)
+	fs := flag.NewFlagSet("pbsync", flag.ExitOnError)
 	database := fs.String("database", "", "PostgreSQL connection string (or PBFLAGS_DATABASE)")
 	descriptors := fs.String("descriptors", "", "path to descriptors.pb (or PBFLAGS_DESCRIPTORS)")
 	configDir := fs.String("features", "", "directory of YAML flag config files (or PBFLAGS_FEATURES)")
@@ -223,7 +214,7 @@ func doSync(ctx context.Context, dsn, descriptorPath, configDir, sha string) err
 // --- validate ---
 
 func runValidate(args []string) {
-	fs := flag.NewFlagSet("pbflags validate", flag.ExitOnError)
+	fs := flag.NewFlagSet("pbvalidate", flag.ExitOnError)
 	descriptors := fs.String("descriptors", "", "path to descriptors.pb")
 	configDir := fs.String("features", "", "directory of YAML config files")
 	fs.Parse(args)
@@ -265,7 +256,7 @@ func runValidate(args []string) {
 // --- show ---
 
 func runShow(args []string) {
-	fs := flag.NewFlagSet("pbflags show", flag.ExitOnError)
+	fs := flag.NewFlagSet("pbshow", flag.ExitOnError)
 	descriptors := fs.String("descriptors", "", "path to descriptors.pb")
 	configDir := fs.String("features", "", "directory of YAML config files")
 	fs.Parse(args)
@@ -274,7 +265,7 @@ func runShow(args []string) {
 	resolveProjectConfig(descriptors, configDir)
 
 	if *descriptors == "" || *configDir == "" || len(fs.Args()) == 0 {
-		slog.Error("usage: pbflags show --descriptors=... --features=... <flag>")
+		slog.Error("usage: pb show --descriptors=... --features=... <flag>")
 		os.Exit(1)
 	}
 
@@ -293,7 +284,7 @@ func runShow(args []string) {
 // --- export ---
 
 func runExport(args []string) {
-	fs := flag.NewFlagSet("pbflags export", flag.ExitOnError)
+	fs := flag.NewFlagSet("pbexport", flag.ExitOnError)
 	database := fs.String("database", "", "PostgreSQL connection string")
 	entityDim := fs.String("entity-dimension", "", "context dimension for per-entity override conditions (e.g., user_id)")
 	outputDir := fs.String("output", "", "directory to write YAML files (default: stdout)")
@@ -344,7 +335,7 @@ func runExport(args []string) {
 // --- compile ---
 
 func runCompile(args []string) {
-	fs := flag.NewFlagSet("pbflags compile", flag.ExitOnError)
+	fs := flag.NewFlagSet("pbcompile", flag.ExitOnError)
 	descriptors := fs.String("descriptors", "", "path to descriptors.pb")
 	configDir := fs.String("features", "", "directory of YAML flag config files")
 	output := fs.String("output", "bundle.pb", "output path for compiled bundle")
@@ -384,7 +375,7 @@ func runCompile(args []string) {
 // --- load ---
 
 func runLoad(args []string) {
-	fs := flag.NewFlagSet("pbflags load", flag.ExitOnError)
+	fs := flag.NewFlagSet("pbload", flag.ExitOnError)
 	database := fs.String("database", "", "PostgreSQL connection string (or PBFLAGS_DATABASE)")
 	bundlePath := fs.String("bundle", "", "path to compiled bundle")
 	sha := fs.String("sha", "", "Git commit SHA to record on synced features")

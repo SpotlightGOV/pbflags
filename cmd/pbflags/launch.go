@@ -17,7 +17,7 @@ import (
 
 func runLaunch(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, `usage: pbflags launch <subcommand>
+		fmt.Fprintln(os.Stderr, `usage: pb launch <subcommand>
 
 Subcommands:
   list           List launches
@@ -43,13 +43,13 @@ Subcommands:
 	case "unkill":
 		runLaunchUnkill(args[1:])
 	default:
-		fmt.Fprintf(os.Stderr, "pbflags launch: unknown subcommand %q\n", args[0])
+		fmt.Fprintf(os.Stderr, "pb launch: unknown subcommand %q\n", args[0])
 		os.Exit(1)
 	}
 }
 
 func runLaunchList(args []string) {
-	fs := flag.NewFlagSet("pbflags launch list", flag.ExitOnError)
+	fs := flag.NewFlagSet("pb launch list", flag.ExitOnError)
 	admin := fs.String("admin", "", "Admin API URL")
 	feature := fs.String("feature", "", "Filter by feature ID")
 	jsonOut := fs.Bool("json", false, "Output as JSON")
@@ -97,13 +97,13 @@ func runLaunchList(args []string) {
 }
 
 func runLaunchGet(args []string) {
-	fs := flag.NewFlagSet("pbflags launch get", flag.ExitOnError)
+	fs := flag.NewFlagSet("pb launch get", flag.ExitOnError)
 	admin := fs.String("admin", "", "Admin API URL")
 	jsonOut := fs.Bool("json", false, "Output as JSON")
 	fs.Parse(args)
 
 	if len(fs.Args()) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: pbflags launch get <launch-id>")
+		fmt.Fprintln(os.Stderr, "usage: pb launch get <launch-id>")
 		os.Exit(1)
 	}
 
@@ -152,13 +152,13 @@ func runLaunchGet(args []string) {
 }
 
 func runLaunchRamp(args []string) {
-	fs := flag.NewFlagSet("pbflags launch ramp", flag.ExitOnError)
+	fs := flag.NewFlagSet("pb launch ramp", flag.ExitOnError)
 	admin := fs.String("admin", "", "Admin API URL")
 	jsonOut := fs.Bool("json", false, "Output as JSON")
 	fs.Parse(args)
 
 	if len(fs.Args()) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: pbflags launch ramp <launch-id> <percentage>")
+		fmt.Fprintln(os.Stderr, "usage: pb launch ramp <launch-id> <percentage>")
 		os.Exit(1)
 	}
 
@@ -189,13 +189,13 @@ func runLaunchRamp(args []string) {
 }
 
 func runLaunchStatus(args []string) {
-	fs := flag.NewFlagSet("pbflags launch status", flag.ExitOnError)
+	fs := flag.NewFlagSet("pb launch status", flag.ExitOnError)
 	admin := fs.String("admin", "", "Admin API URL")
 	jsonOut := fs.Bool("json", false, "Output as JSON")
 	fs.Parse(args)
 
 	if len(fs.Args()) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: pbflags launch status <launch-id> <status>")
+		fmt.Fprintln(os.Stderr, "usage: pb launch status <launch-id> <status>")
 		fmt.Fprintln(os.Stderr, "  valid statuses: CREATED, ACTIVE, SOAKING, COMPLETED, ABANDONED")
 		os.Exit(1)
 	}
@@ -221,13 +221,13 @@ func runLaunchStatus(args []string) {
 }
 
 func runLaunchKill(args []string) {
-	fs := flag.NewFlagSet("pbflags launch kill", flag.ExitOnError)
+	fs := flag.NewFlagSet("pb launch kill", flag.ExitOnError)
 	admin := fs.String("admin", "", "Admin API URL")
 	jsonOut := fs.Bool("json", false, "Output as JSON")
 	fs.Parse(args)
 
 	if len(fs.Args()) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: pbflags launch kill <launch-id>")
+		fmt.Fprintln(os.Stderr, "usage: pb launch kill <launch-id>")
 		os.Exit(1)
 	}
 
@@ -251,13 +251,13 @@ func runLaunchKill(args []string) {
 }
 
 func runLaunchUnkill(args []string) {
-	fs := flag.NewFlagSet("pbflags launch unkill", flag.ExitOnError)
+	fs := flag.NewFlagSet("pb launch unkill", flag.ExitOnError)
 	admin := fs.String("admin", "", "Admin API URL")
 	jsonOut := fs.Bool("json", false, "Output as JSON")
 	fs.Parse(args)
 
 	if len(fs.Args()) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: pbflags launch unkill <launch-id>")
+		fmt.Fprintln(os.Stderr, "usage: pb launch unkill <launch-id>")
 		os.Exit(1)
 	}
 

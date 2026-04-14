@@ -18,10 +18,39 @@ import (
 	"github.com/SpotlightGOV/pbflags/internal/credentials"
 )
 
-// --- list ---
+// --- flag ---
 
-func runList(args []string) {
-	fs := flag.NewFlagSet("pbflags list", flag.ExitOnError)
+func runFlag(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, `usage: pb flag <subcommand>
+
+Subcommands:
+  list           List features and flags
+  get <id>       Show flag detail
+  kill <id>      Kill a flag (emergency disable)
+  unkill <id>    Restore a killed flag`)
+		os.Exit(1)
+	}
+
+	switch args[0] {
+	case "list":
+		runFlagList(args[1:])
+	case "get":
+		runFlagGet(args[1:])
+	case "kill":
+		runFlagKill(args[1:])
+	case "unkill":
+		runFlagUnkill(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "pb flag: unknown subcommand %q\n", args[0])
+		os.Exit(1)
+	}
+}
+
+// --- flag list ---
+
+func runFlagList(args []string) {
+	fs := flag.NewFlagSet("pb flag list", flag.ExitOnError)
 	admin := fs.String("admin", "", "Admin API URL (or PBFLAGS_ADMIN_URL, default http://localhost:9200)")
 	jsonOut := fs.Bool("json", false, "Output as JSON")
 	fs.Parse(args)
@@ -64,14 +93,14 @@ func runList(args []string) {
 
 // --- get ---
 
-func runGet(args []string) {
-	fs := flag.NewFlagSet("pbflags get", flag.ExitOnError)
+func runFlagGet(args []string) {
+	fs := flag.NewFlagSet("pb flag get", flag.ExitOnError)
 	admin := fs.String("admin", "", "Admin API URL")
 	jsonOut := fs.Bool("json", false, "Output as JSON")
 	fs.Parse(args)
 
 	if len(fs.Args()) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: pbflags get <flag-id>")
+		fmt.Fprintln(os.Stderr, "usage: pb flag get <flag-id>")
 		os.Exit(1)
 	}
 	flagID := fs.Args()[0]
@@ -118,11 +147,11 @@ func runGet(args []string) {
 
 // --- kill / unkill ---
 
-func runKill(args []string) {
+func runFlagKill(args []string) {
 	doStateChange(args, pbflagsv1.State_STATE_KILLED, "killed")
 }
 
-func runUnkill(args []string) {
+func runFlagUnkill(args []string) {
 	doStateChange(args, pbflagsv1.State_STATE_DEFAULT, "unkilled")
 }
 
@@ -131,13 +160,13 @@ func doStateChange(args []string, state pbflagsv1.State, verb string) {
 	if state == pbflagsv1.State_STATE_DEFAULT {
 		cmdName = "unkill"
 	}
-	fs := flag.NewFlagSet("pbflags "+cmdName, flag.ExitOnError)
+	fs := flag.NewFlagSet("pb flag "+cmdName, flag.ExitOnError)
 	admin := fs.String("admin", "", "Admin API URL")
 	jsonOut := fs.Bool("json", false, "Output as JSON")
 	fs.Parse(args)
 
 	if len(fs.Args()) == 0 {
-		fmt.Fprintf(os.Stderr, "usage: pbflags %s <flag-id>\n", cmdName)
+		fmt.Fprintf(os.Stderr, "usage: pb flag %s <flag-id>\n", cmdName)
 		os.Exit(1)
 	}
 	flagID := fs.Args()[0]
@@ -165,7 +194,7 @@ func doStateChange(args []string, state pbflagsv1.State, verb string) {
 // --- audit ---
 
 func runAudit(args []string) {
-	fs := flag.NewFlagSet("pbflags audit", flag.ExitOnError)
+	fs := flag.NewFlagSet("pb audit", flag.ExitOnError)
 	admin := fs.String("admin", "", "Admin API URL")
 	flagFilter := fs.String("flag", "", "Filter by flag ID")
 	limit := fs.Int("limit", 20, "Max entries to return")
@@ -217,7 +246,7 @@ func runAudit(args []string) {
 
 func runAuth(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, `usage: pbflags auth <subcommand>
+		fmt.Fprintln(os.Stderr, `usage: pb auth <subcommand>
 
 Subcommands:
   login    Save API credentials
@@ -234,13 +263,13 @@ Subcommands:
 	case "logout":
 		runAuthLogout(args[1:])
 	default:
-		fmt.Fprintf(os.Stderr, "pbflags auth: unknown subcommand %q\n", args[0])
+		fmt.Fprintf(os.Stderr, "pb auth: unknown subcommand %q\n", args[0])
 		os.Exit(1)
 	}
 }
 
 func runAuthLogin(args []string) {
-	fs := flag.NewFlagSet("pbflags auth login", flag.ExitOnError)
+	fs := flag.NewFlagSet("pb auth login", flag.ExitOnError)
 	token := fs.String("token", "", "API token")
 	actor := fs.String("actor", "", "Actor identity for audit logging (e.g. alice@example.com)")
 	fs.Parse(args)
@@ -269,7 +298,7 @@ func runAuthStatus(_ []string) {
 
 	if creds.Token == "" {
 		fmt.Println("Not authenticated.")
-		fmt.Println("Run: pbflags auth login --token=<token>")
+		fmt.Println("Run: pb auth login --token=<token>")
 		return
 	}
 
