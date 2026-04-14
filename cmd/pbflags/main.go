@@ -51,6 +51,7 @@ Admin commands:
   kill       Kill a flag (emergency disable)
   unkill     Restore a killed flag
   audit      View audit log
+  launch     Launch lifecycle (list, get, ramp, status, kill, unkill)
 
 Auth commands:
   auth login   Save API credentials
@@ -95,6 +96,8 @@ func main() {
 		runUnkill(args[1:])
 	case "audit":
 		runAudit(args[1:])
+	case "launch":
+		runLaunch(args[1:])
 	case "auth":
 		runAuth(args[1:])
 	case "-h", "--help", "help":

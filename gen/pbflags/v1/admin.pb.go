@@ -7,13 +7,14 @@
 package pbflagsv1
 
 import (
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
+
 	pbflags "github.com/SpotlightGOV/pbflags/gen/pbflags"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
-	reflect "reflect"
-	sync "sync"
-	unsafe "unsafe"
 )
 
 const (
@@ -945,6 +946,634 @@ func (x *AuditLogEntry) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type LaunchDetail struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	LaunchId         string                 `protobuf:"bytes,1,opt,name=launch_id,json=launchId,proto3" json:"launch_id,omitempty"`
+	ScopeFeatureId   string                 `protobuf:"bytes,2,opt,name=scope_feature_id,json=scopeFeatureId,proto3" json:"scope_feature_id,omitempty"` // empty for cross-feature launches
+	Dimension        string                 `protobuf:"bytes,3,opt,name=dimension,proto3" json:"dimension,omitempty"`
+	RampPercentage   int32                  `protobuf:"varint,4,opt,name=ramp_percentage,json=rampPercentage,proto3" json:"ramp_percentage,omitempty"`
+	Status           string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"` // CREATED, ACTIVE, SOAKING, COMPLETED, ABANDONED
+	KilledAt         *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=killed_at,json=killedAt,proto3" json:"killed_at,omitempty"`
+	AffectedFeatures []string               `protobuf:"bytes,7,rep,name=affected_features,json=affectedFeatures,proto3" json:"affected_features,omitempty"`
+	Description      string                 `protobuf:"bytes,8,opt,name=description,proto3" json:"description,omitempty"`
+	CreatedAt        *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt        *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *LaunchDetail) Reset() {
+	*x = LaunchDetail{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LaunchDetail) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LaunchDetail) ProtoMessage() {}
+
+func (x *LaunchDetail) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LaunchDetail.ProtoReflect.Descriptor instead.
+func (*LaunchDetail) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *LaunchDetail) GetLaunchId() string {
+	if x != nil {
+		return x.LaunchId
+	}
+	return ""
+}
+
+func (x *LaunchDetail) GetScopeFeatureId() string {
+	if x != nil {
+		return x.ScopeFeatureId
+	}
+	return ""
+}
+
+func (x *LaunchDetail) GetDimension() string {
+	if x != nil {
+		return x.Dimension
+	}
+	return ""
+}
+
+func (x *LaunchDetail) GetRampPercentage() int32 {
+	if x != nil {
+		return x.RampPercentage
+	}
+	return 0
+}
+
+func (x *LaunchDetail) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *LaunchDetail) GetKilledAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.KilledAt
+	}
+	return nil
+}
+
+func (x *LaunchDetail) GetAffectedFeatures() []string {
+	if x != nil {
+		return x.AffectedFeatures
+	}
+	return nil
+}
+
+func (x *LaunchDetail) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *LaunchDetail) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *LaunchDetail) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+type ListLaunchesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FeatureId     string                 `protobuf:"bytes,1,opt,name=feature_id,json=featureId,proto3" json:"feature_id,omitempty"` // Optional: filter by feature. Empty = all launches.
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListLaunchesRequest) Reset() {
+	*x = ListLaunchesRequest{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListLaunchesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListLaunchesRequest) ProtoMessage() {}
+
+func (x *ListLaunchesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListLaunchesRequest.ProtoReflect.Descriptor instead.
+func (*ListLaunchesRequest) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ListLaunchesRequest) GetFeatureId() string {
+	if x != nil {
+		return x.FeatureId
+	}
+	return ""
+}
+
+type ListLaunchesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Launches      []*LaunchDetail        `protobuf:"bytes,1,rep,name=launches,proto3" json:"launches,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListLaunchesResponse) Reset() {
+	*x = ListLaunchesResponse{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListLaunchesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListLaunchesResponse) ProtoMessage() {}
+
+func (x *ListLaunchesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListLaunchesResponse.ProtoReflect.Descriptor instead.
+func (*ListLaunchesResponse) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ListLaunchesResponse) GetLaunches() []*LaunchDetail {
+	if x != nil {
+		return x.Launches
+	}
+	return nil
+}
+
+type GetLaunchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LaunchId      string                 `protobuf:"bytes,1,opt,name=launch_id,json=launchId,proto3" json:"launch_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetLaunchRequest) Reset() {
+	*x = GetLaunchRequest{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetLaunchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetLaunchRequest) ProtoMessage() {}
+
+func (x *GetLaunchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetLaunchRequest.ProtoReflect.Descriptor instead.
+func (*GetLaunchRequest) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *GetLaunchRequest) GetLaunchId() string {
+	if x != nil {
+		return x.LaunchId
+	}
+	return ""
+}
+
+type GetLaunchResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Launch        *LaunchDetail          `protobuf:"bytes,1,opt,name=launch,proto3" json:"launch,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetLaunchResponse) Reset() {
+	*x = GetLaunchResponse{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetLaunchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetLaunchResponse) ProtoMessage() {}
+
+func (x *GetLaunchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetLaunchResponse.ProtoReflect.Descriptor instead.
+func (*GetLaunchResponse) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *GetLaunchResponse) GetLaunch() *LaunchDetail {
+	if x != nil {
+		return x.Launch
+	}
+	return nil
+}
+
+type UpdateLaunchRampRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	LaunchId       string                 `protobuf:"bytes,1,opt,name=launch_id,json=launchId,proto3" json:"launch_id,omitempty"`
+	RampPercentage int32                  `protobuf:"varint,2,opt,name=ramp_percentage,json=rampPercentage,proto3" json:"ramp_percentage,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *UpdateLaunchRampRequest) Reset() {
+	*x = UpdateLaunchRampRequest{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateLaunchRampRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateLaunchRampRequest) ProtoMessage() {}
+
+func (x *UpdateLaunchRampRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateLaunchRampRequest.ProtoReflect.Descriptor instead.
+func (*UpdateLaunchRampRequest) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *UpdateLaunchRampRequest) GetLaunchId() string {
+	if x != nil {
+		return x.LaunchId
+	}
+	return ""
+}
+
+func (x *UpdateLaunchRampRequest) GetRampPercentage() int32 {
+	if x != nil {
+		return x.RampPercentage
+	}
+	return 0
+}
+
+type UpdateLaunchRampResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateLaunchRampResponse) Reset() {
+	*x = UpdateLaunchRampResponse{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateLaunchRampResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateLaunchRampResponse) ProtoMessage() {}
+
+func (x *UpdateLaunchRampResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateLaunchRampResponse.ProtoReflect.Descriptor instead.
+func (*UpdateLaunchRampResponse) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{22}
+}
+
+type UpdateLaunchStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LaunchId      string                 `protobuf:"bytes,1,opt,name=launch_id,json=launchId,proto3" json:"launch_id,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"` // CREATED, ACTIVE, SOAKING, COMPLETED, ABANDONED
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateLaunchStatusRequest) Reset() {
+	*x = UpdateLaunchStatusRequest{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateLaunchStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateLaunchStatusRequest) ProtoMessage() {}
+
+func (x *UpdateLaunchStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateLaunchStatusRequest.ProtoReflect.Descriptor instead.
+func (*UpdateLaunchStatusRequest) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *UpdateLaunchStatusRequest) GetLaunchId() string {
+	if x != nil {
+		return x.LaunchId
+	}
+	return ""
+}
+
+func (x *UpdateLaunchStatusRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+type UpdateLaunchStatusResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateLaunchStatusResponse) Reset() {
+	*x = UpdateLaunchStatusResponse{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateLaunchStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateLaunchStatusResponse) ProtoMessage() {}
+
+func (x *UpdateLaunchStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateLaunchStatusResponse.ProtoReflect.Descriptor instead.
+func (*UpdateLaunchStatusResponse) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{24}
+}
+
+type KillLaunchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LaunchId      string                 `protobuf:"bytes,1,opt,name=launch_id,json=launchId,proto3" json:"launch_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KillLaunchRequest) Reset() {
+	*x = KillLaunchRequest{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KillLaunchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KillLaunchRequest) ProtoMessage() {}
+
+func (x *KillLaunchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KillLaunchRequest.ProtoReflect.Descriptor instead.
+func (*KillLaunchRequest) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *KillLaunchRequest) GetLaunchId() string {
+	if x != nil {
+		return x.LaunchId
+	}
+	return ""
+}
+
+type KillLaunchResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KillLaunchResponse) Reset() {
+	*x = KillLaunchResponse{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KillLaunchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KillLaunchResponse) ProtoMessage() {}
+
+func (x *KillLaunchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KillLaunchResponse.ProtoReflect.Descriptor instead.
+func (*KillLaunchResponse) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{26}
+}
+
+type UnkillLaunchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LaunchId      string                 `protobuf:"bytes,1,opt,name=launch_id,json=launchId,proto3" json:"launch_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnkillLaunchRequest) Reset() {
+	*x = UnkillLaunchRequest{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnkillLaunchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnkillLaunchRequest) ProtoMessage() {}
+
+func (x *UnkillLaunchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnkillLaunchRequest.ProtoReflect.Descriptor instead.
+func (*UnkillLaunchRequest) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *UnkillLaunchRequest) GetLaunchId() string {
+	if x != nil {
+		return x.LaunchId
+	}
+	return ""
+}
+
+type UnkillLaunchResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnkillLaunchResponse) Reset() {
+	*x = UnkillLaunchResponse{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnkillLaunchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnkillLaunchResponse) ProtoMessage() {}
+
+func (x *UnkillLaunchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnkillLaunchResponse.ProtoReflect.Descriptor instead.
+func (*UnkillLaunchResponse) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{28}
+}
+
 var File_pbflags_v1_admin_proto protoreflect.FileDescriptor
 
 const file_pbflags_v1_admin_proto_rawDesc = "" +
@@ -1013,14 +1642,58 @@ const file_pbflags_v1_admin_proto_rawDesc = "" +
 	"\tnew_value\x18\x05 \x01(\v2\x15.pbflags.v1.FlagValueR\bnewValue\x12\x14\n" +
 	"\x05actor\x18\x06 \x01(\tR\x05actor\x129\n" +
 	"\n" +
-	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt2\x96\x04\n" +
+	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xb2\x03\n" +
+	"\fLaunchDetail\x12\x1b\n" +
+	"\tlaunch_id\x18\x01 \x01(\tR\blaunchId\x12(\n" +
+	"\x10scope_feature_id\x18\x02 \x01(\tR\x0escopeFeatureId\x12\x1c\n" +
+	"\tdimension\x18\x03 \x01(\tR\tdimension\x12'\n" +
+	"\x0framp_percentage\x18\x04 \x01(\x05R\x0erampPercentage\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x127\n" +
+	"\tkilled_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bkilledAt\x12+\n" +
+	"\x11affected_features\x18\a \x03(\tR\x10affectedFeatures\x12 \n" +
+	"\vdescription\x18\b \x01(\tR\vdescription\x129\n" +
+	"\n" +
+	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"4\n" +
+	"\x13ListLaunchesRequest\x12\x1d\n" +
+	"\n" +
+	"feature_id\x18\x01 \x01(\tR\tfeatureId\"L\n" +
+	"\x14ListLaunchesResponse\x124\n" +
+	"\blaunches\x18\x01 \x03(\v2\x18.pbflags.v1.LaunchDetailR\blaunches\"/\n" +
+	"\x10GetLaunchRequest\x12\x1b\n" +
+	"\tlaunch_id\x18\x01 \x01(\tR\blaunchId\"E\n" +
+	"\x11GetLaunchResponse\x120\n" +
+	"\x06launch\x18\x01 \x01(\v2\x18.pbflags.v1.LaunchDetailR\x06launch\"_\n" +
+	"\x17UpdateLaunchRampRequest\x12\x1b\n" +
+	"\tlaunch_id\x18\x01 \x01(\tR\blaunchId\x12'\n" +
+	"\x0framp_percentage\x18\x02 \x01(\x05R\x0erampPercentage\"\x1a\n" +
+	"\x18UpdateLaunchRampResponse\"P\n" +
+	"\x19UpdateLaunchStatusRequest\x12\x1b\n" +
+	"\tlaunch_id\x18\x01 \x01(\tR\blaunchId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"\x1c\n" +
+	"\x1aUpdateLaunchStatusResponse\"0\n" +
+	"\x11KillLaunchRequest\x12\x1b\n" +
+	"\tlaunch_id\x18\x01 \x01(\tR\blaunchId\"\x14\n" +
+	"\x12KillLaunchResponse\"2\n" +
+	"\x13UnkillLaunchRequest\x12\x1b\n" +
+	"\tlaunch_id\x18\x01 \x01(\tR\blaunchId\"\x16\n" +
+	"\x14UnkillLaunchResponse2\x97\b\n" +
 	"\x10FlagAdminService\x12Q\n" +
 	"\fListFeatures\x12\x1f.pbflags.v1.ListFeaturesRequest\x1a .pbflags.v1.ListFeaturesResponse\x12B\n" +
 	"\aGetFlag\x12\x1a.pbflags.v1.GetFlagRequest\x1a\x1b.pbflags.v1.GetFlagResponse\x12Z\n" +
 	"\x0fUpdateFlagState\x12\".pbflags.v1.UpdateFlagStateRequest\x1a#.pbflags.v1.UpdateFlagStateResponse\x12Z\n" +
 	"\x0fSetFlagOverride\x12\".pbflags.v1.SetFlagOverrideRequest\x1a#.pbflags.v1.SetFlagOverrideResponse\x12c\n" +
 	"\x12RemoveFlagOverride\x12%.pbflags.v1.RemoveFlagOverrideRequest\x1a&.pbflags.v1.RemoveFlagOverrideResponse\x12N\n" +
-	"\vGetAuditLog\x12\x1e.pbflags.v1.GetAuditLogRequest\x1a\x1f.pbflags.v1.GetAuditLogResponseB_\n" +
+	"\vGetAuditLog\x12\x1e.pbflags.v1.GetAuditLogRequest\x1a\x1f.pbflags.v1.GetAuditLogResponse\x12Q\n" +
+	"\fListLaunches\x12\x1f.pbflags.v1.ListLaunchesRequest\x1a .pbflags.v1.ListLaunchesResponse\x12H\n" +
+	"\tGetLaunch\x12\x1c.pbflags.v1.GetLaunchRequest\x1a\x1d.pbflags.v1.GetLaunchResponse\x12]\n" +
+	"\x10UpdateLaunchRamp\x12#.pbflags.v1.UpdateLaunchRampRequest\x1a$.pbflags.v1.UpdateLaunchRampResponse\x12c\n" +
+	"\x12UpdateLaunchStatus\x12%.pbflags.v1.UpdateLaunchStatusRequest\x1a&.pbflags.v1.UpdateLaunchStatusResponse\x12K\n" +
+	"\n" +
+	"KillLaunch\x12\x1d.pbflags.v1.KillLaunchRequest\x1a\x1e.pbflags.v1.KillLaunchResponse\x12Q\n" +
+	"\fUnkillLaunch\x12\x1f.pbflags.v1.UnkillLaunchRequest\x1a .pbflags.v1.UnkillLaunchResponseB_\n" +
 	"!org.spotlightgov.pbflags.v1.protoP\x01Z8github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1b\x06proto3"
 
 var (
@@ -1035,7 +1708,7 @@ func file_pbflags_v1_admin_proto_rawDescGZIP() []byte {
 	return file_pbflags_v1_admin_proto_rawDescData
 }
 
-var file_pbflags_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_pbflags_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_pbflags_v1_admin_proto_goTypes = []any{
 	(*ListFeaturesRequest)(nil),        // 0: pbflags.v1.ListFeaturesRequest
 	(*ListFeaturesResponse)(nil),       // 1: pbflags.v1.ListFeaturesResponse
@@ -1053,49 +1726,79 @@ var file_pbflags_v1_admin_proto_goTypes = []any{
 	(*GetAuditLogRequest)(nil),         // 13: pbflags.v1.GetAuditLogRequest
 	(*GetAuditLogResponse)(nil),        // 14: pbflags.v1.GetAuditLogResponse
 	(*AuditLogEntry)(nil),              // 15: pbflags.v1.AuditLogEntry
-	(FlagType)(0),                      // 16: pbflags.v1.FlagType
-	(State)(0),                         // 17: pbflags.v1.State
-	(*FlagValue)(nil),                  // 18: pbflags.v1.FlagValue
-	(*pbflags.SupportedValues)(nil),    // 19: pbflags.SupportedValues
-	(*timestamppb.Timestamp)(nil),      // 20: google.protobuf.Timestamp
+	(*LaunchDetail)(nil),               // 16: pbflags.v1.LaunchDetail
+	(*ListLaunchesRequest)(nil),        // 17: pbflags.v1.ListLaunchesRequest
+	(*ListLaunchesResponse)(nil),       // 18: pbflags.v1.ListLaunchesResponse
+	(*GetLaunchRequest)(nil),           // 19: pbflags.v1.GetLaunchRequest
+	(*GetLaunchResponse)(nil),          // 20: pbflags.v1.GetLaunchResponse
+	(*UpdateLaunchRampRequest)(nil),    // 21: pbflags.v1.UpdateLaunchRampRequest
+	(*UpdateLaunchRampResponse)(nil),   // 22: pbflags.v1.UpdateLaunchRampResponse
+	(*UpdateLaunchStatusRequest)(nil),  // 23: pbflags.v1.UpdateLaunchStatusRequest
+	(*UpdateLaunchStatusResponse)(nil), // 24: pbflags.v1.UpdateLaunchStatusResponse
+	(*KillLaunchRequest)(nil),          // 25: pbflags.v1.KillLaunchRequest
+	(*KillLaunchResponse)(nil),         // 26: pbflags.v1.KillLaunchResponse
+	(*UnkillLaunchRequest)(nil),        // 27: pbflags.v1.UnkillLaunchRequest
+	(*UnkillLaunchResponse)(nil),       // 28: pbflags.v1.UnkillLaunchResponse
+	(FlagType)(0),                      // 29: pbflags.v1.FlagType
+	(State)(0),                         // 30: pbflags.v1.State
+	(*FlagValue)(nil),                  // 31: pbflags.v1.FlagValue
+	(*pbflags.SupportedValues)(nil),    // 32: pbflags.SupportedValues
+	(*timestamppb.Timestamp)(nil),      // 33: google.protobuf.Timestamp
 }
 var file_pbflags_v1_admin_proto_depIdxs = []int32{
 	2,  // 0: pbflags.v1.ListFeaturesResponse.features:type_name -> pbflags.v1.FeatureDetail
 	3,  // 1: pbflags.v1.FeatureDetail.flags:type_name -> pbflags.v1.FlagDetail
-	16, // 2: pbflags.v1.FlagDetail.flag_type:type_name -> pbflags.v1.FlagType
-	17, // 3: pbflags.v1.FlagDetail.state:type_name -> pbflags.v1.State
-	18, // 4: pbflags.v1.FlagDetail.default_value:type_name -> pbflags.v1.FlagValue
-	18, // 5: pbflags.v1.FlagDetail.current_value:type_name -> pbflags.v1.FlagValue
+	29, // 2: pbflags.v1.FlagDetail.flag_type:type_name -> pbflags.v1.FlagType
+	30, // 3: pbflags.v1.FlagDetail.state:type_name -> pbflags.v1.State
+	31, // 4: pbflags.v1.FlagDetail.default_value:type_name -> pbflags.v1.FlagValue
+	31, // 5: pbflags.v1.FlagDetail.current_value:type_name -> pbflags.v1.FlagValue
 	4,  // 6: pbflags.v1.FlagDetail.overrides:type_name -> pbflags.v1.FlagOverrideDetail
-	19, // 7: pbflags.v1.FlagDetail.supported_values:type_name -> pbflags.SupportedValues
-	17, // 8: pbflags.v1.FlagOverrideDetail.state:type_name -> pbflags.v1.State
-	18, // 9: pbflags.v1.FlagOverrideDetail.value:type_name -> pbflags.v1.FlagValue
+	32, // 7: pbflags.v1.FlagDetail.supported_values:type_name -> pbflags.SupportedValues
+	30, // 8: pbflags.v1.FlagOverrideDetail.state:type_name -> pbflags.v1.State
+	31, // 9: pbflags.v1.FlagOverrideDetail.value:type_name -> pbflags.v1.FlagValue
 	3,  // 10: pbflags.v1.GetFlagResponse.flag:type_name -> pbflags.v1.FlagDetail
-	17, // 11: pbflags.v1.UpdateFlagStateRequest.state:type_name -> pbflags.v1.State
-	18, // 12: pbflags.v1.UpdateFlagStateRequest.value:type_name -> pbflags.v1.FlagValue
-	17, // 13: pbflags.v1.SetFlagOverrideRequest.state:type_name -> pbflags.v1.State
-	18, // 14: pbflags.v1.SetFlagOverrideRequest.value:type_name -> pbflags.v1.FlagValue
+	30, // 11: pbflags.v1.UpdateFlagStateRequest.state:type_name -> pbflags.v1.State
+	31, // 12: pbflags.v1.UpdateFlagStateRequest.value:type_name -> pbflags.v1.FlagValue
+	30, // 13: pbflags.v1.SetFlagOverrideRequest.state:type_name -> pbflags.v1.State
+	31, // 14: pbflags.v1.SetFlagOverrideRequest.value:type_name -> pbflags.v1.FlagValue
 	15, // 15: pbflags.v1.GetAuditLogResponse.entries:type_name -> pbflags.v1.AuditLogEntry
-	18, // 16: pbflags.v1.AuditLogEntry.old_value:type_name -> pbflags.v1.FlagValue
-	18, // 17: pbflags.v1.AuditLogEntry.new_value:type_name -> pbflags.v1.FlagValue
-	20, // 18: pbflags.v1.AuditLogEntry.created_at:type_name -> google.protobuf.Timestamp
-	0,  // 19: pbflags.v1.FlagAdminService.ListFeatures:input_type -> pbflags.v1.ListFeaturesRequest
-	5,  // 20: pbflags.v1.FlagAdminService.GetFlag:input_type -> pbflags.v1.GetFlagRequest
-	7,  // 21: pbflags.v1.FlagAdminService.UpdateFlagState:input_type -> pbflags.v1.UpdateFlagStateRequest
-	9,  // 22: pbflags.v1.FlagAdminService.SetFlagOverride:input_type -> pbflags.v1.SetFlagOverrideRequest
-	11, // 23: pbflags.v1.FlagAdminService.RemoveFlagOverride:input_type -> pbflags.v1.RemoveFlagOverrideRequest
-	13, // 24: pbflags.v1.FlagAdminService.GetAuditLog:input_type -> pbflags.v1.GetAuditLogRequest
-	1,  // 25: pbflags.v1.FlagAdminService.ListFeatures:output_type -> pbflags.v1.ListFeaturesResponse
-	6,  // 26: pbflags.v1.FlagAdminService.GetFlag:output_type -> pbflags.v1.GetFlagResponse
-	8,  // 27: pbflags.v1.FlagAdminService.UpdateFlagState:output_type -> pbflags.v1.UpdateFlagStateResponse
-	10, // 28: pbflags.v1.FlagAdminService.SetFlagOverride:output_type -> pbflags.v1.SetFlagOverrideResponse
-	12, // 29: pbflags.v1.FlagAdminService.RemoveFlagOverride:output_type -> pbflags.v1.RemoveFlagOverrideResponse
-	14, // 30: pbflags.v1.FlagAdminService.GetAuditLog:output_type -> pbflags.v1.GetAuditLogResponse
-	25, // [25:31] is the sub-list for method output_type
-	19, // [19:25] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	31, // 16: pbflags.v1.AuditLogEntry.old_value:type_name -> pbflags.v1.FlagValue
+	31, // 17: pbflags.v1.AuditLogEntry.new_value:type_name -> pbflags.v1.FlagValue
+	33, // 18: pbflags.v1.AuditLogEntry.created_at:type_name -> google.protobuf.Timestamp
+	33, // 19: pbflags.v1.LaunchDetail.killed_at:type_name -> google.protobuf.Timestamp
+	33, // 20: pbflags.v1.LaunchDetail.created_at:type_name -> google.protobuf.Timestamp
+	33, // 21: pbflags.v1.LaunchDetail.updated_at:type_name -> google.protobuf.Timestamp
+	16, // 22: pbflags.v1.ListLaunchesResponse.launches:type_name -> pbflags.v1.LaunchDetail
+	16, // 23: pbflags.v1.GetLaunchResponse.launch:type_name -> pbflags.v1.LaunchDetail
+	0,  // 24: pbflags.v1.FlagAdminService.ListFeatures:input_type -> pbflags.v1.ListFeaturesRequest
+	5,  // 25: pbflags.v1.FlagAdminService.GetFlag:input_type -> pbflags.v1.GetFlagRequest
+	7,  // 26: pbflags.v1.FlagAdminService.UpdateFlagState:input_type -> pbflags.v1.UpdateFlagStateRequest
+	9,  // 27: pbflags.v1.FlagAdminService.SetFlagOverride:input_type -> pbflags.v1.SetFlagOverrideRequest
+	11, // 28: pbflags.v1.FlagAdminService.RemoveFlagOverride:input_type -> pbflags.v1.RemoveFlagOverrideRequest
+	13, // 29: pbflags.v1.FlagAdminService.GetAuditLog:input_type -> pbflags.v1.GetAuditLogRequest
+	17, // 30: pbflags.v1.FlagAdminService.ListLaunches:input_type -> pbflags.v1.ListLaunchesRequest
+	19, // 31: pbflags.v1.FlagAdminService.GetLaunch:input_type -> pbflags.v1.GetLaunchRequest
+	21, // 32: pbflags.v1.FlagAdminService.UpdateLaunchRamp:input_type -> pbflags.v1.UpdateLaunchRampRequest
+	23, // 33: pbflags.v1.FlagAdminService.UpdateLaunchStatus:input_type -> pbflags.v1.UpdateLaunchStatusRequest
+	25, // 34: pbflags.v1.FlagAdminService.KillLaunch:input_type -> pbflags.v1.KillLaunchRequest
+	27, // 35: pbflags.v1.FlagAdminService.UnkillLaunch:input_type -> pbflags.v1.UnkillLaunchRequest
+	1,  // 36: pbflags.v1.FlagAdminService.ListFeatures:output_type -> pbflags.v1.ListFeaturesResponse
+	6,  // 37: pbflags.v1.FlagAdminService.GetFlag:output_type -> pbflags.v1.GetFlagResponse
+	8,  // 38: pbflags.v1.FlagAdminService.UpdateFlagState:output_type -> pbflags.v1.UpdateFlagStateResponse
+	10, // 39: pbflags.v1.FlagAdminService.SetFlagOverride:output_type -> pbflags.v1.SetFlagOverrideResponse
+	12, // 40: pbflags.v1.FlagAdminService.RemoveFlagOverride:output_type -> pbflags.v1.RemoveFlagOverrideResponse
+	14, // 41: pbflags.v1.FlagAdminService.GetAuditLog:output_type -> pbflags.v1.GetAuditLogResponse
+	18, // 42: pbflags.v1.FlagAdminService.ListLaunches:output_type -> pbflags.v1.ListLaunchesResponse
+	20, // 43: pbflags.v1.FlagAdminService.GetLaunch:output_type -> pbflags.v1.GetLaunchResponse
+	22, // 44: pbflags.v1.FlagAdminService.UpdateLaunchRamp:output_type -> pbflags.v1.UpdateLaunchRampResponse
+	24, // 45: pbflags.v1.FlagAdminService.UpdateLaunchStatus:output_type -> pbflags.v1.UpdateLaunchStatusResponse
+	26, // 46: pbflags.v1.FlagAdminService.KillLaunch:output_type -> pbflags.v1.KillLaunchResponse
+	28, // 47: pbflags.v1.FlagAdminService.UnkillLaunch:output_type -> pbflags.v1.UnkillLaunchResponse
+	36, // [36:48] is the sub-list for method output_type
+	24, // [24:36] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_pbflags_v1_admin_proto_init() }
@@ -1110,7 +1813,7 @@ func file_pbflags_v1_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pbflags_v1_admin_proto_rawDesc), len(file_pbflags_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

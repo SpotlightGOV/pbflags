@@ -19,6 +19,14 @@ service FlagAdminService {
   rpc SetFlagOverride(SetFlagOverrideRequest) returns (SetFlagOverrideResponse);
   rpc RemoveFlagOverride(RemoveFlagOverrideRequest) returns (RemoveFlagOverrideResponse);
   rpc GetAuditLog(GetAuditLogRequest) returns (GetAuditLogResponse);
+
+  // Launch lifecycle RPCs.
+  rpc ListLaunches(ListLaunchesRequest) returns (ListLaunchesResponse);
+  rpc GetLaunch(GetLaunchRequest) returns (GetLaunchResponse);
+  rpc UpdateLaunchRamp(UpdateLaunchRampRequest) returns (UpdateLaunchRampResponse);
+  rpc UpdateLaunchStatus(UpdateLaunchStatusRequest) returns (UpdateLaunchStatusResponse);
+  rpc KillLaunch(KillLaunchRequest) returns (KillLaunchResponse);
+  rpc UnkillLaunch(UnkillLaunchRequest) returns (UnkillLaunchResponse);
 }
 
 message ListFeaturesRequest {}
@@ -110,3 +118,60 @@ message AuditLogEntry {
   string actor = 6;
   google.protobuf.Timestamp created_at = 7;
 }
+
+// ── Launch messages ─────────────────────────────────────────────────
+
+message LaunchDetail {
+  string launch_id = 1;
+  string scope_feature_id = 2; // empty for cross-feature launches
+  string dimension = 3;
+  int32 ramp_percentage = 4;
+  string status = 5; // CREATED, ACTIVE, SOAKING, COMPLETED, ABANDONED
+  google.protobuf.Timestamp killed_at = 6;
+  repeated string affected_features = 7;
+  string description = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message ListLaunchesRequest {
+  string feature_id = 1; // Optional: filter by feature. Empty = all launches.
+}
+
+message ListLaunchesResponse {
+  repeated LaunchDetail launches = 1;
+}
+
+message GetLaunchRequest {
+  string launch_id = 1;
+}
+
+message GetLaunchResponse {
+  LaunchDetail launch = 1;
+}
+
+message UpdateLaunchRampRequest {
+  string launch_id = 1;
+  int32 ramp_percentage = 2;
+}
+
+message UpdateLaunchRampResponse {}
+
+message UpdateLaunchStatusRequest {
+  string launch_id = 1;
+  string status = 2; // CREATED, ACTIVE, SOAKING, COMPLETED, ABANDONED
+}
+
+message UpdateLaunchStatusResponse {}
+
+message KillLaunchRequest {
+  string launch_id = 1;
+}
+
+message KillLaunchResponse {}
+
+message UnkillLaunchRequest {
+  string launch_id = 1;
+}
+
+message UnkillLaunchResponse {}

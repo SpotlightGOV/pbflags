@@ -5,12 +5,13 @@
 package pbflagsv1connect
 
 import (
-	connect "connectrpc.com/connect"
 	context "context"
 	errors "errors"
-	v1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	http "net/http"
 	strings "strings"
+
+	connect "connectrpc.com/connect"
+	v1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
 
 // This is a compile-time assertion to ensure that this generated file and the connect package are
@@ -51,6 +52,24 @@ const (
 	// FlagAdminServiceGetAuditLogProcedure is the fully-qualified name of the FlagAdminService's
 	// GetAuditLog RPC.
 	FlagAdminServiceGetAuditLogProcedure = "/pbflags.v1.FlagAdminService/GetAuditLog"
+	// FlagAdminServiceListLaunchesProcedure is the fully-qualified name of the FlagAdminService's
+	// ListLaunches RPC.
+	FlagAdminServiceListLaunchesProcedure = "/pbflags.v1.FlagAdminService/ListLaunches"
+	// FlagAdminServiceGetLaunchProcedure is the fully-qualified name of the FlagAdminService's
+	// GetLaunch RPC.
+	FlagAdminServiceGetLaunchProcedure = "/pbflags.v1.FlagAdminService/GetLaunch"
+	// FlagAdminServiceUpdateLaunchRampProcedure is the fully-qualified name of the FlagAdminService's
+	// UpdateLaunchRamp RPC.
+	FlagAdminServiceUpdateLaunchRampProcedure = "/pbflags.v1.FlagAdminService/UpdateLaunchRamp"
+	// FlagAdminServiceUpdateLaunchStatusProcedure is the fully-qualified name of the FlagAdminService's
+	// UpdateLaunchStatus RPC.
+	FlagAdminServiceUpdateLaunchStatusProcedure = "/pbflags.v1.FlagAdminService/UpdateLaunchStatus"
+	// FlagAdminServiceKillLaunchProcedure is the fully-qualified name of the FlagAdminService's
+	// KillLaunch RPC.
+	FlagAdminServiceKillLaunchProcedure = "/pbflags.v1.FlagAdminService/KillLaunch"
+	// FlagAdminServiceUnkillLaunchProcedure is the fully-qualified name of the FlagAdminService's
+	// UnkillLaunch RPC.
+	FlagAdminServiceUnkillLaunchProcedure = "/pbflags.v1.FlagAdminService/UnkillLaunch"
 )
 
 // FlagAdminServiceClient is a client for the pbflags.v1.FlagAdminService service.
@@ -61,6 +80,13 @@ type FlagAdminServiceClient interface {
 	SetFlagOverride(context.Context, *connect.Request[v1.SetFlagOverrideRequest]) (*connect.Response[v1.SetFlagOverrideResponse], error)
 	RemoveFlagOverride(context.Context, *connect.Request[v1.RemoveFlagOverrideRequest]) (*connect.Response[v1.RemoveFlagOverrideResponse], error)
 	GetAuditLog(context.Context, *connect.Request[v1.GetAuditLogRequest]) (*connect.Response[v1.GetAuditLogResponse], error)
+	// Launch lifecycle RPCs.
+	ListLaunches(context.Context, *connect.Request[v1.ListLaunchesRequest]) (*connect.Response[v1.ListLaunchesResponse], error)
+	GetLaunch(context.Context, *connect.Request[v1.GetLaunchRequest]) (*connect.Response[v1.GetLaunchResponse], error)
+	UpdateLaunchRamp(context.Context, *connect.Request[v1.UpdateLaunchRampRequest]) (*connect.Response[v1.UpdateLaunchRampResponse], error)
+	UpdateLaunchStatus(context.Context, *connect.Request[v1.UpdateLaunchStatusRequest]) (*connect.Response[v1.UpdateLaunchStatusResponse], error)
+	KillLaunch(context.Context, *connect.Request[v1.KillLaunchRequest]) (*connect.Response[v1.KillLaunchResponse], error)
+	UnkillLaunch(context.Context, *connect.Request[v1.UnkillLaunchRequest]) (*connect.Response[v1.UnkillLaunchResponse], error)
 }
 
 // NewFlagAdminServiceClient constructs a client for the pbflags.v1.FlagAdminService service. By
@@ -110,6 +136,42 @@ func NewFlagAdminServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(flagAdminServiceMethods.ByName("GetAuditLog")),
 			connect.WithClientOptions(opts...),
 		),
+		listLaunches: connect.NewClient[v1.ListLaunchesRequest, v1.ListLaunchesResponse](
+			httpClient,
+			baseURL+FlagAdminServiceListLaunchesProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("ListLaunches")),
+			connect.WithClientOptions(opts...),
+		),
+		getLaunch: connect.NewClient[v1.GetLaunchRequest, v1.GetLaunchResponse](
+			httpClient,
+			baseURL+FlagAdminServiceGetLaunchProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("GetLaunch")),
+			connect.WithClientOptions(opts...),
+		),
+		updateLaunchRamp: connect.NewClient[v1.UpdateLaunchRampRequest, v1.UpdateLaunchRampResponse](
+			httpClient,
+			baseURL+FlagAdminServiceUpdateLaunchRampProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("UpdateLaunchRamp")),
+			connect.WithClientOptions(opts...),
+		),
+		updateLaunchStatus: connect.NewClient[v1.UpdateLaunchStatusRequest, v1.UpdateLaunchStatusResponse](
+			httpClient,
+			baseURL+FlagAdminServiceUpdateLaunchStatusProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("UpdateLaunchStatus")),
+			connect.WithClientOptions(opts...),
+		),
+		killLaunch: connect.NewClient[v1.KillLaunchRequest, v1.KillLaunchResponse](
+			httpClient,
+			baseURL+FlagAdminServiceKillLaunchProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("KillLaunch")),
+			connect.WithClientOptions(opts...),
+		),
+		unkillLaunch: connect.NewClient[v1.UnkillLaunchRequest, v1.UnkillLaunchResponse](
+			httpClient,
+			baseURL+FlagAdminServiceUnkillLaunchProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("UnkillLaunch")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -121,6 +183,12 @@ type flagAdminServiceClient struct {
 	setFlagOverride    *connect.Client[v1.SetFlagOverrideRequest, v1.SetFlagOverrideResponse]
 	removeFlagOverride *connect.Client[v1.RemoveFlagOverrideRequest, v1.RemoveFlagOverrideResponse]
 	getAuditLog        *connect.Client[v1.GetAuditLogRequest, v1.GetAuditLogResponse]
+	listLaunches       *connect.Client[v1.ListLaunchesRequest, v1.ListLaunchesResponse]
+	getLaunch          *connect.Client[v1.GetLaunchRequest, v1.GetLaunchResponse]
+	updateLaunchRamp   *connect.Client[v1.UpdateLaunchRampRequest, v1.UpdateLaunchRampResponse]
+	updateLaunchStatus *connect.Client[v1.UpdateLaunchStatusRequest, v1.UpdateLaunchStatusResponse]
+	killLaunch         *connect.Client[v1.KillLaunchRequest, v1.KillLaunchResponse]
+	unkillLaunch       *connect.Client[v1.UnkillLaunchRequest, v1.UnkillLaunchResponse]
 }
 
 // ListFeatures calls pbflags.v1.FlagAdminService.ListFeatures.
@@ -153,6 +221,36 @@ func (c *flagAdminServiceClient) GetAuditLog(ctx context.Context, req *connect.R
 	return c.getAuditLog.CallUnary(ctx, req)
 }
 
+// ListLaunches calls pbflags.v1.FlagAdminService.ListLaunches.
+func (c *flagAdminServiceClient) ListLaunches(ctx context.Context, req *connect.Request[v1.ListLaunchesRequest]) (*connect.Response[v1.ListLaunchesResponse], error) {
+	return c.listLaunches.CallUnary(ctx, req)
+}
+
+// GetLaunch calls pbflags.v1.FlagAdminService.GetLaunch.
+func (c *flagAdminServiceClient) GetLaunch(ctx context.Context, req *connect.Request[v1.GetLaunchRequest]) (*connect.Response[v1.GetLaunchResponse], error) {
+	return c.getLaunch.CallUnary(ctx, req)
+}
+
+// UpdateLaunchRamp calls pbflags.v1.FlagAdminService.UpdateLaunchRamp.
+func (c *flagAdminServiceClient) UpdateLaunchRamp(ctx context.Context, req *connect.Request[v1.UpdateLaunchRampRequest]) (*connect.Response[v1.UpdateLaunchRampResponse], error) {
+	return c.updateLaunchRamp.CallUnary(ctx, req)
+}
+
+// UpdateLaunchStatus calls pbflags.v1.FlagAdminService.UpdateLaunchStatus.
+func (c *flagAdminServiceClient) UpdateLaunchStatus(ctx context.Context, req *connect.Request[v1.UpdateLaunchStatusRequest]) (*connect.Response[v1.UpdateLaunchStatusResponse], error) {
+	return c.updateLaunchStatus.CallUnary(ctx, req)
+}
+
+// KillLaunch calls pbflags.v1.FlagAdminService.KillLaunch.
+func (c *flagAdminServiceClient) KillLaunch(ctx context.Context, req *connect.Request[v1.KillLaunchRequest]) (*connect.Response[v1.KillLaunchResponse], error) {
+	return c.killLaunch.CallUnary(ctx, req)
+}
+
+// UnkillLaunch calls pbflags.v1.FlagAdminService.UnkillLaunch.
+func (c *flagAdminServiceClient) UnkillLaunch(ctx context.Context, req *connect.Request[v1.UnkillLaunchRequest]) (*connect.Response[v1.UnkillLaunchResponse], error) {
+	return c.unkillLaunch.CallUnary(ctx, req)
+}
+
 // FlagAdminServiceHandler is an implementation of the pbflags.v1.FlagAdminService service.
 type FlagAdminServiceHandler interface {
 	ListFeatures(context.Context, *connect.Request[v1.ListFeaturesRequest]) (*connect.Response[v1.ListFeaturesResponse], error)
@@ -161,6 +259,13 @@ type FlagAdminServiceHandler interface {
 	SetFlagOverride(context.Context, *connect.Request[v1.SetFlagOverrideRequest]) (*connect.Response[v1.SetFlagOverrideResponse], error)
 	RemoveFlagOverride(context.Context, *connect.Request[v1.RemoveFlagOverrideRequest]) (*connect.Response[v1.RemoveFlagOverrideResponse], error)
 	GetAuditLog(context.Context, *connect.Request[v1.GetAuditLogRequest]) (*connect.Response[v1.GetAuditLogResponse], error)
+	// Launch lifecycle RPCs.
+	ListLaunches(context.Context, *connect.Request[v1.ListLaunchesRequest]) (*connect.Response[v1.ListLaunchesResponse], error)
+	GetLaunch(context.Context, *connect.Request[v1.GetLaunchRequest]) (*connect.Response[v1.GetLaunchResponse], error)
+	UpdateLaunchRamp(context.Context, *connect.Request[v1.UpdateLaunchRampRequest]) (*connect.Response[v1.UpdateLaunchRampResponse], error)
+	UpdateLaunchStatus(context.Context, *connect.Request[v1.UpdateLaunchStatusRequest]) (*connect.Response[v1.UpdateLaunchStatusResponse], error)
+	KillLaunch(context.Context, *connect.Request[v1.KillLaunchRequest]) (*connect.Response[v1.KillLaunchResponse], error)
+	UnkillLaunch(context.Context, *connect.Request[v1.UnkillLaunchRequest]) (*connect.Response[v1.UnkillLaunchResponse], error)
 }
 
 // NewFlagAdminServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -206,6 +311,42 @@ func NewFlagAdminServiceHandler(svc FlagAdminServiceHandler, opts ...connect.Han
 		connect.WithSchema(flagAdminServiceMethods.ByName("GetAuditLog")),
 		connect.WithHandlerOptions(opts...),
 	)
+	flagAdminServiceListLaunchesHandler := connect.NewUnaryHandler(
+		FlagAdminServiceListLaunchesProcedure,
+		svc.ListLaunches,
+		connect.WithSchema(flagAdminServiceMethods.ByName("ListLaunches")),
+		connect.WithHandlerOptions(opts...),
+	)
+	flagAdminServiceGetLaunchHandler := connect.NewUnaryHandler(
+		FlagAdminServiceGetLaunchProcedure,
+		svc.GetLaunch,
+		connect.WithSchema(flagAdminServiceMethods.ByName("GetLaunch")),
+		connect.WithHandlerOptions(opts...),
+	)
+	flagAdminServiceUpdateLaunchRampHandler := connect.NewUnaryHandler(
+		FlagAdminServiceUpdateLaunchRampProcedure,
+		svc.UpdateLaunchRamp,
+		connect.WithSchema(flagAdminServiceMethods.ByName("UpdateLaunchRamp")),
+		connect.WithHandlerOptions(opts...),
+	)
+	flagAdminServiceUpdateLaunchStatusHandler := connect.NewUnaryHandler(
+		FlagAdminServiceUpdateLaunchStatusProcedure,
+		svc.UpdateLaunchStatus,
+		connect.WithSchema(flagAdminServiceMethods.ByName("UpdateLaunchStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
+	flagAdminServiceKillLaunchHandler := connect.NewUnaryHandler(
+		FlagAdminServiceKillLaunchProcedure,
+		svc.KillLaunch,
+		connect.WithSchema(flagAdminServiceMethods.ByName("KillLaunch")),
+		connect.WithHandlerOptions(opts...),
+	)
+	flagAdminServiceUnkillLaunchHandler := connect.NewUnaryHandler(
+		FlagAdminServiceUnkillLaunchProcedure,
+		svc.UnkillLaunch,
+		connect.WithSchema(flagAdminServiceMethods.ByName("UnkillLaunch")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/pbflags.v1.FlagAdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FlagAdminServiceListFeaturesProcedure:
@@ -220,6 +361,18 @@ func NewFlagAdminServiceHandler(svc FlagAdminServiceHandler, opts ...connect.Han
 			flagAdminServiceRemoveFlagOverrideHandler.ServeHTTP(w, r)
 		case FlagAdminServiceGetAuditLogProcedure:
 			flagAdminServiceGetAuditLogHandler.ServeHTTP(w, r)
+		case FlagAdminServiceListLaunchesProcedure:
+			flagAdminServiceListLaunchesHandler.ServeHTTP(w, r)
+		case FlagAdminServiceGetLaunchProcedure:
+			flagAdminServiceGetLaunchHandler.ServeHTTP(w, r)
+		case FlagAdminServiceUpdateLaunchRampProcedure:
+			flagAdminServiceUpdateLaunchRampHandler.ServeHTTP(w, r)
+		case FlagAdminServiceUpdateLaunchStatusProcedure:
+			flagAdminServiceUpdateLaunchStatusHandler.ServeHTTP(w, r)
+		case FlagAdminServiceKillLaunchProcedure:
+			flagAdminServiceKillLaunchHandler.ServeHTTP(w, r)
+		case FlagAdminServiceUnkillLaunchProcedure:
+			flagAdminServiceUnkillLaunchHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -251,4 +404,28 @@ func (UnimplementedFlagAdminServiceHandler) RemoveFlagOverride(context.Context, 
 
 func (UnimplementedFlagAdminServiceHandler) GetAuditLog(context.Context, *connect.Request[v1.GetAuditLogRequest]) (*connect.Response[v1.GetAuditLogResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.GetAuditLog is not implemented"))
+}
+
+func (UnimplementedFlagAdminServiceHandler) ListLaunches(context.Context, *connect.Request[v1.ListLaunchesRequest]) (*connect.Response[v1.ListLaunchesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.ListLaunches is not implemented"))
+}
+
+func (UnimplementedFlagAdminServiceHandler) GetLaunch(context.Context, *connect.Request[v1.GetLaunchRequest]) (*connect.Response[v1.GetLaunchResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.GetLaunch is not implemented"))
+}
+
+func (UnimplementedFlagAdminServiceHandler) UpdateLaunchRamp(context.Context, *connect.Request[v1.UpdateLaunchRampRequest]) (*connect.Response[v1.UpdateLaunchRampResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.UpdateLaunchRamp is not implemented"))
+}
+
+func (UnimplementedFlagAdminServiceHandler) UpdateLaunchStatus(context.Context, *connect.Request[v1.UpdateLaunchStatusRequest]) (*connect.Response[v1.UpdateLaunchStatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.UpdateLaunchStatus is not implemented"))
+}
+
+func (UnimplementedFlagAdminServiceHandler) KillLaunch(context.Context, *connect.Request[v1.KillLaunchRequest]) (*connect.Response[v1.KillLaunchResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.KillLaunch is not implemented"))
+}
+
+func (UnimplementedFlagAdminServiceHandler) UnkillLaunch(context.Context, *connect.Request[v1.UnkillLaunchRequest]) (*connect.Response[v1.UnkillLaunchResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.UnkillLaunch is not implemented"))
 }
