@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
@@ -222,18 +221,6 @@ func (f *DBFetcher) GetKilledFlagsProto(ctx context.Context) (*pbflagsv1.GetKill
 	}
 
 	return resp, nil
-}
-
-// parseFlagValueJSON parses a FlagValue from JSONB bytes (protojson format).
-func parseFlagValueJSON(b []byte) *pbflagsv1.FlagValue {
-	if len(b) == 0 {
-		return nil
-	}
-	fv := &pbflagsv1.FlagValue{}
-	if err := protojson.Unmarshal(b, fv); err != nil {
-		return nil
-	}
-	return fv
 }
 
 // GetOverridesProto implements StateServer. Overrides table has been removed;
