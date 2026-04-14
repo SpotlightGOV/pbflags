@@ -31,8 +31,9 @@ func NewStore(pool *pgxpool.Pool, logger *slog.Logger) *Store {
 
 // FlagCondition represents a single condition in a flag's condition chain.
 type FlagCondition struct {
-	CEL   string // CEL expression; empty string means "otherwise" (default fallback)
-	Value string // formatted display value
+	CEL     string // CEL expression; empty string means "otherwise" (default fallback)
+	Value   string // formatted display value
+	Comment string // annotation from YAML comment
 }
 
 // FlagExtra holds non-proto data loaded alongside a FlagDetail.
@@ -303,7 +304,10 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 			extra.ConditionsError = err.Error()
 		} else {
 			for _, e := range entries {
-				fc := FlagCondition{Value: flagfmt.DisplayConditionValue(e.Value)}
+				fc := FlagCondition{
+					Value:   flagfmt.DisplayConditionValue(e.Value),
+					Comment: e.Comment,
+				}
 				if e.CEL != nil {
 					fc.CEL = *e.CEL
 				}

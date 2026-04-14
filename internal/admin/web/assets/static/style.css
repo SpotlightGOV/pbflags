@@ -860,6 +860,13 @@ body {
   color: var(--text);
 }
 
+.cond-comment {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
 .condition-row-otherwise td {
   background: var(--bg-root);
 }

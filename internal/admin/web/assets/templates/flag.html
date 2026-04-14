@@ -67,6 +67,9 @@
           {{else}}
             <span class="cond-otherwise">otherwise</span>
           {{end}}
+          {{if $c.Comment}}
+            <span class="cond-comment">{{$c.Comment}}</span>
+          {{end}}
         </td>
         <td><span class="cond-value">{{$c.Value}}</span></td>
       </tr>
