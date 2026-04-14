@@ -20,12 +20,15 @@ func runLaunch(args []string) {
 		fmt.Fprintln(os.Stderr, `usage: pb launch <subcommand>
 
 Subcommands:
-  list           List launches
-  get <id>       Show launch detail
-  ramp <id> <n>  Set ramp percentage (0-100)
+  list            List launches
+  get <id>        Show launch detail
+  ramp <id> <n>   Set ramp percentage (0-100)
   status <id> <s> Set lifecycle status
-  kill <id>      Kill a launch (emergency disable)
-  unkill <id>    Restore a killed launch`)
+  soak <id>       Set ramp to 100% and status to SOAKING
+  land <id>       Promote launch values and remove launch from config
+  abandon <id>    Set status to ABANDONED
+  kill <id>       Kill a launch (emergency disable)
+  unkill <id>     Restore a killed launch`)
 		os.Exit(1)
 	}
 
@@ -38,6 +41,12 @@ Subcommands:
 		runLaunchRamp(args[1:])
 	case "status":
 		runLaunchStatus(args[1:])
+	case "soak":
+		runLaunchSoak(args[1:])
+	case "abandon":
+		runLaunchAbandon(args[1:])
+	case "land":
+		runLaunchLand(args[1:])
 	case "kill":
 		runLaunchKill(args[1:])
 	case "unkill":
@@ -255,6 +264,84 @@ func runLaunchKill(args []string) {
 		return
 	}
 	fmt.Printf("%s killed\n", fs.Args()[0])
+}
+
+func runLaunchSoak(args []string) {
+	fs := flag.NewFlagSet("pb launch soak", flag.ExitOnError)
+	admin := fs.String("admin", "", "Admin API URL")
+	jsonOut := fs.Bool("json", false, "Output as JSON")
+	fs.Parse(args)
+
+	if len(fs.Args()) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: pb launch soak <launch-id>")
+		os.Exit(1)
+	}
+
+	launchID := fs.Args()[0]
+	client, err := adminclient.New(*admin)
+	if err != nil {
+		fatal(err)
+	}
+
+	// Set ramp to 100%.
+	rampResp, err := client.UpdateLaunchRamp(context.Background(), connect.NewRequest(&pbflagsv1.UpdateLaunchRampRequest{
+		LaunchId:       launchID,
+		RampPercentage: 100,
+		Source:         "cli",
+	}))
+	if err != nil {
+		fatal(fmt.Errorf("set ramp to 100%%: %w", err))
+	}
+
+	// Set status to SOAKING.
+	statusResp, err := client.UpdateLaunchStatus(context.Background(), connect.NewRequest(&pbflagsv1.UpdateLaunchStatusRequest{
+		LaunchId: launchID,
+		Status:   "SOAKING",
+	}))
+	if err != nil {
+		fatal(fmt.Errorf("set status to SOAKING: %w", err))
+	}
+
+	if *jsonOut {
+		printJSON(statusResp.Msg)
+		return
+	}
+	fmt.Printf("%s ramped to 100%% and status set to SOAKING\n", launchID)
+	if rampResp.Msg.GetWarning() != "" {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", rampResp.Msg.GetWarning())
+	}
+}
+
+func runLaunchAbandon(args []string) {
+	fs := flag.NewFlagSet("pb launch abandon", flag.ExitOnError)
+	admin := fs.String("admin", "", "Admin API URL")
+	jsonOut := fs.Bool("json", false, "Output as JSON")
+	fs.Parse(args)
+
+	if len(fs.Args()) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: pb launch abandon <launch-id>")
+		os.Exit(1)
+	}
+
+	launchID := fs.Args()[0]
+	client, err := adminclient.New(*admin)
+	if err != nil {
+		fatal(err)
+	}
+
+	resp, err := client.UpdateLaunchStatus(context.Background(), connect.NewRequest(&pbflagsv1.UpdateLaunchStatusRequest{
+		LaunchId: launchID,
+		Status:   "ABANDONED",
+	}))
+	if err != nil {
+		fatal(fmt.Errorf("abandon launch: %w", err))
+	}
+
+	if *jsonOut {
+		printJSON(resp.Msg)
+		return
+	}
+	fmt.Printf("%s abandoned\n", launchID)
 }
 
 func runLaunchUnkill(args []string) {
