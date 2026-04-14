@@ -83,6 +83,8 @@ func Compile(descriptorData []byte, configDir string) ([]byte, error) {
 		flagTypesByFeature[d.FeatureID][d.Name] = d.FlagType
 	}
 
+	hashableDims := celenv.HashableDimsFromDescriptor(contextMsg)
+
 	bundle := &pbflagsv1.CompiledBundle{
 		CelVersion: compileCELVersion(),
 	}
@@ -121,6 +123,12 @@ func Compile(descriptorData []byte, configDir string) ([]byte, error) {
 			slog.Warn(w)
 		}
 		configsByFeature[featureID] = cfg
+	}
+
+	// Collect and validate launches (same rules as SyncConditions).
+	lc, err := CollectLaunches(configsByFeature, configDir, hashableDims)
+	if err != nil {
+		return nil, err
 	}
 
 	// Build compiled features.
@@ -163,46 +171,20 @@ func Compile(descriptorData []byte, configDir string) ([]byte, error) {
 			cf.Flags = append(cf.Flags, cflag)
 		}
 
-		// Compile feature-scoped launches to bundle level.
-		if cfg != nil {
-			for launchID, launch := range cfg.Launches {
-				bundle.Launches = append(bundle.Launches, &pbflagsv1.CompiledLaunch{
-					LaunchId:         launchID,
-					Dimension:        launch.Dimension,
-					RampPercentage:   int32(launch.RampPercentage),
-					ScopeFeatureId:   featureID,
-					AffectedFeatures: []string{featureID},
-					Description:      launch.Description,
-				})
-			}
-		}
-
 		bundle.Features = append(bundle.Features, cf)
 	}
 
-	// Compile cross-feature launches from launches/ subdirectory.
-	launchesDir := filepath.Join(configDir, "launches")
-	if launchEntries, readErr := os.ReadDir(launchesDir); readErr == nil {
-		for _, entry := range launchEntries {
-			if entry.IsDir() || !isYAML(entry.Name()) {
-				continue
-			}
-			data, readErr := os.ReadFile(filepath.Join(launchesDir, entry.Name()))
-			if readErr != nil {
-				return nil, fmt.Errorf("read launch file %s: %w", entry.Name(), readErr)
-			}
-			launchID := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-			launch, parseErr := configfile.ParseCrossFeatureLaunch(data)
-			if parseErr != nil {
-				return nil, fmt.Errorf("launch %s: %w", launchID, parseErr)
-			}
-			bundle.Launches = append(bundle.Launches, &pbflagsv1.CompiledLaunch{
-				LaunchId:       launchID,
-				Dimension:      launch.Dimension,
-				RampPercentage: int32(launch.RampPercentage),
-				Description:    launch.Description,
-			})
+	// Emit all launches to bundle level with correct affected_features.
+	for launchID, def := range lc.Defined {
+		cl := &pbflagsv1.CompiledLaunch{
+			LaunchId:         launchID,
+			Dimension:        def.Entry.Dimension,
+			RampPercentage:   int32(def.Entry.RampPercentage),
+			ScopeFeatureId:   def.ScopeFeatureID,
+			AffectedFeatures: lc.AffectedFeatures(launchID),
+			Description:      def.Entry.Description,
 		}
+		bundle.Launches = append(bundle.Launches, cl)
 	}
 
 	return proto.Marshal(bundle)

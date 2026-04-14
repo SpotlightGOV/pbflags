@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
-	"sort"
 	"strings"
 
 	"github.com/google/cel-go/cel"
@@ -95,19 +94,8 @@ func SyncConditions(
 	var result ConditionResult
 	processedFeatures := map[string]bool{}
 
-	// ── Pass 1: parse all feature configs and collect launch metadata. ──
-
-	// definedLaunches: launchID → {entry, scopeFeatureID ("" = cross-feature)}.
-	type launchDef struct {
-		entry          configfile.LaunchEntry
-		scopeFeatureID string // non-empty for feature-scoped
-	}
-	definedLaunches := map[string]launchDef{}
-	// launchRefs: launchID → set of featureIDs that reference it.
-	launchRefs := map[string]map[string]bool{}
-	// parsedConfigs: featureID → parsed config.
+	// ── Pass 1: parse all feature configs. ──
 	parsedConfigs := map[string]*configfile.Config{}
-
 	for _, entry := range entries {
 		if entry.IsDir() || !isYAML(entry.Name()) {
 			continue
@@ -135,77 +123,12 @@ func SyncConditions(
 		}
 		result.Warnings = append(result.Warnings, warns...)
 		parsedConfigs[featureID] = cfg
-
-		// Register feature-scoped launches.
-		for launchID, launch := range cfg.Launches {
-			if _, dup := definedLaunches[launchID]; dup {
-				return ConditionResult{}, fmt.Errorf("launch %q defined in multiple features", launchID)
-			}
-			definedLaunches[launchID] = launchDef{entry: launch, scopeFeatureID: featureID}
-		}
-
-		// Collect launch references from conditions and static values.
-		for _, flagEntry := range cfg.Flags {
-			if flagEntry.Launch != nil {
-				if launchRefs[flagEntry.Launch.ID] == nil {
-					launchRefs[flagEntry.Launch.ID] = map[string]bool{}
-				}
-				launchRefs[flagEntry.Launch.ID][featureID] = true
-			}
-			for _, cond := range flagEntry.Conditions {
-				if cond.Launch != nil {
-					if launchRefs[cond.Launch.ID] == nil {
-						launchRefs[cond.Launch.ID] = map[string]bool{}
-					}
-					launchRefs[cond.Launch.ID][featureID] = true
-				}
-			}
-		}
 	}
 
-	// Load cross-feature launches from launches/ subdirectory.
-	launchesDir := filepath.Join(configDir, "launches")
-	if launchEntries, readErr := os.ReadDir(launchesDir); readErr == nil {
-		for _, entry := range launchEntries {
-			if entry.IsDir() || !isYAML(entry.Name()) {
-				continue
-			}
-			data, readErr := os.ReadFile(filepath.Join(launchesDir, entry.Name()))
-			if readErr != nil {
-				return ConditionResult{}, fmt.Errorf("read launch file %s: %w", entry.Name(), readErr)
-			}
-			launchID := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-			launch, parseErr := configfile.ParseCrossFeatureLaunch(data)
-			if parseErr != nil {
-				return ConditionResult{}, fmt.Errorf("launch %s: %w", launchID, parseErr)
-			}
-			if _, dup := definedLaunches[launchID]; dup {
-				return ConditionResult{}, fmt.Errorf("launch %q defined in both a feature config and launches/ directory", launchID)
-			}
-			definedLaunches[launchID] = launchDef{entry: launch, scopeFeatureID: ""}
-		}
-	}
-
-	// ── Validate launch references and scope enforcement. ──
-
-	for launchID, refs := range launchRefs {
-		def, exists := definedLaunches[launchID]
-		if !exists {
-			// Collect referencing features for the error message.
-			var features []string
-			for f := range refs {
-				features = append(features, f)
-			}
-			return ConditionResult{}, fmt.Errorf("launch %q referenced by features %v but not defined in any config or launches/ directory", launchID, features)
-		}
-		// Scope enforcement: feature-scoped launches can only be referenced from owning feature.
-		if def.scopeFeatureID != "" {
-			for refFeature := range refs {
-				if refFeature != def.scopeFeatureID {
-					return ConditionResult{}, fmt.Errorf("launch %q is scoped to feature %q but referenced from feature %q; move the launch to launches/ to use it across features", launchID, def.scopeFeatureID, refFeature)
-				}
-			}
-		}
+	// Collect and validate launches (references, scope, dimensions).
+	lc, err := CollectLaunches(parsedConfigs, configDir, hashableDims)
+	if err != nil {
+		return ConditionResult{}, err
 	}
 
 	// ── Pass 2: compile and write flags + upsert launches. ──
@@ -241,11 +164,6 @@ func SyncConditions(
 
 		// Upsert feature-scoped launches.
 		for launchID, launch := range cfg.Launches {
-			if !hashableDims[launch.Dimension] {
-				return ConditionResult{}, fmt.Errorf("launch %q: dimension %q is not marked UNIFORM in proto", launchID, launch.Dimension)
-			}
-			// Collect affected features from references.
-			affected := collectAffected(launchRefs[launchID])
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO feature_flags.launches
 					(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
@@ -256,7 +174,7 @@ func SyncConditions(
 					description = EXCLUDED.description,
 					updated_at = now()`,
 				launchID, featureID, launch.Dimension, launch.RampPercentage,
-				affected, launch.Description,
+				lc.AffectedFeatures(launchID), launch.Description,
 			); err != nil {
 				return ConditionResult{}, fmt.Errorf("upsert launch %q: %w", launchID, err)
 			}
@@ -267,14 +185,10 @@ func SyncConditions(
 	}
 
 	// Upsert cross-feature launches.
-	for launchID, def := range definedLaunches {
-		if def.scopeFeatureID != "" {
-			continue // already upserted with the owning feature
+	for launchID, def := range lc.Defined {
+		if def.ScopeFeatureID != "" {
+			continue
 		}
-		if !hashableDims[def.entry.Dimension] {
-			return ConditionResult{}, fmt.Errorf("launch %q: dimension %q is not marked UNIFORM in proto", launchID, def.entry.Dimension)
-		}
-		affected := collectAffected(launchRefs[launchID])
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO feature_flags.launches
 				(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
@@ -284,8 +198,8 @@ func SyncConditions(
 				affected_features = EXCLUDED.affected_features,
 				description = EXCLUDED.description,
 				updated_at = now()`,
-			launchID, def.entry.Dimension, def.entry.RampPercentage,
-			affected, def.entry.Description,
+			launchID, def.Entry.Dimension, def.Entry.RampPercentage,
+			lc.AffectedFeatures(launchID), def.Entry.Description,
 		); err != nil {
 			return ConditionResult{}, fmt.Errorf("upsert cross-feature launch %q: %w", launchID, err)
 		}
@@ -293,15 +207,11 @@ func SyncConditions(
 	}
 
 	// Abandon stale launches no longer defined in any config.
-	syncedLaunchIDs := make([]string, 0, len(definedLaunches))
-	for id := range definedLaunches {
-		syncedLaunchIDs = append(syncedLaunchIDs, id)
-	}
 	if tag, err := tx.Exec(ctx, `
 		UPDATE feature_flags.launches SET status = 'ABANDONED', updated_at = now()
 		WHERE launch_id != ALL($1)
 		  AND status NOT IN ('COMPLETED', 'ABANDONED')`,
-		syncedLaunchIDs,
+		lc.IDs(),
 	); err != nil {
 		return ConditionResult{}, fmt.Errorf("abandon stale launches: %w", err)
 	} else if tag.RowsAffected() > 0 {
@@ -344,19 +254,6 @@ func SyncConditions(
 	}
 
 	return result, nil
-}
-
-// collectAffected converts a set of feature IDs to a sorted slice.
-func collectAffected(refs map[string]bool) []string {
-	if len(refs) == 0 {
-		return []string{}
-	}
-	out := make([]string, 0, len(refs))
-	for f := range refs {
-		out = append(out, f)
-	}
-	sort.Strings(out)
-	return out
 }
 
 func compileFlag(

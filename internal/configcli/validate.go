@@ -17,6 +17,7 @@ import (
 	"github.com/SpotlightGOV/pbflags/internal/codegen/contextutil"
 	"github.com/SpotlightGOV/pbflags/internal/configfile"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
+	"github.com/SpotlightGOV/pbflags/internal/sync"
 )
 
 // ValidateResult holds the result of config validation.
@@ -66,8 +67,12 @@ func Validate(descriptorData []byte, configDir string) (*ValidateResult, error) 
 		return nil, fmt.Errorf("read config directory: %w", err)
 	}
 
+	hashableDims := celenv.HashableDimsFromDescriptor(contextMsg)
+
 	result := &ValidateResult{}
 
+	// Parse all configs first (needed for launch validation).
+	parsedConfigs := map[string]*configfile.Config{}
 	for _, entry := range entries {
 		if entry.IsDir() || (!strings.HasSuffix(entry.Name(), ".yaml") && !strings.HasSuffix(entry.Name(), ".yml")) {
 			continue
@@ -79,6 +84,26 @@ func Validate(descriptorData []byte, configDir string) (*ValidateResult, error) 
 		result.Flags += flagCount
 		result.Errors = append(result.Errors, fileErrors...)
 		result.Warnings = append(result.Warnings, fileWarnings...)
+
+		// Also parse for launch collection (if the file is valid enough).
+		if len(fileErrors) == 0 {
+			data, _ := os.ReadFile(path)
+			var peek struct {
+				Feature string `yaml:"feature"`
+			}
+			if yaml.Unmarshal(data, &peek) == nil {
+				if flagTypes, ok := featureFlags[peek.Feature]; ok {
+					if cfg, _, err := configfile.Parse(data, flagTypes); err == nil {
+						parsedConfigs[peek.Feature] = cfg
+					}
+				}
+			}
+		}
+	}
+
+	// Validate launch references, scopes, dimensions, and duplicates.
+	if _, err := sync.CollectLaunches(parsedConfigs, configDir, hashableDims); err != nil {
+		result.Errors = append(result.Errors, fmt.Sprintf("launch validation: %v", err))
 	}
 
 	return result, nil
