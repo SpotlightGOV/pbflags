@@ -1,7 +1,7 @@
 # .pbflags.yaml project configuration
 
 **Date:** 2026-04-13
-**Status:** Proposed
+**Status:** Complete
 
 ## Problem
 
@@ -20,7 +20,9 @@ but provides better defaults when it exists.
 
 ```yaml
 # .pbflags.yaml
-features_path: features    # directory containing .proto and .yaml files
+features_path: features            # directory containing .yaml config files
+descriptors_path: descriptors.pb   # pre-built descriptor set
+proto_path: proto                  # proto directory (for pb lint)
 ```
 
 ### Features directory convention
@@ -65,12 +67,10 @@ When `.pbflags.yaml` is present and `features_path` is set:
 
 ### Future fields
 
-Fields to add as needs arise (not in initial implementation):
+Fields to add as needs arise:
 
 ```yaml
 # .pbflags.yaml — future
-features_path: features
-descriptors_path: build/descriptors.pb   # pre-built descriptor set (skip buf build)
 database: ${PBFLAGS_DATABASE}            # default connection string (env var expansion)
 sync:
   sha_command: git rev-parse HEAD        # how to derive the sync SHA

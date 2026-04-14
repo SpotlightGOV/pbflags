@@ -120,14 +120,16 @@ pb export \
 
 ## Project config file
 
-The `pb` CLI discovers a `.pbflags.yaml` file by walking up from the working directory (similar to `buf.yaml`). Currently supported fields:
+The `pb` CLI discovers a `.pbflags.yaml` file by walking up from the working directory (similar to `buf.yaml`). Supported fields:
 
 ```yaml
 # .pbflags.yaml
-features_path: features   # default --features directory for sync/validate/show
+features_path: features        # default --features directory
+descriptors_path: descriptors.pb  # default --descriptors file
+proto_path: proto              # default <proto-dir> for pb lint
 ```
 
-When `features_path` is set, `--features` can be omitted from `pb sync`, `pb validate`, `pb format`, and `pb show` commands.
+All paths are resolved relative to the `.pbflags.yaml` location. When set, the corresponding CLI flags can be omitted from `pb sync`, `pb validate`, `pb format`, `pb show`, `pb compile`, and `pb lint`.
 
 ## Repository structure
 

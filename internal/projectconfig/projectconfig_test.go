@@ -84,3 +84,67 @@ func TestFeaturesDir_Empty(t *testing.T) {
 		t.Errorf("FeaturesDir = %q, want empty", got)
 	}
 }
+
+func TestDescriptorsFile(t *testing.T) {
+	cfg := Config{DescriptorsPath: "descriptors.pb"}
+	got := cfg.DescriptorsFile("/home/user/repo")
+	want := "/home/user/repo/descriptors.pb"
+	if got != want {
+		t.Errorf("DescriptorsFile = %q, want %q", got, want)
+	}
+}
+
+func TestDescriptorsFile_Absolute(t *testing.T) {
+	cfg := Config{DescriptorsPath: "/absolute/descriptors.pb"}
+	got := cfg.DescriptorsFile("/home/user/repo")
+	if got != "/absolute/descriptors.pb" {
+		t.Errorf("DescriptorsFile = %q, want /absolute/descriptors.pb", got)
+	}
+}
+
+func TestDescriptorsFile_Empty(t *testing.T) {
+	cfg := Config{}
+	got := cfg.DescriptorsFile("/home/user/repo")
+	if got != "" {
+		t.Errorf("DescriptorsFile = %q, want empty", got)
+	}
+}
+
+func TestProtoDir(t *testing.T) {
+	cfg := Config{ProtoPath: "proto"}
+	got := cfg.ProtoDir("/home/user/repo")
+	want := "/home/user/repo/proto"
+	if got != want {
+		t.Errorf("ProtoDir = %q, want %q", got, want)
+	}
+}
+
+func TestProtoDir_Empty(t *testing.T) {
+	cfg := Config{}
+	got := cfg.ProtoDir("/home/user/repo")
+	if got != "" {
+		t.Errorf("ProtoDir = %q, want empty", got)
+	}
+}
+
+func TestDiscover_AllFields(t *testing.T) {
+	dir := t.TempDir()
+	content := "features_path: features\ndescriptors_path: desc.pb\nproto_path: proto\n"
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, _, err := Discover(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.FeaturesPath != "features" {
+		t.Errorf("FeaturesPath = %q", cfg.FeaturesPath)
+	}
+	if cfg.DescriptorsPath != "desc.pb" {
+		t.Errorf("DescriptorsPath = %q", cfg.DescriptorsPath)
+	}
+	if cfg.ProtoPath != "proto" {
+		t.Errorf("ProtoPath = %q", cfg.ProtoPath)
+	}
+}

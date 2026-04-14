@@ -113,15 +113,18 @@ func main() {
 }
 
 // resolveProjectConfig loads .pbflags.yaml and applies defaults for
-// descriptors and features paths.
+// descriptors and features paths. Nil pointers are safely skipped.
 func resolveProjectConfig(descriptors, configDir *string) {
 	projCfg, projRoot, projErr := projectconfig.Discover(".")
 	if projErr != nil {
 		slog.Debug("no .pbflags.yaml found", "error", projErr)
 		return
 	}
-	if projCfg.FeaturesPath != "" && *configDir == "" {
+	if configDir != nil && *configDir == "" && projCfg.FeaturesPath != "" {
 		*configDir = projCfg.FeaturesDir(projRoot)
+	}
+	if descriptors != nil && *descriptors == "" && projCfg.DescriptorsPath != "" {
+		*descriptors = projCfg.DescriptorsFile(projRoot)
 	}
 }
 

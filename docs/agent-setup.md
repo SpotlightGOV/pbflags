@@ -277,14 +277,16 @@ pb show --descriptors=descriptors.pb --features=./features notifications/email_e
 
 ### Project config file
 
-To avoid repeating `--features` and `--descriptors` on every command, create a `.pbflags.yaml` at the project root:
+To avoid repeating flags on every command, create a `.pbflags.yaml` at the project root:
 
 ```yaml
 # .pbflags.yaml
 features_path: features
+descriptors_path: descriptors.pb
+proto_path: proto
 ```
 
-When `features_path` is set, `pb sync`, `pb validate`, `pb format`, and `pb show` automatically use it as the default `--features` directory.
+All paths are resolved relative to the `.pbflags.yaml` location. When set, `pb sync`, `pb validate`, `pb format`, `pb show`, `pb compile`, and `pb lint` automatically use the configured defaults.
 
 ## 9. Use in application code
 

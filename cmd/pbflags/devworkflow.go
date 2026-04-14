@@ -10,6 +10,7 @@ import (
 	"github.com/SpotlightGOV/pbflags/db"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 	"github.com/SpotlightGOV/pbflags/internal/lint"
+	"github.com/SpotlightGOV/pbflags/internal/projectconfig"
 )
 
 // --- lint ---
@@ -20,11 +21,17 @@ func runLint(args []string) {
 	jsonOut := fs.Bool("json", false, "Output as JSON")
 	fs.Parse(args)
 
-	if fs.NArg() != 1 {
+	protoDir := fs.Arg(0)
+	if protoDir == "" {
+		// Fall back to .pbflags.yaml proto_path.
+		if projCfg, projRoot, err := projectconfig.Discover("."); err == nil && projCfg.ProtoPath != "" {
+			protoDir = projCfg.ProtoDir(projRoot)
+		}
+	}
+	if protoDir == "" {
 		fmt.Fprintln(os.Stderr, "usage: pb lint [--base <ref>] <proto-dir>")
 		os.Exit(2)
 	}
-	protoDir := fs.Arg(0)
 
 	changed, err := lint.HasProtoChanges(*base, protoDir)
 	if err != nil {
@@ -94,6 +101,8 @@ func runLint(args []string) {
 func runInit(args []string) {
 	fs := flag.NewFlagSet("pb init", flag.ExitOnError)
 	featuresPath := fs.String("features", "features", "Relative path for feature config directory")
+	descriptorsPath := fs.String("descriptors", "descriptors.pb", "Relative path to descriptors file")
+	protoPath := fs.String("proto", "proto", "Relative path to proto directory")
 	fs.Parse(args)
 
 	if _, err := os.Stat(".pbflags.yaml"); err == nil {
@@ -101,7 +110,7 @@ func runInit(args []string) {
 		os.Exit(1)
 	}
 
-	configContent := fmt.Sprintf("features_path: %s\n", *featuresPath)
+	configContent := fmt.Sprintf("features_path: %s\ndescriptors_path: %s\nproto_path: %s\n", *featuresPath, *descriptorsPath, *protoPath)
 	if err := os.WriteFile(".pbflags.yaml", []byte(configContent), 0o644); err != nil {
 		fatal(err)
 	}
