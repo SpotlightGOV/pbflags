@@ -142,6 +142,8 @@ func sourceLabel(source pbflagsv1.EvaluationSource) string {
 		return "stale"
 	case pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CONDITION:
 		return "condition"
+	case pbflagsv1.EvaluationSource_EVALUATION_SOURCE_LAUNCH:
+		return "launch"
 	default:
 		return "unknown"
 	}

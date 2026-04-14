@@ -129,12 +129,18 @@ func (s *Store) UpdateFlagState(ctx context.Context, flagID string, state pbflag
 		return fmt.Errorf("update flag state: %w", err)
 	}
 
-	// Record the state transition in the audit log using string representations.
-	oldStr := stateToString(oldState)
-	newStr := stateToString(state)
+	// Record the state transition in the audit log as proto-encoded FlagValues.
+	oldBytes, err := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: stateToString(oldState)}})
+	if err != nil {
+		return fmt.Errorf("marshal old state: %w", err)
+	}
+	newBytes, err := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: stateToString(state)}})
+	if err != nil {
+		return fmt.Errorf("marshal new state: %w", err)
+	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO feature_flags.flag_audit_log (flag_id, action, old_value, new_value, actor)
-		VALUES ($1, 'UPDATE_STATE', $2, $3, $4)`, flagID, []byte(oldStr), []byte(newStr), actor)
+		VALUES ($1, 'UPDATE_STATE', $2, $3, $4)`, flagID, oldBytes, newBytes, actor)
 	if err != nil {
 		return fmt.Errorf("insert audit log: %w", err)
 	}
@@ -429,6 +435,122 @@ func parseFlagType(s string) pbflagsv1.FlagType {
 	default:
 		return pbflagsv1.FlagType_FLAG_TYPE_UNSPECIFIED
 	}
+}
+
+// Launch represents a percentage-based rollout for a flag.
+type Launch struct {
+	LaunchID      string
+	FeatureID     string
+	FlagID        string
+	Dimension     string
+	PopulationCEL *string
+	RampPct       int
+	Status        string
+}
+
+// GetLaunchesForFlag returns all launches associated with a flag.
+func (s *Store) GetLaunchesForFlag(ctx context.Context, flagID string) ([]Launch, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT launch_id, feature_id, flag_id, dimension, population_cel, ramp_percentage, status
+		FROM feature_flags.launches
+		WHERE flag_id = $1
+		ORDER BY created_at ASC`, flagID)
+	if err != nil {
+		return nil, fmt.Errorf("query launches: %w", err)
+	}
+	defer rows.Close()
+
+	var launches []Launch
+	for rows.Next() {
+		var l Launch
+		if err := rows.Scan(&l.LaunchID, &l.FeatureID, &l.FlagID, &l.Dimension, &l.PopulationCEL, &l.RampPct, &l.Status); err != nil {
+			return nil, err
+		}
+		launches = append(launches, l)
+	}
+	return launches, rows.Err()
+}
+
+// UpdateLaunchRamp changes the ramp percentage for a launch and records an audit log entry.
+func (s *Store) UpdateLaunchRamp(ctx context.Context, launchID string, pct int, actor string) error {
+	if pct < 0 || pct > 100 {
+		return fmt.Errorf("ramp percentage must be 0-100, got %d", pct)
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Read old ramp.
+	var oldPct int
+	var flagID string
+	err = tx.QueryRow(ctx, `SELECT ramp_percentage, flag_id FROM feature_flags.launches WHERE launch_id = $1`, launchID).Scan(&oldPct, &flagID)
+	if err == pgx.ErrNoRows {
+		return fmt.Errorf("launch %s not found", launchID)
+	}
+	if err != nil {
+		return fmt.Errorf("read launch: %w", err)
+	}
+
+	if _, err = tx.Exec(ctx, `
+		UPDATE feature_flags.launches SET ramp_percentage = $2, updated_at = now() WHERE launch_id = $1`,
+		launchID, pct,
+	); err != nil {
+		return fmt.Errorf("update ramp: %w", err)
+	}
+
+	// Audit log.
+	oldBytes, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: fmt.Sprintf("%d%%", oldPct)}})
+	newBytes, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: fmt.Sprintf("%d%%", pct)}})
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO feature_flags.flag_audit_log (flag_id, action, old_value, new_value, actor)
+		VALUES ($1, 'UPDATE_LAUNCH_RAMP', $2, $3, $4)`,
+		flagID, oldBytes, newBytes, actor,
+	); err != nil {
+		return fmt.Errorf("insert audit log: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
+// UpdateLaunchStatus changes the lifecycle status of a launch.
+func (s *Store) UpdateLaunchStatus(ctx context.Context, launchID string, status string, actor string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var oldStatus string
+	var flagID string
+	err = tx.QueryRow(ctx, `SELECT status, flag_id FROM feature_flags.launches WHERE launch_id = $1`, launchID).Scan(&oldStatus, &flagID)
+	if err == pgx.ErrNoRows {
+		return fmt.Errorf("launch %s not found", launchID)
+	}
+	if err != nil {
+		return fmt.Errorf("read launch: %w", err)
+	}
+
+	if _, err = tx.Exec(ctx, `
+		UPDATE feature_flags.launches SET status = $2, updated_at = now() WHERE launch_id = $1`,
+		launchID, status,
+	); err != nil {
+		return fmt.Errorf("update status: %w", err)
+	}
+
+	// Audit log.
+	oldBytes, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: oldStatus}})
+	newBytes, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: status}})
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO feature_flags.flag_audit_log (flag_id, action, old_value, new_value, actor)
+		VALUES ($1, 'UPDATE_LAUNCH_STATUS', $2, $3, $4)`,
+		flagID, oldBytes, newBytes, actor,
+	); err != nil {
+		return fmt.Errorf("insert audit log: %w", err)
+	}
+
+	return tx.Commit(ctx)
 }
 
 func stateToString(st pbflagsv1.State) string {

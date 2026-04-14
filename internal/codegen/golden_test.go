@@ -126,6 +126,7 @@ func TestGoldenJava(t *testing.T) {
 		gf("Dimensions.java"),
 		gf("NotificationsFlags.java"),
 		gf("NotificationsFlagsImpl.java"),
+		gf("TestNotificationsFlags.java"),
 		gf("PbflagsFlagDescriptorProvider.java"),
 	}
 
@@ -154,9 +155,12 @@ func TestGoldenJavaDagger(t *testing.T) {
 	goldenDir := filepath.Join(root, "internal", "codegen", "testdata", "golden", "java-dagger")
 
 	daggerFiles := []goldenFile{
+		gf("Dimensions.java"),
 		gf("NotificationsFlags.java"),
 		gf("NotificationsFlagsImpl.java"),
+		gf("TestNotificationsFlags.java"),
 		gf("FlagRegistryModule.java"),
+		gf("ScopedEvaluatorModule.java"),
 		gf("PbflagsFlagDescriptorProvider.java"),
 	}
 

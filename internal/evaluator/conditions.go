@@ -88,6 +88,17 @@ func (ce *ConditionEvaluator) CompileConditions(flagID string, conditionsJSON []
 	return conditions
 }
 
+// CompileExpression compiles a single CEL expression to a program.
+// Returns nil on compile failure (logs error).
+func (ce *ConditionEvaluator) CompileExpression(expr string) cel.Program {
+	compiled, err := ce.compiler.Compile(expr)
+	if err != nil {
+		ce.logger.Error("failed to compile CEL expression", "cel", expr, "error", err)
+		return nil
+	}
+	return compiled.Program
+}
+
 // EvalResult holds the result and metadata from condition evaluation.
 type EvalResult struct {
 	Value             *pbflagsv1.FlagValue

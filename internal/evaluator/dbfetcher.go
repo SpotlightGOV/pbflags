@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
@@ -88,7 +89,59 @@ func (f *DBFetcher) FetchFlagState(ctx context.Context, flagID string) (*CachedF
 		cs.Conditions = f.condEval.CompileConditions(flagID, conditionsJSON)
 		cs.DimMeta = ParseDimMeta(dimMetaJSON)
 	}
+
+	// Load active launches for this flag.
+	launches, err := f.fetchLaunches(ctx, flagID)
+	if err != nil {
+		f.logger.Warn("failed to load launches", "flag_id", flagID, "error", err)
+	} else {
+		cs.Launches = launches
+	}
 	return cs, nil
+}
+
+// fetchLaunches loads active/baked launches for a flag from the launches table.
+func (f *DBFetcher) fetchLaunches(ctx context.Context, flagID string) ([]CachedLaunch, error) {
+	rows, err := f.pool.Query(ctx, `
+		SELECT launch_id, dimension, population_cel, value, ramp_percentage
+		FROM feature_flags.launches
+		WHERE flag_id = $1 AND status IN ('ACTIVE', 'BAKED')
+		ORDER BY created_at ASC`, flagID)
+	if err != nil {
+		return nil, fmt.Errorf("query launches for %s: %w", flagID, err)
+	}
+	defer rows.Close()
+
+	var launches []CachedLaunch
+	for rows.Next() {
+		var launchID, dimension string
+		var populationCEL *string
+		var valueJSON []byte
+		var rampPct int
+
+		if err := rows.Scan(&launchID, &dimension, &populationCEL, &valueJSON, &rampPct); err != nil {
+			return nil, err
+		}
+		cl := CachedLaunch{
+			LaunchID:  launchID,
+			Dimension: dimension,
+			RampPct:   rampPct,
+		}
+
+		// Parse value from JSONB.
+		cl.Value = parseFlagValueJSON(valueJSON)
+
+		// Compile population CEL if present.
+		if populationCEL != nil && *populationCEL != "" && f.condEval != nil {
+			prog := f.condEval.CompileExpression(*populationCEL)
+			if prog != nil {
+				cl.Population = prog
+			}
+		}
+
+		launches = append(launches, cl)
+	}
+	return launches, rows.Err()
 }
 
 // GetKilledFlags implements KillFetcher.
@@ -172,6 +225,18 @@ func (f *DBFetcher) GetKilledFlagsProto(ctx context.Context) (*pbflagsv1.GetKill
 	}
 
 	return resp, nil
+}
+
+// parseFlagValueJSON parses a FlagValue from JSONB bytes (protojson format).
+func parseFlagValueJSON(b []byte) *pbflagsv1.FlagValue {
+	if len(b) == 0 {
+		return nil
+	}
+	fv := &pbflagsv1.FlagValue{}
+	if err := protojson.Unmarshal(b, fv); err != nil {
+		return nil
+	}
+	return fv
 }
 
 // GetOverridesProto implements StateServer. Overrides table has been removed;

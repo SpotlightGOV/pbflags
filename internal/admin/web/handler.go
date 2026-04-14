@@ -157,6 +157,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	inner.HandleFunc("POST /api/flags/state/{flagID...}", h.updateFlagState)
 	// Override routes removed — overrides are now conditions managed via config files.
 
+	// Launch management.
+	inner.HandleFunc("POST /api/launches/ramp/{launchID}", h.updateLaunchRamp)
+	inner.HandleFunc("POST /api/launches/status/{launchID}", h.updateLaunchStatus)
+
 	mux.Handle("/", h.csrfProtect(inner))
 }
 
@@ -911,4 +915,55 @@ func splitListLines(raw string) []string {
 		}
 	}
 	return out
+}
+
+// updateLaunchRamp handles POST /api/launches/ramp/{launchID}.
+func (h *Handler) updateLaunchRamp(w http.ResponseWriter, r *http.Request) {
+	launchID := r.PathValue("launchID")
+	if launchID == "" {
+		http.Error(w, "missing launch ID", http.StatusBadRequest)
+		return
+	}
+	pctStr := r.FormValue("ramp_percentage")
+	pct, err := strconv.Atoi(pctStr)
+	if err != nil || pct < 0 || pct > 100 {
+		http.Error(w, "ramp_percentage must be 0-100", http.StatusBadRequest)
+		return
+	}
+	actor := r.FormValue("actor")
+	if actor == "" {
+		actor = "admin-ui"
+	}
+	if err := h.store.UpdateLaunchRamp(r.Context(), launchID, pct, actor); err != nil {
+		h.logger.Error("update launch ramp failed", "launch_id", launchID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// updateLaunchStatus handles POST /api/launches/status/{launchID}.
+func (h *Handler) updateLaunchStatus(w http.ResponseWriter, r *http.Request) {
+	launchID := r.PathValue("launchID")
+	if launchID == "" {
+		http.Error(w, "missing launch ID", http.StatusBadRequest)
+		return
+	}
+	status := r.FormValue("status")
+	switch status {
+	case "CREATED", "ACTIVE", "BAKED", "COMPLETED", "ABANDONED":
+	default:
+		http.Error(w, "invalid status", http.StatusBadRequest)
+		return
+	}
+	actor := r.FormValue("actor")
+	if actor == "" {
+		actor = "admin-ui"
+	}
+	if err := h.store.UpdateLaunchStatus(r.Context(), launchID, status, actor); err != nil {
+		h.logger.Error("update launch status failed", "launch_id", launchID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }

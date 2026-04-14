@@ -130,10 +130,18 @@ func TestAuditLog(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 2)
 
-	// Most recent first.
+	// Most recent first: unkill (KILLED → DEFAULT), then kill (DEFAULT → KILLED).
 	require.Equal(t, "UPDATE_STATE", entries[0].Action)
+	require.Equal(t, "admin", entries[0].Actor)
+	require.NotNil(t, entries[0].OldValue, "old_value should not be nil for state change")
+	require.NotNil(t, entries[0].NewValue, "new_value should not be nil for state change")
+	require.Equal(t, "KILLED", entries[0].OldValue.GetStringValue())
+	require.Equal(t, "DEFAULT", entries[0].NewValue.GetStringValue())
+
 	require.Equal(t, "UPDATE_STATE", entries[1].Action)
 	require.Equal(t, "deployer", entries[1].Actor)
+	require.Equal(t, "DEFAULT", entries[1].OldValue.GetStringValue())
+	require.Equal(t, "KILLED", entries[1].NewValue.GetStringValue())
 
 	// Filter by flag ID with limit.
 	entries, err = store.GetAuditLog(ctx, AuditLogFilter{FlagID: tf.FlagID(1), Limit: 2})

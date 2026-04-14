@@ -4,12 +4,16 @@ package org.spotlightgov.pbflags.generated;
 import org.spotlightgov.pbflags.Flag;
 import org.spotlightgov.pbflags.FlagEvaluator;
 import org.spotlightgov.pbflags.ListFlag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
 /** Generated implementation of {@link NotificationsFlags}. */
 @Singleton
 public final class NotificationsFlagsImpl implements NotificationsFlags {
+
+  private static final Logger logger = LoggerFactory.getLogger(NotificationsFlagsImpl.class);
 
   private final Flag<Boolean> emailEnabled;
   private final Flag<String> digestFrequency;
@@ -20,18 +24,12 @@ public final class NotificationsFlagsImpl implements NotificationsFlags {
 
   @Inject
   public NotificationsFlagsImpl(FlagEvaluator evaluator) {
-    this.emailEnabled =
-        evaluator.flag(EMAIL_ENABLED_ID, Boolean.class, EMAIL_ENABLED_DEFAULT);
-    this.digestFrequency =
-        evaluator.flag(DIGEST_FREQUENCY_ID, String.class, DIGEST_FREQUENCY_DEFAULT);
-    this.maxRetries =
-        evaluator.flag(MAX_RETRIES_ID, Long.class, MAX_RETRIES_DEFAULT);
-    this.scoreThreshold =
-        evaluator.flag(SCORE_THRESHOLD_ID, Double.class, SCORE_THRESHOLD_DEFAULT);
-    this.notificationEmails =
-        evaluator.listFlag(NOTIFICATION_EMAILS_ID, String.class, NOTIFICATION_EMAILS_DEFAULT);
-    this.retryDelays =
-        evaluator.listFlag(RETRY_DELAYS_ID, Long.class, RETRY_DELAYS_DEFAULT);
+    this.emailEnabled = safeFlag(evaluator, EMAIL_ENABLED_ID, Boolean.class, EMAIL_ENABLED_DEFAULT);
+    this.digestFrequency = safeFlag(evaluator, DIGEST_FREQUENCY_ID, String.class, DIGEST_FREQUENCY_DEFAULT);
+    this.maxRetries = safeFlag(evaluator, MAX_RETRIES_ID, Long.class, MAX_RETRIES_DEFAULT);
+    this.scoreThreshold = safeFlag(evaluator, SCORE_THRESHOLD_ID, Double.class, SCORE_THRESHOLD_DEFAULT);
+    this.notificationEmails = safeListFlag(evaluator, NOTIFICATION_EMAILS_ID, String.class, NOTIFICATION_EMAILS_DEFAULT);
+    this.retryDelays = safeListFlag(evaluator, RETRY_DELAYS_ID, Long.class, RETRY_DELAYS_DEFAULT);
   }
 
   @Override
@@ -62,6 +60,30 @@ public final class NotificationsFlagsImpl implements NotificationsFlags {
   @Override
   public ListFlag<Long> retryDelays() {
     return retryDelays;
+  }
+
+  private static <T> Flag<T> safeFlag(FlagEvaluator evaluator, String flagId,
+      Class<T> type, T compiledDefault) {
+    return () -> {
+      try {
+        return evaluator.evaluate(flagId, type, compiledDefault);
+      } catch (Exception e) {
+        logger.error("Flag evaluation failed for {}, returning default", flagId, e);
+        return compiledDefault;
+      }
+    };
+  }
+
+  private static <E> ListFlag<E> safeListFlag(FlagEvaluator evaluator, String flagId,
+      Class<E> elementType, java.util.List<E> compiledDefault) {
+    return () -> {
+      try {
+        return evaluator.evaluateList(flagId, elementType, compiledDefault);
+      } catch (Exception e) {
+        logger.error("List flag evaluation failed for {}, returning default", flagId, e);
+        return compiledDefault;
+      }
+    };
   }
 
 }

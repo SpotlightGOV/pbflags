@@ -14,8 +14,17 @@ import (
 
 // Config is a parsed and validated flag configuration for a single feature.
 type Config struct {
-	Feature string
-	Flags   map[string]FlagEntry
+	Feature  string
+	Flags    map[string]FlagEntry
+	Launches map[string]LaunchEntry // keyed by launch ID
+}
+
+// LaunchEntry defines a percentage-based rollout for a flag.
+type LaunchEntry struct {
+	Flag       string               // flag field name within the feature
+	Dimension  string               // hashable dimension to hash on
+	Population string               // CEL expression restricting eligible population (empty = all)
+	Value      *pbflagsv1.FlagValue // value for entities in the ramp
 }
 
 // FlagEntry is a single flag's configuration — either a static value or
@@ -33,8 +42,16 @@ type Condition struct {
 
 // YAML unmarshaling types.
 type rawConfig struct {
-	Feature string                  `yaml:"feature"`
-	Flags   map[string]rawFlagEntry `yaml:"flags"`
+	Feature  string                    `yaml:"feature"`
+	Flags    map[string]rawFlagEntry   `yaml:"flags"`
+	Launches map[string]rawLaunchEntry `yaml:"launches"`
+}
+
+type rawLaunchEntry struct {
+	Flag       string `yaml:"flag"`
+	Dimension  string `yaml:"dimension"`
+	Population string `yaml:"population"`
+	Value      any    `yaml:"value"`
 }
 
 type rawFlagEntry struct {
@@ -140,6 +157,41 @@ func Parse(data []byte, flagTypes map[string]pbflagsv1.FlagType) (*Config, []str
 	for name := range flagTypes {
 		if _, ok := raw.Flags[name]; !ok {
 			errs = append(errs, fmt.Errorf("flag %q: defined in proto but missing from config", name))
+		}
+	}
+
+	// Parse launches.
+	if len(raw.Launches) > 0 {
+		cfg.Launches = make(map[string]LaunchEntry, len(raw.Launches))
+		for launchID, rawLaunch := range raw.Launches {
+			if launchID == "" {
+				errs = append(errs, errors.New("launch: empty launch ID"))
+				continue
+			}
+			if rawLaunch.Flag == "" {
+				errs = append(errs, fmt.Errorf("launch %q: missing required field: flag", launchID))
+				continue
+			}
+			if rawLaunch.Dimension == "" {
+				errs = append(errs, fmt.Errorf("launch %q: missing required field: dimension", launchID))
+				continue
+			}
+			ft, ok := flagTypes[rawLaunch.Flag]
+			if !ok {
+				errs = append(errs, fmt.Errorf("launch %q: flag %q not defined in proto", launchID, rawLaunch.Flag))
+				continue
+			}
+			fv, err := convertValue(rawLaunch.Value, ft, fmt.Sprintf("launch %s", launchID))
+			if err != nil {
+				errs = append(errs, fmt.Errorf("launch %q: %w", launchID, err))
+				continue
+			}
+			cfg.Launches[launchID] = LaunchEntry{
+				Flag:       rawLaunch.Flag,
+				Dimension:  rawLaunch.Dimension,
+				Population: rawLaunch.Population,
+				Value:      fv,
+			}
 		}
 	}
 

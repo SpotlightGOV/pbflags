@@ -208,6 +208,48 @@ func processConfigFile(
 		updated++
 	}
 
+	// Sync launches.
+	if len(cfg.Launches) > 0 {
+		for launchID, launch := range cfg.Launches {
+			info, ok := featureFlags[launch.Flag]
+			if !ok {
+				return featureID, 0, nil, fmt.Errorf("launch %q: flag %q not in feature", launchID, launch.Flag)
+			}
+			valueBytes, marshalErr := protojson.Marshal(launch.Value)
+			if marshalErr != nil {
+				return featureID, 0, nil, fmt.Errorf("launch %q: marshal value: %w", launchID, marshalErr)
+			}
+
+			// Validate population CEL if present.
+			if launch.Population != "" {
+				if _, compileErr := compiler.Compile(launch.Population); compileErr != nil {
+					return featureID, 0, nil, fmt.Errorf("launch %q: compile population CEL %q: %w", launchID, launch.Population, compileErr)
+				}
+			}
+
+			// Upsert launch — insert if new, update structure fields if changed.
+			// Do NOT update ramp_percentage or status (those are operator-controlled).
+			var popCEL *string
+			if launch.Population != "" {
+				popCEL = &launch.Population
+			}
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO feature_flags.launches
+					(launch_id, feature_id, flag_id, dimension, population_cel, value)
+				VALUES ($1, $2, $3, $4, $5, $6)
+				ON CONFLICT (launch_id) DO UPDATE SET
+					dimension = EXCLUDED.dimension,
+					population_cel = EXCLUDED.population_cel,
+					value = EXCLUDED.value,
+					updated_at = now()`,
+				launchID, featureID, info.FlagID, launch.Dimension, popCEL, valueBytes,
+			); err != nil {
+				return featureID, 0, nil, fmt.Errorf("upsert launch %q: %w", launchID, err)
+			}
+		}
+		logger.Info("synced launches", "feature", featureID, "launches", len(cfg.Launches))
+	}
+
 	return featureID, updated, warnings, nil
 }
 

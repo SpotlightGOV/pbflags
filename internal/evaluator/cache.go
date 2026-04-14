@@ -18,6 +18,7 @@ type CachedFlagState struct {
 	Archived   bool
 	Conditions []CachedCondition // compiled condition chain (nil for static/unconfigured flags)
 	DimMeta    CachedDimMeta     // dimension classification metadata (nil for flags without conditions)
+	Launches   []CachedLaunch    // active launches (nil when no launches exist for this flag)
 }
 
 // KillSet holds the current set of globally killed flags.

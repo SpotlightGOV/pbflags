@@ -53,6 +53,7 @@ enum EvaluationSource {
   EVALUATION_SOURCE_ARCHIVED = 6; // Archived flag's last known value
   EVALUATION_SOURCE_STALE = 7; // Stale value returned while background refresh in flight
   EVALUATION_SOURCE_CONDITION = 8; // Matched a CEL condition from config
+  EVALUATION_SOURCE_LAUNCH = 9; // Matched a percentage-based launch ramp
 }
 
 message BulkEvaluateRequest {
