@@ -500,6 +500,31 @@ func toFloat64(v any) (float64, error) {
 	}
 }
 
+// ParseCrossFeatureLaunch parses a standalone cross-feature launch YAML file.
+// The launch ID is derived from the filename (sans extension), not from within
+// the file. The file contains only {dimension, ramp_percentage, description}.
+func ParseCrossFeatureLaunch(data []byte) (LaunchEntry, error) {
+	var raw rawLaunchEntry
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return LaunchEntry{}, fmt.Errorf("parse launch YAML: %w", err)
+	}
+	if raw.Dimension == "" {
+		return LaunchEntry{}, errors.New("missing required field: dimension")
+	}
+	var rampPct int
+	if raw.RampPercentage != nil {
+		rampPct = *raw.RampPercentage
+		if rampPct < 0 || rampPct > 100 {
+			return LaunchEntry{}, fmt.Errorf("ramp_percentage must be 0-100, got %d", rampPct)
+		}
+	}
+	return LaunchEntry{
+		Dimension:      raw.Dimension,
+		RampPercentage: rampPct,
+		Description:    raw.Description,
+	}, nil
+}
+
 // stripComment removes the leading "# " (or "#") from a yaml.Node comment
 // field and trims surrounding whitespace. Returns "" if the input is empty.
 func stripComment(s string) string {

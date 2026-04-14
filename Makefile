@@ -159,7 +159,7 @@ dev-seed: dev/descriptors.pb
 	go run ./cmd/pbflags sync \
 		--database=postgres://admin:admin@localhost:5433/pbflags?sslmode=disable \
 		--descriptors=dev/descriptors.pb \
-		--features=dev/config
+		--features=dev/features
 	psql postgres://admin:admin@localhost:5433/pbflags?sslmode=disable < dev/seed-launches.sql
 	@echo "Demo data synced (flags + launch states). Refresh the admin UI."
 
@@ -171,7 +171,7 @@ dev: dev-db dev/descriptors.pb
 		--standalone \
 		--database=postgres://admin:admin@localhost:5433/pbflags?sslmode=disable \
 		--descriptors=dev/descriptors.pb \
-		--features=dev/config \
+		--features=dev/features \
 		--evaluator-listen=localhost:9201 \
 		--listen=localhost:9200 \
 		--env-name=local \

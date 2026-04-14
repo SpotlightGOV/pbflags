@@ -108,6 +108,44 @@ func SyncConditions(
 		result.Warnings = append(result.Warnings, warns...)
 	}
 
+	// Sync cross-feature launches from launches/ subdirectory.
+	launchesDir := filepath.Join(configDir, "launches")
+	if launchEntries, readErr := os.ReadDir(launchesDir); readErr == nil {
+		for _, entry := range launchEntries {
+			if entry.IsDir() || !isYAML(entry.Name()) {
+				continue
+			}
+			data, readErr := os.ReadFile(filepath.Join(launchesDir, entry.Name()))
+			if readErr != nil {
+				return ConditionResult{}, fmt.Errorf("read launch file %s: %w", entry.Name(), readErr)
+			}
+			launchID := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+			launch, parseErr := configfile.ParseCrossFeatureLaunch(data)
+			if parseErr != nil {
+				return ConditionResult{}, fmt.Errorf("launch %s: %w", launchID, parseErr)
+			}
+			if !hashableDims[launch.Dimension] {
+				return ConditionResult{}, fmt.Errorf("launch %q: dimension %q is not marked UNIFORM in proto", launchID, launch.Dimension)
+			}
+			// Cross-feature launch: scope_feature_id is NULL.
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO feature_flags.launches
+					(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
+				VALUES ($1, NULL, $2, $3, $4, $5)
+				ON CONFLICT (launch_id) DO UPDATE SET
+					dimension = EXCLUDED.dimension,
+					affected_features = EXCLUDED.affected_features,
+					description = EXCLUDED.description,
+					updated_at = now()`,
+				launchID, launch.Dimension, launch.RampPercentage,
+				[]string{}, launch.Description,
+			); err != nil {
+				return ConditionResult{}, fmt.Errorf("upsert cross-feature launch %q: %w", launchID, err)
+			}
+			logger.Info("synced cross-feature launch", "launch_id", launchID)
+		}
+	}
+
 	// Clear stale conditions for features that no longer have config files.
 	for featureID := range idx {
 		if processedFeatures[featureID] {

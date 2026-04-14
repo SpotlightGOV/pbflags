@@ -1,0 +1,6 @@
+# Cross-feature launch: defined in launches/ directory, referenced from
+# any feature config via launch: {id: scoring_experiment}.
+# The launch ID is the filename sans extension.
+dimension: session_id
+ramp_percentage: 50
+description: "Test lower score threshold across features"

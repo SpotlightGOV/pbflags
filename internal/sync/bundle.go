@@ -180,6 +180,31 @@ func Compile(descriptorData []byte, configDir string) ([]byte, error) {
 		bundle.Features = append(bundle.Features, cf)
 	}
 
+	// Compile cross-feature launches from launches/ subdirectory.
+	launchesDir := filepath.Join(configDir, "launches")
+	if launchEntries, readErr := os.ReadDir(launchesDir); readErr == nil {
+		for _, entry := range launchEntries {
+			if entry.IsDir() || !isYAML(entry.Name()) {
+				continue
+			}
+			data, readErr := os.ReadFile(filepath.Join(launchesDir, entry.Name()))
+			if readErr != nil {
+				return nil, fmt.Errorf("read launch file %s: %w", entry.Name(), readErr)
+			}
+			launchID := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+			launch, parseErr := configfile.ParseCrossFeatureLaunch(data)
+			if parseErr != nil {
+				return nil, fmt.Errorf("launch %s: %w", launchID, parseErr)
+			}
+			bundle.Launches = append(bundle.Launches, &pbflagsv1.CompiledLaunch{
+				LaunchId:       launchID,
+				Dimension:      launch.Dimension,
+				RampPercentage: int32(launch.RampPercentage),
+				Description:    launch.Description,
+			})
+		}
+	}
+
 	return proto.Marshal(bundle)
 }
 

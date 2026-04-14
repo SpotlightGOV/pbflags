@@ -149,10 +149,20 @@ buf build proto -o descriptors.pb
 
 Flag behavior (who sees what value) is defined in YAML config files, not in the admin UI. The admin UI is read-only — operators use YAML configs checked into git for flag behavior, and the kill switch for emergencies.
 
-Create a config directory (e.g., `config/features/`) with one YAML file per feature:
+Create a `features/` directory with one YAML file per feature. Cross-feature launches go in a `launches/` subdirectory:
+
+```
+features/
+  notifications.proto          # feature proto definition
+  notifications.yaml           # feature flag config
+  billing.proto
+  billing.yaml
+  launches/
+    pro-v2.yaml                # cross-feature launch (ID = filename)
+```
 
 ```yaml
-# config/features/notifications.yaml
+# features/notifications.yaml
 feature: notifications
 flags:
   email_enabled:

@@ -66,7 +66,5 @@ launches:
     dimension: user_id
     description: "Roll out hourly digest for Pro users"
 
-  scoring_experiment:
-    dimension: session_id
-    ramp_percentage: 50
-    description: "Test lower score threshold"
+# scoring_experiment is a cross-feature launch defined in launches/scoring_experiment.yaml.
+# It's referenced here via launch: {id: scoring_experiment} on score_threshold above.
