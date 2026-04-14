@@ -107,10 +107,12 @@ func (c *ConditionCache) Wait() {
 type CachedDimMeta map[string]*celenv.DimensionMeta
 
 // BuildCacheKey constructs a dimension-classified cache key from the
-// flag ID, version stamp, dimension metadata, and evaluation context.
-// Values are length-prefixed to prevent delimiter collision.
-func BuildCacheKey(flagID string, version uint64, meta CachedDimMeta, evalCtx proto.Message) string {
-	if len(meta) == 0 || evalCtx == nil {
+// flag ID, version stamp, dimension metadata, evaluation context, and
+// active launches. Each launch adds a bounded-output component (in/out)
+// that doubles cache cardinality per launch without depending on the
+// raw dimension value.
+func BuildCacheKey(flagID string, version uint64, meta CachedDimMeta, evalCtx proto.Message, launches ...CachedLaunch) string {
+	if len(meta) == 0 && len(launches) == 0 || evalCtx == nil {
 		return fmt.Sprintf("%s@%d", flagID, version)
 	}
 
@@ -156,6 +158,23 @@ func BuildCacheKey(flagID string, version uint64, meta CachedDimMeta, evalCtx pr
 			} else {
 				b.WriteByte('-')
 			}
+		}
+	}
+
+	// Append launch bounded-output components: each active launch adds
+	// a binary in/out indicator based on hash bucket, producing x2
+	// cardinality per launch regardless of dimension cardinality.
+	for i := range launches {
+		launch := &launches[i]
+		dimValue := extractDimensionValue(evalCtx, launch.Dimension)
+		b.WriteByte('\x00')
+		b.WriteString("launch:")
+		b.WriteString(launch.LaunchID)
+		b.WriteByte('\x00')
+		if dimValue != "" && HashBucket(launch.LaunchID, dimValue) < launch.RampPct {
+			b.WriteByte('1')
+		} else {
+			b.WriteByte('0')
 		}
 	}
 

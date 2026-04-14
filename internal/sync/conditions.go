@@ -76,6 +76,7 @@ func SyncConditions(
 	}
 
 	boundedDims := celenv.BoundedDimsFromDescriptor(contextMsg)
+	hashableDims := celenv.HashableDimsFromDescriptor(contextMsg)
 	celVersion := getCELVersion()
 	idx := buildFeatureIndex(defs)
 
@@ -98,7 +99,7 @@ func SyncConditions(
 			continue
 		}
 		path := filepath.Join(configDir, entry.Name())
-		featureID, n, warns, err := processConfigFile(ctx, tx, path, idx, compiler, boundedDims, celVersion, logger)
+		featureID, n, warns, err := processConfigFile(ctx, tx, path, idx, compiler, boundedDims, hashableDims, celVersion, logger)
 		if err != nil {
 			return ConditionResult{}, fmt.Errorf("config %s: %w", entry.Name(), err)
 		}
@@ -152,6 +153,7 @@ func processConfigFile(
 	idx featureIndex,
 	compiler *celenv.Compiler,
 	boundedDims map[string]bool,
+	hashableDims map[string]bool,
 	celVersion string,
 	logger *slog.Logger,
 ) (featureID string, updated int, warnings []string, err error) {
@@ -218,6 +220,11 @@ func processConfigFile(
 			valueBytes, marshalErr := protojson.Marshal(launch.Value)
 			if marshalErr != nil {
 				return featureID, 0, nil, fmt.Errorf("launch %q: marshal value: %w", launchID, marshalErr)
+			}
+
+			// Validate dimension is marked hashable in proto.
+			if !hashableDims[launch.Dimension] {
+				return featureID, 0, nil, fmt.Errorf("launch %q: dimension %q is not marked hashable in proto", launchID, launch.Dimension)
 			}
 
 			// Validate population CEL if present.

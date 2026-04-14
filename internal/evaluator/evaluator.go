@@ -170,7 +170,7 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 		if e.condCache != nil {
 			version = e.condCache.FlagVersion(flagID)
 		}
-		cacheKey := BuildCacheKey(flagID, version, state.DimMeta, evalCtx)
+		cacheKey := BuildCacheKey(flagID, version, state.DimMeta, evalCtx, state.Launches...)
 
 		if e.condCache != nil {
 			if cached, noMatch, ok := e.condCache.Get(cacheKey); ok {

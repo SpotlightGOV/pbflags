@@ -74,6 +74,12 @@ func NewHandler(store *admin.Store, logger *slog.Logger, env ...EnvConfig) (*Han
 		"inc":                func(i int) int { return i + 1 },
 		"slice":              safeSlice,
 		"condCount":          func(m map[string]int, id string) int { return m[id] },
+		"deref": func(s *string) string {
+			if s == nil {
+				return ""
+			}
+			return *s
+		},
 	}
 
 	var ec EnvConfig
@@ -299,6 +305,12 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	launches, err := h.store.GetLaunchesForFlag(r.Context(), flagID)
+	if err != nil {
+		h.serverError(w, "get launches", err)
+		return
+	}
+
 	data := h.pageData("flag",
 		"Flag", flag,
 		"Audit", entries,
@@ -307,6 +319,7 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 		"Conditions", extra.Conditions,
 		"ConditionsError", extra.ConditionsError,
 		"SyncSHA", extra.SyncSHA,
+		"Launches", launches,
 	)
 
 	if r.Header.Get("HX-Request") == "true" {

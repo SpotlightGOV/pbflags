@@ -16,6 +16,8 @@
     <select name="action" style="width: 160px">
       <option value="">All</option>
       <option value="UPDATE_STATE" {{if eq .ActionFilter "UPDATE_STATE"}}selected{{end}}>UPDATE_STATE</option>
+      <option value="UPDATE_LAUNCH_RAMP" {{if eq .ActionFilter "UPDATE_LAUNCH_RAMP"}}selected{{end}}>UPDATE_LAUNCH_RAMP</option>
+      <option value="UPDATE_LAUNCH_STATUS" {{if eq .ActionFilter "UPDATE_LAUNCH_STATUS"}}selected{{end}}>UPDATE_LAUNCH_STATUS</option>
       <option value="CREATE_OVERRIDE" {{if eq .ActionFilter "CREATE_OVERRIDE"}}selected{{end}}>CREATE_OVERRIDE</option>
       <option value="UPDATE_OVERRIDE" {{if eq .ActionFilter "UPDATE_OVERRIDE"}}selected{{end}}>UPDATE_OVERRIDE</option>
       <option value="REMOVE_OVERRIDE" {{if eq .ActionFilter "REMOVE_OVERRIDE"}}selected{{end}}>REMOVE_OVERRIDE</option>
@@ -56,6 +58,8 @@
         <td>
           <span class="audit-action
             {{if eq .Action "UPDATE_STATE"}}audit-action-update
+            {{else if eq .Action "UPDATE_LAUNCH_RAMP"}}audit-action-update
+            {{else if eq .Action "UPDATE_LAUNCH_STATUS"}}audit-action-update
             {{else if eq .Action "CREATE_OVERRIDE"}}audit-action-create
             {{else if eq .Action "UPDATE_OVERRIDE"}}audit-action-update
             {{else if eq .Action "REMOVE_OVERRIDE"}}audit-action-remove

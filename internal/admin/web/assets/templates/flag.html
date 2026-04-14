@@ -101,6 +101,38 @@
   {{end}}
 </div>
 
+<!-- Launches -->
+{{if .Launches}}
+<div class="detail-section">
+  <div class="detail-section-header">
+    <h3>Launches</h3>
+    <span class="state-hint">Percentage-based rollouts (evaluated before conditions)</span>
+  </div>
+  <table class="condition-table">
+    <thead>
+      <tr>
+        <th>Launch</th>
+        <th>Dimension</th>
+        <th>Population</th>
+        <th>Ramp</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Launches}}
+      <tr>
+        <td><code>{{.LaunchID}}</code></td>
+        <td><code>{{.Dimension}}</code></td>
+        <td>{{if .PopulationCEL}}<code>{{deref .PopulationCEL}}</code>{{else}}<span class="cond-otherwise">all</span>{{end}}</td>
+        <td><strong>{{.RampPct}}%</strong></td>
+        <td><span class="badge badge-type">{{.Status}}</span></td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
 <!-- Audit Log (recent) -->
 <div class="detail-section">
   <div class="detail-section-header">
