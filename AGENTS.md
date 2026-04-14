@@ -110,7 +110,11 @@ On failure, Playwright traces are saved to `internal/e2e/testdata/traces/` — o
 
 Go 1.22+ `http.ServeMux` panics if a `{name...}` wildcard is not the last segment. The admin UI uses flag IDs containing `/`, so wildcards are placed last:
 
-- `POST /api/flags/state/{flagID...}` — kill/unkill a flag (the only mutation route)
+- `POST /api/flags/state/{flagID...}` — kill/unkill a flag
+- `POST /api/launches/kill/{launchID}` — kill a launch (reversible emergency disable)
+- `POST /api/launches/unkill/{launchID}` — unkill a launch
+- `POST /api/launches/ramp/{launchID}` — update launch ramp percentage
+- `POST /api/launches/status/{launchID}` — update launch lifecycle status
 
 ## Database migrations
 

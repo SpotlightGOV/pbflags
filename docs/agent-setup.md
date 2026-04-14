@@ -52,14 +52,33 @@ syntax = "proto3";
 package myproject.flags;
 import "pbflags/options.proto";
 
+// Scope definitions — globally required dims are implicit in every scope.
+option (pbflags.scope) = { name: "anon" };
+option (pbflags.scope) = { name: "user", dimensions: ["user_id"] };
+
 // Required: exactly one message with this annotation.
 // Each field is an evaluation context dimension (user, plan, etc).
 message EvaluationContext {
   option (pbflags.context) = {};
 
-  string user_id = 1 [(pbflags.dimension) = { description: "Authenticated user" hashable: true }];
-  PlanLevel plan = 2 [(pbflags.dimension) = { description: "Subscription plan" }];
-  bool is_internal = 3 [(pbflags.dimension) = { description: "Internal/dogfood user" }];
+  string session_id = 1 [(pbflags.dimension) = {
+    description: "Stable session identifier"
+    distribution: DIMENSION_DISTRIBUTION_UNIFORM
+    presence: DIMENSION_PRESENCE_REQUIRED
+  }];
+  string user_id = 2 [(pbflags.dimension) = {
+    description: "Authenticated user"
+    distribution: DIMENSION_DISTRIBUTION_UNIFORM
+    presence: DIMENSION_PRESENCE_OPTIONAL
+  }];
+  PlanLevel plan = 3 [(pbflags.dimension) = {
+    description: "Subscription plan"
+    presence: DIMENSION_PRESENCE_OPTIONAL
+  }];
+  bool is_internal = 4 [(pbflags.dimension) = {
+    description: "Internal/dogfood user"
+    presence: DIMENSION_PRESENCE_OPTIONAL
+  }];
 }
 
 message MyFeature {
@@ -67,6 +86,7 @@ message MyFeature {
     id: "my_feature"
     description: "Feature description"
     owner: "team-name"
+    scopes: ["anon", "user"]
   };
 
   bool enabled = 1 [(pbflags.flag) = {

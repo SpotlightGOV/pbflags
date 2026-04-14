@@ -184,28 +184,19 @@ core types (`Evaluator`, `Connect`, `ContextWith`/`FromContext`).
 Segments, targeting rules, and rule-based evaluation are not yet implemented
 and remain future work.
 
-### 10. Percentage-Based Rollouts
+### 10. Percentage-Based Rollouts ✅
 
-Gradual feature rollout by consistent entity hashing, integrated with the
-targeting rule engine.
+**Implemented in v0.17.0** as "Launches" — see [design-docs/2026-04-14-launches.md](../design-docs/2026-04-14-launches.md) and [upgrading.md](upgrading.md#launches-and-evaluation-scopes-v0170).
 
-**Scope:**
-- Deterministic hashing: `hash(flag_key + context_key) % 10000` for 0.01% granularity
-- Consistent — same context always gets same result for same percentage
-- Monotonic — increasing percentage never removes previously-included entities
-- Rollouts operate within targeting rules: "for segment X, roll out to 25%"
-- Support percentage distributions across multiple values/variants
-- Admin API + UI for configuring rollout percentages
-- Codegen updates for typed rollout configuration
+Phase 1 (shipped): per-condition value overrides with deterministic FNV-32a hashing,
+evaluation scopes with typed codegen, inline launch overrides on conditions and static
+values, admin UI kill/unkill, and mechanical `pb launch land` for YAML transform.
 
-**Why:** Binary on/off is insufficient for safe production rollouts. Percentage
-rollouts are the most commonly expected feature flag capability and the
-primary mechanism for risk mitigation during releases. Combined with
-targeting, this enables "roll out to 10% of enterprise users in US-EAST" —
-the bread and butter of progressive delivery.
+Phase 2 (future): `launch.in_ramp()` in CEL expressions for structural condition chain
+changes under a launch, with CEL simplification for mechanical landing.
 
-**Depends on:** Item 9 (targeting) — rollouts are a distribution within a
-targeting rule, and require the evaluation context (now implemented) for entity identity.
+Multi-variant experiments (percentage distributions across multiple values) remain
+future work — see item 13.
 
 **Key files:** `internal/evaluator/evaluator.go`, `proto/pbflags/v1/types.proto`, `db/migrations/`
 

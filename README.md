@@ -33,18 +33,32 @@ enum PlanLevel {
   PLAN_LEVEL_ENTERPRISE = 3;
 }
 
+// Scope definitions — globally required dims (session_id) are implicit.
+option (pbflags.scope) = { name: "anon" };
+option (pbflags.scope) = { name: "user", dimensions: ["user_id"] };
+
 // Exactly one message must carry (pbflags.context).
 // Each field annotated with (pbflags.dimension) becomes a typed dimension
 // constructor in the generated `dims` package.
 message EvaluationContext {
   option (pbflags.context) = {};
 
-  string user_id = 1 [(pbflags.dimension) = {
-    description: "Authenticated user identifier"
-    hashable: true
+  string session_id = 1 [(pbflags.dimension) = {
+    description: "Stable session identifier"
+    distribution: DIMENSION_DISTRIBUTION_UNIFORM
+    presence: DIMENSION_PRESENCE_REQUIRED
   }];
 
-  PlanLevel plan = 2 [(pbflags.dimension) = {description: "Subscription tier"}];
+  string user_id = 2 [(pbflags.dimension) = {
+    description: "Authenticated user identifier"
+    distribution: DIMENSION_DISTRIBUTION_UNIFORM
+    presence: DIMENSION_PRESENCE_OPTIONAL
+  }];
+
+  PlanLevel plan = 3 [(pbflags.dimension) = {
+    description: "Subscription tier"
+    presence: DIMENSION_PRESENCE_OPTIONAL
+  }];
 }
 
 message Notifications {
@@ -52,6 +66,7 @@ message Notifications {
     id: "notifications"
     description: "Notification delivery controls"
     owner: "platform-team"
+    scopes: ["anon", "user"]
   };
 
   bool email_enabled = 1 [(pbflags.flag) = {
