@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strings"
 
 	"github.com/google/cel-go/cel"
@@ -94,21 +95,75 @@ func SyncConditions(
 	var result ConditionResult
 	processedFeatures := map[string]bool{}
 
+	// ── Pass 1: parse all feature configs and collect launch metadata. ──
+
+	// definedLaunches: launchID → {entry, scopeFeatureID ("" = cross-feature)}.
+	type launchDef struct {
+		entry          configfile.LaunchEntry
+		scopeFeatureID string // non-empty for feature-scoped
+	}
+	definedLaunches := map[string]launchDef{}
+	// launchRefs: launchID → set of featureIDs that reference it.
+	launchRefs := map[string]map[string]bool{}
+	// parsedConfigs: featureID → parsed config.
+	parsedConfigs := map[string]*configfile.Config{}
+
 	for _, entry := range entries {
 		if entry.IsDir() || !isYAML(entry.Name()) {
 			continue
 		}
 		path := filepath.Join(configDir, entry.Name())
-		featureID, n, warns, err := processConfigFile(ctx, tx, path, idx, compiler, boundedDims, hashableDims, celVersion, logger)
-		if err != nil {
-			return ConditionResult{}, fmt.Errorf("config %s: %w", entry.Name(), err)
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return ConditionResult{}, fmt.Errorf("read %s: %w", entry.Name(), readErr)
 		}
-		processedFeatures[featureID] = true
-		result.FlagsUpdated += n
+		featureID, peekErr := peekFeature(data)
+		if peekErr != nil {
+			return ConditionResult{}, fmt.Errorf("%s: %w", entry.Name(), peekErr)
+		}
+		featureFlags, ok := idx[featureID]
+		if !ok {
+			return ConditionResult{}, fmt.Errorf("%s: feature %q not found in proto descriptors", entry.Name(), featureID)
+		}
+		flagTypes := make(map[string]pbflagsv1.FlagType, len(featureFlags))
+		for name, info := range featureFlags {
+			flagTypes[name] = info.FlagType
+		}
+		cfg, warns, parseErr := configfile.Parse(data, flagTypes)
+		if parseErr != nil {
+			return ConditionResult{}, fmt.Errorf("%s: %w", entry.Name(), parseErr)
+		}
 		result.Warnings = append(result.Warnings, warns...)
+		parsedConfigs[featureID] = cfg
+
+		// Register feature-scoped launches.
+		for launchID, launch := range cfg.Launches {
+			if _, dup := definedLaunches[launchID]; dup {
+				return ConditionResult{}, fmt.Errorf("launch %q defined in multiple features", launchID)
+			}
+			definedLaunches[launchID] = launchDef{entry: launch, scopeFeatureID: featureID}
+		}
+
+		// Collect launch references from conditions and static values.
+		for _, flagEntry := range cfg.Flags {
+			if flagEntry.Launch != nil {
+				if launchRefs[flagEntry.Launch.ID] == nil {
+					launchRefs[flagEntry.Launch.ID] = map[string]bool{}
+				}
+				launchRefs[flagEntry.Launch.ID][featureID] = true
+			}
+			for _, cond := range flagEntry.Conditions {
+				if cond.Launch != nil {
+					if launchRefs[cond.Launch.ID] == nil {
+						launchRefs[cond.Launch.ID] = map[string]bool{}
+					}
+					launchRefs[cond.Launch.ID][featureID] = true
+				}
+			}
+		}
 	}
 
-	// Sync cross-feature launches from launches/ subdirectory.
+	// Load cross-feature launches from launches/ subdirectory.
 	launchesDir := filepath.Join(configDir, "launches")
 	if launchEntries, readErr := os.ReadDir(launchesDir); readErr == nil {
 		for _, entry := range launchEntries {
@@ -124,26 +179,133 @@ func SyncConditions(
 			if parseErr != nil {
 				return ConditionResult{}, fmt.Errorf("launch %s: %w", launchID, parseErr)
 			}
+			if _, dup := definedLaunches[launchID]; dup {
+				return ConditionResult{}, fmt.Errorf("launch %q defined in both a feature config and launches/ directory", launchID)
+			}
+			definedLaunches[launchID] = launchDef{entry: launch, scopeFeatureID: ""}
+		}
+	}
+
+	// ── Validate launch references and scope enforcement. ──
+
+	for launchID, refs := range launchRefs {
+		def, exists := definedLaunches[launchID]
+		if !exists {
+			// Collect referencing features for the error message.
+			var features []string
+			for f := range refs {
+				features = append(features, f)
+			}
+			return ConditionResult{}, fmt.Errorf("launch %q referenced by features %v but not defined in any config or launches/ directory", launchID, features)
+		}
+		// Scope enforcement: feature-scoped launches can only be referenced from owning feature.
+		if def.scopeFeatureID != "" {
+			for refFeature := range refs {
+				if refFeature != def.scopeFeatureID {
+					return ConditionResult{}, fmt.Errorf("launch %q is scoped to feature %q but referenced from feature %q; move the launch to launches/ to use it across features", launchID, def.scopeFeatureID, refFeature)
+				}
+			}
+		}
+	}
+
+	// ── Pass 2: compile and write flags + upsert launches. ──
+
+	for featureID, cfg := range parsedConfigs {
+		featureFlags := idx[featureID]
+		processedFeatures[featureID] = true
+		logger.Info("processing config", "feature", featureID, "flags", len(cfg.Flags))
+
+		for flagName, entry := range cfg.Flags {
+			info := featureFlags[flagName]
+			condJSON, dimJSON, warns, compileErr := compileFlag(flagName, entry, compiler, boundedDims)
+			if compileErr != nil {
+				return ConditionResult{}, fmt.Errorf("feature %s flag %q: %w", featureID, flagName, compileErr)
+			}
+			result.Warnings = append(result.Warnings, warns...)
+
+			var cv *string
+			if condJSON != nil {
+				cv = &celVersion
+			}
+			if _, err := tx.Exec(ctx,
+				`UPDATE feature_flags.flags
+				 SET conditions = $2, dimension_metadata = $3, cel_version = $4,
+				     updated_at = now()
+				 WHERE flag_id = $1`,
+				info.FlagID, condJSON, dimJSON, cv,
+			); err != nil {
+				return ConditionResult{}, fmt.Errorf("update flag %q: %w", info.FlagID, err)
+			}
+			result.FlagsUpdated++
+		}
+
+		// Upsert feature-scoped launches.
+		for launchID, launch := range cfg.Launches {
 			if !hashableDims[launch.Dimension] {
 				return ConditionResult{}, fmt.Errorf("launch %q: dimension %q is not marked UNIFORM in proto", launchID, launch.Dimension)
 			}
-			// Cross-feature launch: scope_feature_id is NULL.
+			// Collect affected features from references.
+			affected := collectAffected(launchRefs[launchID])
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO feature_flags.launches
 					(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
-				VALUES ($1, NULL, $2, $3, $4, $5)
+				VALUES ($1, $2, $3, $4, $5, $6)
 				ON CONFLICT (launch_id) DO UPDATE SET
 					dimension = EXCLUDED.dimension,
 					affected_features = EXCLUDED.affected_features,
 					description = EXCLUDED.description,
 					updated_at = now()`,
-				launchID, launch.Dimension, launch.RampPercentage,
-				[]string{}, launch.Description,
+				launchID, featureID, launch.Dimension, launch.RampPercentage,
+				affected, launch.Description,
 			); err != nil {
-				return ConditionResult{}, fmt.Errorf("upsert cross-feature launch %q: %w", launchID, err)
+				return ConditionResult{}, fmt.Errorf("upsert launch %q: %w", launchID, err)
 			}
-			logger.Info("synced cross-feature launch", "launch_id", launchID)
 		}
+		if len(cfg.Launches) > 0 {
+			logger.Info("synced launches", "feature", featureID, "launches", len(cfg.Launches))
+		}
+	}
+
+	// Upsert cross-feature launches.
+	for launchID, def := range definedLaunches {
+		if def.scopeFeatureID != "" {
+			continue // already upserted with the owning feature
+		}
+		if !hashableDims[def.entry.Dimension] {
+			return ConditionResult{}, fmt.Errorf("launch %q: dimension %q is not marked UNIFORM in proto", launchID, def.entry.Dimension)
+		}
+		affected := collectAffected(launchRefs[launchID])
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO feature_flags.launches
+				(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
+			VALUES ($1, NULL, $2, $3, $4, $5)
+			ON CONFLICT (launch_id) DO UPDATE SET
+				dimension = EXCLUDED.dimension,
+				affected_features = EXCLUDED.affected_features,
+				description = EXCLUDED.description,
+				updated_at = now()`,
+			launchID, def.entry.Dimension, def.entry.RampPercentage,
+			affected, def.entry.Description,
+		); err != nil {
+			return ConditionResult{}, fmt.Errorf("upsert cross-feature launch %q: %w", launchID, err)
+		}
+		logger.Info("synced cross-feature launch", "launch_id", launchID)
+	}
+
+	// Abandon stale launches no longer defined in any config.
+	syncedLaunchIDs := make([]string, 0, len(definedLaunches))
+	for id := range definedLaunches {
+		syncedLaunchIDs = append(syncedLaunchIDs, id)
+	}
+	if tag, err := tx.Exec(ctx, `
+		UPDATE feature_flags.launches SET status = 'ABANDONED', updated_at = now()
+		WHERE launch_id != ALL($1)
+		  AND status NOT IN ('COMPLETED', 'ABANDONED')`,
+		syncedLaunchIDs,
+	); err != nil {
+		return ConditionResult{}, fmt.Errorf("abandon stale launches: %w", err)
+	} else if tag.RowsAffected() > 0 {
+		logger.Info("abandoned stale launches", "count", tag.RowsAffected())
 	}
 
 	// Clear stale conditions for features that no longer have config files.
@@ -184,101 +346,17 @@ func SyncConditions(
 	return result, nil
 }
 
-func processConfigFile(
-	ctx context.Context,
-	tx pgx.Tx,
-	path string,
-	idx featureIndex,
-	compiler *celenv.Compiler,
-	boundedDims map[string]bool,
-	hashableDims map[string]bool,
-	celVersion string,
-	logger *slog.Logger,
-) (featureID string, updated int, warnings []string, err error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", 0, nil, err
+// collectAffected converts a set of feature IDs to a sorted slice.
+func collectAffected(refs map[string]bool) []string {
+	if len(refs) == 0 {
+		return []string{}
 	}
-
-	featureID, err = peekFeature(data)
-	if err != nil {
-		return "", 0, nil, err
+	out := make([]string, 0, len(refs))
+	for f := range refs {
+		out = append(out, f)
 	}
-
-	featureFlags, ok := idx[featureID]
-	if !ok {
-		return featureID, 0, nil, fmt.Errorf("feature %q not found in proto descriptors", featureID)
-	}
-
-	flagTypes := make(map[string]pbflagsv1.FlagType, len(featureFlags))
-	for name, info := range featureFlags {
-		flagTypes[name] = info.FlagType
-	}
-
-	var cfg *configfile.Config
-	cfg, warnings, err = configfile.Parse(data, flagTypes)
-	if err != nil {
-		return featureID, 0, nil, fmt.Errorf("parse: %w", err)
-	}
-
-	logger.Info("processing config", "feature", featureID, "flags", len(cfg.Flags))
-
-	for flagName, entry := range cfg.Flags {
-		info := featureFlags[flagName]
-
-		condJSON, dimJSON, warns, compileErr := compileFlag(flagName, entry, compiler, boundedDims)
-		if compileErr != nil {
-			return featureID, 0, nil, fmt.Errorf("flag %q: %w", flagName, compileErr)
-		}
-		warnings = append(warnings, warns...)
-
-		var cv *string
-		if condJSON != nil {
-			cv = &celVersion
-		}
-		if _, err := tx.Exec(ctx,
-			`UPDATE feature_flags.flags
-			 SET conditions = $2, dimension_metadata = $3, cel_version = $4,
-			     updated_at = now()
-			 WHERE flag_id = $1`,
-			info.FlagID, condJSON, dimJSON, cv,
-		); err != nil {
-			return featureID, 0, nil, fmt.Errorf("update flag %q: %w", info.FlagID, err)
-		}
-		updated++
-	}
-
-	// Sync launches.
-	if len(cfg.Launches) > 0 {
-		for launchID, launch := range cfg.Launches {
-			// Validate dimension is marked hashable (UNIFORM distribution) in proto.
-			if !hashableDims[launch.Dimension] {
-				return featureID, 0, nil, fmt.Errorf("launch %q: dimension %q is not marked UNIFORM in proto", launchID, launch.Dimension)
-			}
-
-			// Upsert launch — insert if new, update structure fields if changed.
-			// ramp_percentage is included in INSERT (initial ramp from config) but
-			// NOT in ON CONFLICT UPDATE — operator-set ramp is preserved on existing launches.
-			// status is never set by sync (operator-controlled).
-			if _, err := tx.Exec(ctx, `
-				INSERT INTO feature_flags.launches
-					(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
-				VALUES ($1, $2, $3, $4, $5, $6)
-				ON CONFLICT (launch_id) DO UPDATE SET
-					dimension = EXCLUDED.dimension,
-					affected_features = EXCLUDED.affected_features,
-					description = EXCLUDED.description,
-					updated_at = now()`,
-				launchID, featureID, launch.Dimension, launch.RampPercentage,
-				[]string{featureID}, launch.Description,
-			); err != nil {
-				return featureID, 0, nil, fmt.Errorf("upsert launch %q: %w", launchID, err)
-			}
-		}
-		logger.Info("synced launches", "feature", featureID, "launches", len(cfg.Launches))
-	}
-
-	return featureID, updated, warnings, nil
+	sort.Strings(out)
+	return out
 }
 
 func compileFlag(

@@ -171,7 +171,7 @@ func BuildCacheKey(flagID string, version uint64, meta CachedDimMeta, evalCtx pr
 		b.WriteString("launch:")
 		b.WriteString(launch.LaunchID)
 		b.WriteByte('\x00')
-		if dimValue != "" && HashBucket(launch.LaunchID, dimValue) < launch.RampPct {
+		if HashBucket(launch.LaunchID, dimValue) < launch.RampPct {
 			b.WriteByte('1')
 		} else {
 			b.WriteByte('0')

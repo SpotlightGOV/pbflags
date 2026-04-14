@@ -182,6 +182,10 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 			if e.condCache != nil {
 				e.condCache.Set(cacheKey, result.Value)
 			}
+			if result.LaunchHit {
+				span.SetAttributes(attribute.String("launch_id", result.LaunchID))
+				return result.Value, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_LAUNCH
+			}
 			return result.Value, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CONDITION
 		}
 		// No condition matched — cache the no-match to avoid re-evaluation.
