@@ -23,10 +23,76 @@ This order matters because `pbflags-admin` and `pbflags-evaluator` do not run mi
 
 ## Version-specific upgrade guides
 
+- [Proto conditions and authoritative ramp (v0.18.0)](#proto-conditions-and-authoritative-ramp-v0180) — conditions move from JSONB to proto bytea, ramp_percentage becomes config-authoritative
 - [Launches and evaluation scopes (v0.17.0)](#launches-and-evaluation-scopes-v0170) — gradual rollouts, per-condition overrides, scope-based codegen
 - [Conditions and config-driven flags (v0.16.0)](#conditions-and-config-driven-flags-v0160) — migrating from overrides to YAML conditions
 - [Evaluation context dimensions (v0.15.0)](#evaluation-context-dimensions-v0150) — replacing layers with context dimensions
 - [User-defined layers](archive/upgrade-guide-user-defined-layers.md) — historical guide for pre-v0.15 layer migrations (archived)
+
+---
+
+## Proto conditions and authoritative ramp (v0.18.0)
+
+This release converts condition storage from JSON to proto and makes
+`ramp_percentage` in YAML config authoritative when present.
+
+### Breaking changes
+
+**Database (migrations 009–010):**
+
+- `flags.conditions` and `flags.dimension_metadata` columns change from **JSONB
+  to bytea**. The old columns are dropped and re-created. Any existing data is
+  lost — this is intentional since no production deployments store conditions yet.
+- New column: `flags.condition_count INT` (replaces `jsonb_array_length` queries).
+- New column: `launches.ramp_source VARCHAR(20)` — tracks where the current ramp
+  value came from (`unspecified`, `config`, `cli`, `ui`).
+
+**Proto (bundle.proto):**
+
+- `CompiledFlag.conditions_json` (bytes, field 7) and
+  `CompiledFlag.dimension_metadata_json` (bytes, field 8) are **reserved**.
+  Replaced by:
+  - `repeated CompiledCondition conditions = 9` (typed condition chain)
+  - `map<string, CompiledDimensionMeta> dimension_metadata = 10`
+- New messages: `CompiledCondition`, `CompiledDimensionMeta`,
+  `StoredConditions`, `StoredDimensionMetadata`.
+- `CompiledLaunch.ramp_percentage` is now `optional int32` (was `int32`).
+
+**Proto (admin.proto):**
+
+- `LaunchDetail` gains `ramp_source` (field 11).
+- `UpdateLaunchRampRequest` gains `source` (field 3, values: `"cli"`, `"ui"`).
+- `UpdateLaunchRampResponse` gains `warning` (field 1).
+
+**Go packages:**
+
+- `flagfmt.StoredCondition` struct is **deleted**. Condition data is now
+  represented by the proto `CompiledCondition` message.
+- `flagfmt.DisplayConditionValue` now accepts proto-encoded bytes (not protojson).
+- `evaluator.CompileConditions` and `evaluator.ParseDimMeta` now unmarshal
+  proto instead of JSON.
+
+### Ramp percentage behavior change
+
+`ramp_percentage` in YAML config is now **authoritative when present**:
+
+- If `ramp_percentage` is set in config, sync always writes it to the database.
+  CLI/UI ramp changes are ephemeral and overwritten on next sync.
+- If `ramp_percentage` is **not** in config, CLI/UI ramp changes persist across
+  syncs (previous behavior for all launches).
+- CLI (`pb launch ramp`) and admin UI warn when changing ramp on a
+  config-managed launch.
+- Kills remain runtime-only — they are never overwritten by config.
+
+### Migration checklist
+
+1. **Recompile bundles** if you use `pb compile` / `pb load` — old bundles
+   use reserved fields 7/8 and will produce empty conditions.
+2. **Deploy `pbflags-sync`** — migrations 009–010 run automatically.
+3. **Roll out `pbflags-admin`** and `pbflags-evaluator`.
+4. **Review YAML configs**: any launch with `ramp_percentage` set will now have
+   that value enforced on every sync. Remove `ramp_percentage` from launches
+   where you want CLI/UI to control ramp dynamically.
 
 ---
 
@@ -66,8 +132,8 @@ schema, so the migration is a clean break.
   (TIMESTAMPTZ, nullable). Status values: BAKED → SOAKING.
 - **Precondition**: no ACTIVE or BAKED launches may exist. The migration checks
   and raises an exception if any are found.
-- Launch-to-flag binding is now inline in the `flags.conditions` JSONB via
-  `launch_id` and `launch_value` fields on `StoredCondition`.
+- Launch-to-flag binding is now inline in the `flags.conditions` column via
+  `launch_id` and `launch_value` fields on `CompiledCondition`.
 
 **YAML config format:**
 
@@ -153,7 +219,7 @@ managed entirely through config files in git.
 - The `flags.state` column (ENABLED/DEFAULT/KILLED) is replaced by `killed_at TIMESTAMP NULL`.
   NULL means live, non-NULL means killed. The kill switch is the only runtime control.
 - The `flags.value` and `flags.layer` columns are **dropped**.
-  Flag values are now determined by the `conditions` JSONB column (set by the sync pipeline).
+  Flag values are now determined by the `conditions` column (set by the sync pipeline).
 - The admin UI is **read-only**. The kill switch still works; value editing and override
   management are removed.
 - The `layerutil` package and `(pbflags.layers)` codegen extension are removed.

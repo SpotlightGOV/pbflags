@@ -97,7 +97,7 @@ func handleNotification(features dims.HasNotifications) {
 | Generated client | Typed constructors (`dims.UserID`, `dims.Plan`) | Yes — enforces correct value types |
 | Wire protocol | `EvaluationContext` message fields | Structured — carries typed dimensions |
 | Evaluator | Context fields | Evaluates CEL conditions against supplied dimensions |
-| Database | `flags.conditions` JSONB, `flags.killed_at` | Stores condition chain and kill state |
+| Database | `flags.conditions` (bytea, proto-encoded), `flags.killed_at` | Stores condition chain and kill state |
 | YAML config | `ctx.<field>` references in CEL expressions | Defines targeting behavior |
 | Admin UI | Displays condition chain and sync SHA | Displays only |
 

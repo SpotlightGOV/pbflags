@@ -237,7 +237,8 @@ Rules:
 - Launch dimensions must have `distribution: UNIFORM` in the proto definition (high cardinality, suitable for hash-based traffic splitting).
 - The launch dimension must be present in **every scope** of every affected feature. For example, a launch on `user_id` cannot be used by features available in the `anon` scope (which lacks `user_id`). Use a globally required dimension like `session_id` if the launch must span all scopes.
 - Feature-scoped launches (in a feature config) can only be referenced from that feature. Cross-feature launches go in a top-level `launches/` directory.
-- `ramp_percentage` is only applied on first sync. Subsequent ramp changes are made via the admin UI or `pb launch ramp`.
+- When `ramp_percentage` is set in config, it is **authoritative** — sync always writes it to the database. CLI/UI ramp changes are ephemeral and will be overwritten on next sync. When `ramp_percentage` is omitted from config, CLI/UI ramp changes persist across syncs.
+- Use `pb launch ramp` or the admin UI for incident response — the ramp change takes effect immediately, though it will be overwritten on next sync if the launch has `ramp_percentage` in config.
 
 Launch lifecycle commands (require admin API):
 

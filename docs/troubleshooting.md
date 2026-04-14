@@ -63,7 +63,7 @@ Providing both or neither is an error.
 - Verify the config was synced: check the admin UI for the sync SHA badge on the flag detail page.
 - Run `pbflags-sync validate --descriptors=descriptors.pb --features=./features` to check for compilation errors.
 - Run `pbflags-sync show <flag>` to see the compiled condition chain.
-- Check that `conditions` JSONB is populated: `SELECT conditions FROM feature_flags.flags WHERE flag_id = '<id>'`
+- Check that `conditions` is populated: `SELECT length(conditions) FROM feature_flags.flags WHERE flag_id = '<id>'`
 
 ### CEL expression errors in logs
 
@@ -83,7 +83,7 @@ Use `pbflags-sync validate` to catch compilation errors before deploy.
 
 ### Admin UI shows "Conditions error" banner
 
-This means the conditions JSONB in the database is malformed.
+This means the conditions data in the database is malformed or cannot be decoded.
 
-- Check the raw JSON: `SELECT conditions FROM feature_flags.flags WHERE flag_id = '<id>'`
 - Re-run `pbflags-sync --features=...` to rewrite the conditions from the YAML source.
+- The `conditions` column stores proto-encoded bytes (not human-readable). Use `pb flag show <id>` to inspect the decoded condition chain.
