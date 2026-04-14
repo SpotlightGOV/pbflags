@@ -16,7 +16,7 @@ internal/e2e/testdata/
 
 # Java
 clients/java/.gradle/
-clients/java/build/
+clients/java/**/build/
 
 # IDE
 .idea/
