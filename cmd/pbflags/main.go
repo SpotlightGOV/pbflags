@@ -45,6 +45,7 @@ Config commands:
   export     Export DB state as YAML config files
   compile    Compile YAML configs into a binary bundle
   load       Load a compiled bundle into the database
+  format     Format YAML config files into canonical form
   lint       Detect breaking changes in proto definitions
   migrate    Run database migrations
 
@@ -88,6 +89,8 @@ func main() {
 		runCompile(args[1:])
 	case "load":
 		runLoad(args[1:])
+	case "format":
+		runFormat(args[1:])
 	case "lint":
 		runLint(args[1:])
 	case "migrate":
