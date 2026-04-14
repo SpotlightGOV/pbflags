@@ -131,9 +131,20 @@ func (a *AdminService) UpdateLaunchRamp(ctx context.Context, req *connect.Reques
 	return connect.NewResponse(&pbflagsv1.UpdateLaunchRampResponse{}), nil
 }
 
+// validLaunchStatuses is the set of allowed launch lifecycle statuses,
+// matching the DB CHECK constraint.
+var validLaunchStatuses = map[string]bool{
+	"CREATED": true, "ACTIVE": true, "SOAKING": true,
+	"COMPLETED": true, "ABANDONED": true,
+}
+
 func (a *AdminService) UpdateLaunchStatus(ctx context.Context, req *connect.Request[pbflagsv1.UpdateLaunchStatusRequest]) (*connect.Response[pbflagsv1.UpdateLaunchStatusResponse], error) {
 	if req.Msg.GetLaunchId() == "" || req.Msg.GetStatus() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
+	}
+	if !validLaunchStatuses[req.Msg.GetStatus()] {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("invalid status %q; must be one of CREATED, ACTIVE, SOAKING, COMPLETED, ABANDONED", req.Msg.GetStatus()))
 	}
 	actor := authn.SubjectFromContext(ctx, "api")
 	a.logger.Info("updating launch status",

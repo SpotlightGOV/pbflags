@@ -6,6 +6,41 @@ before features that depend on it.
 
 ---
 
+## Done
+
+### ~~API Authentication~~ ✅
+
+**Implemented in v0.18.0.** Pluggable authentication middleware for the admin API
+with three strategies: `none` (default, backward-compatible), `shared-secret`
+(Bearer token), and `trusted-header` (for reverse proxies). Configured via
+`PBFLAGS_AUTH_STRATEGY` environment variable. See [deployment.md](deployment.md#authentication).
+
+### ~~Evaluation Context~~ ✅
+
+**Implemented in v0.15.0.** Structured `EvaluationContext` message with typed
+dimensions defined via `(pbflags.context)` and `(pbflags.dimension)` proto
+annotations. Generated `dims` package with dimension constructors.
+
+### ~~Percentage-Based Rollouts~~ ✅
+
+**Implemented in v0.17.0** as "Launches" — per-condition value overrides with
+deterministic FNV-32a hashing, evaluation scopes with typed codegen, inline
+launch overrides on conditions and static values, admin UI kill/unkill, and
+mechanical `pb launch land` for YAML transform.
+
+Phase 2 (future): `launch.in_ramp()` in CEL expressions for structural condition
+chain changes under a launch, with CEL simplification for mechanical landing.
+
+### ~~CLI Tool~~ ✅
+
+**Implemented in v0.18.0.** Unified `pb` CLI with admin commands (`pb flag`,
+`pb launch`, `pb audit`), auth management (`pb auth`), config commands
+(`pb sync`, `pb validate`, `pb show`, `pb compile`, `pb load`, `pb export`),
+and developer workflow commands (`pb init`, `pb lint`, `pb migrate`).
+All admin commands support `--json` for scripting.
+
+---
+
 ## Soon
 
 ### 1. Client-Side Flags
@@ -22,58 +57,30 @@ mobile, edge) consume flags from pbflags.
   compiled defaults. Target both Node.js (server) and browser runtimes.
   Publish to npm as `@spotlightgov/pbflags`.
 - **Security boundary**: clients receive only their evaluated results, never
-  the full flag ruleset or other entities' overrides
+  the full flag ruleset or other entities' data
 - **Never-throw guarantee**: catch transport errors, return compiled defaults.
   Offline/disconnected clients always have safe values.
 - **Developer ergonomics**: framework integrations (React hooks, etc.) that
   make flag consumption feel native
 
-**Why:** Server-side Go and Java clients exist, but there's no story for how
-browser or mobile applications consume flags. This is a different problem
-than server-side evaluation — it involves transport choices, security
-boundaries, and update propagation that don't arise in backend services.
-Without a defined client-side pattern, teams will build ad-hoc solutions
-that bypass the type safety and never-throw guarantees.
-
 **Key files:** `internal/codegen/` (new `tsgen/` package), `cmd/protoc-gen-pbflags/main.go`
 
-### 2. API Authentication
-
-Add token-based authentication for evaluator and admin services.
-
-**Scope:**
-- Support API key authentication via `Authorization: Bearer <token>` header
-- Separate evaluator (read) and admin (write) token scopes
-- Token validation middleware for Connect RPC handlers
-- Configuration via environment variable or config file
-- Optional — disabled by default for backwards compatibility
-
-**Why:** The system currently assumes a trusted network. Any deployment beyond
-localhost or a private VPC needs authentication. Even a simple shared-secret
-scheme prevents accidental exposure and enables audit trail attribution.
-
-**Key files:** `cmd/pbflags-server/main.go`, new `internal/auth/` package
-
-### 3. RBAC for Admin API
+### 2. RBAC for Admin API
 
 Role-based access control separating read and write operations.
 
 **Scope:**
 - Define roles: `viewer` (evaluate, list, audit log), `editor` (+ state changes),
-  `admin` (+ override management, role management)
+  `admin` (+ role management)
 - Enforce at the Connect RPC interceptor level
 - Store role assignments (start with static config, migrate to DB later)
 - Audit log entries include authenticated principal
 
-**Why:** The admin API already has audit logging — adding RBAC completes the
-security story. Without it, anyone with network access can kill flags or set
-overrides.
+**Depends on:** API Authentication (done)
 
-**Depends on:** Item 2 (API Authentication)
+**Key files:** `internal/admin/service.go`, `internal/authn/`
 
-**Key files:** `internal/admin/service.go`, new `internal/auth/rbac.go`
-
-### 4. Native TLS Support
+### 3. Native TLS Support
 
 Optional in-process TLS termination.
 
@@ -81,35 +88,28 @@ Optional in-process TLS termination.
 - Accept `--tls-cert` and `--tls-key` flags
 - Upgrade from h2c to h2 (HTTP/2 over TLS) when certs are provided
 - Support automatic certificate reload on SIGHUP (align with descriptor reload)
-- Document mutual TLS (mTLS) configuration for service-to-service auth
+- Document mutual TLS (mTLS) configuration for evaluator service-to-service auth
 
-**Why:** Removes hard dependency on external TLS proxy for encrypted transport.
-Simplifies single-binary deployments and development setups.
-
-**Key files:** `cmd/pbflags-server/main.go`
+**Key files:** `cmd/pbflags-admin/main.go`, `cmd/pbflags-evaluator/main.go`
 
 ---
 
 ## Later
 
-### 5. Dry-Run / What-If Evaluation
+### 4. Dry-Run / What-If Evaluation
 
 Preview evaluation results without changing state.
 
 **Scope:**
 - New RPC: `DryRunEvaluate(feature_id, context, hypothetical_state)`
 - Returns: what the entity would see under the hypothetical configuration
-- Supports hypothetical: state changes, override additions, rollout percentages
+- Supports hypothetical: state changes, rollout percentages
 - No side effects — read-only operation
 - Useful for pre-deploy verification and incident debugging
 
-**Why:** "What would user X see if I enabled this flag?" is a question operators
-ask during every incident and rollout. Currently requires reading code or
-making the change and checking. A dry-run endpoint makes this safe and fast.
-
 **Key files:** `internal/evaluator/service.go`, `proto/pbflags/v1/evaluator.proto`
 
-### 6. Cross-Language Integration Tests
+### 5. Cross-Language Integration Tests
 
 End-to-end tests validating Go server + Java client consistency.
 
@@ -120,45 +120,18 @@ End-to-end tests validating Go server + Java client consistency.
 - Run in CI with both PostgreSQL and in-memory modes
 - Extend to TypeScript client when available
 
-**Why:** The proto contract is the source of truth, but serialization edge cases
-(wrapper types, default values, unknown fields) can diverge between language
-runtimes. Integration tests catch these before users do.
-
 **Key files:** New `tests/integration/` directory, CI workflow updates
 
-### 7. Chaos / Failure-Mode Tests
-
-Validate graceful degradation under simulated failures.
-
-**Scope:**
-- PostgreSQL connection drops mid-evaluation → stale cache served
-- Upstream proxy timeout → health tracker backoff behavior
-- Kill set poll failure → last-known kill set preserved
-- Cache at capacity → LRU eviction doesn't drop hot entries
-- Descriptor file deleted mid-operation → last-known config preserved
-- Network partition between proxy and root → proxy serves stale
-
-**Why:** The stale-cache-during-outages guarantee and exponential backoff are
-key reliability features. They're tested in unit tests but not under realistic
-failure conditions. Chaos tests validate the system-level behavior.
-
-**Key files:** `internal/evaluator/cache_test.go`, `health_test.go`, new `tests/chaos/`
-
-### 8. Performance Benchmarks
+### 6. Performance Benchmarks
 
 Document evaluation latency and throughput characteristics.
 
 **Scope:**
 - `go test -bench` benchmarks for core evaluation path
 - Cache contention under concurrent access (varying goroutine counts)
-- Override LRU behavior at capacity (10k entries)
 - Bulk evaluation throughput (varying batch sizes)
 - Memory profile under sustained load
 - Publish results in documentation with hardware specs
-
-**Why:** Ristretto is fast and the architecture is sound, but without published
-numbers, users can't capacity-plan. Benchmarks also serve as regression
-detection — if a change doubles evaluation latency, the benchmark catches it.
 
 **Key files:** New `internal/evaluator/bench_test.go`, `docs/benchmarks.md`
 
@@ -167,65 +140,22 @@ detection — if a change doubles evaluation latency, the benchmark catches it.
 ## Future
 
 Items in this section are not committed work — they represent the logical
-extension of the system based on where the industry has converged. Informed
-by competitive analysis against LaunchDarkly, Flipt, Unleash, and Flagsmith.
-Sequencing is meaningful: each item builds on the one before it.
+extension of the system based on where the industry has converged.
 
-### 9. ~~Attribute-Based Targeting and Segmentation~~ (Done)
-
-Evaluation context has been implemented. The opaque `entity_id` string has
-been replaced by a structured `EvaluationContext` message with typed
-dimensions defined via `(pbflags.context)` and `(pbflags.dimension)` proto
-annotations. The wire protocol carries context via a `google.protobuf.Any`
-field on `EvaluateRequest`/`BulkEvaluateRequest`. Generated code produces a
-`dims` package with dimension constructors and a `pbflags` package with
-core types (`Evaluator`, `Connect`, `ContextWith`/`FromContext`).
-
-Segments, targeting rules, and rule-based evaluation are not yet implemented
-and remain future work.
-
-### 10. Percentage-Based Rollouts ✅
-
-**Implemented in v0.17.0** as "Launches" — see [design-docs/2026-04-14-launches.md](../design-docs/2026-04-14-launches.md) and [upgrading.md](upgrading.md#launches-and-evaluation-scopes-v0170).
-
-Phase 1 (shipped): per-condition value overrides with deterministic FNV-32a hashing,
-evaluation scopes with typed codegen, inline launch overrides on conditions and static
-values, admin UI kill/unkill, and mechanical `pb launch land` for YAML transform.
-
-Phase 2 (future): `launch.in_ramp()` in CEL expressions for structural condition chain
-changes under a launch, with CEL simplification for mechanical landing.
-
-Multi-variant experiments (percentage distributions across multiple values) remain
-future work — see item 13.
-
-**Key files:** `internal/evaluator/evaluator.go`, `proto/pbflags/v1/types.proto`, `db/migrations/`
-
-### 11. OpenFeature Provider
+### 7. OpenFeature Provider
 
 Implement the OpenFeature provider interface for Go and Java.
 
 **Scope:**
 - Go: implement `openfeature.FeatureProvider` interface wrapping pbflags evaluator
 - Java: implement `dev.openfeature.sdk.FeatureProvider` wrapping `FlagEvaluator`
-- Map OpenFeature `EvaluationContext` to pbflags evaluation context (implemented in item 9)
+- Map OpenFeature `EvaluationContext` to pbflags evaluation context
 - Support OpenFeature hooks for logging and metrics
 - Publish as separate modules (`pbflags-openfeature-go`, `pbflags-openfeature-java`)
 
-**Why:** OpenFeature is the CNCF-incubating standard for feature flag client
-interfaces. Every major competitor (LaunchDarkly, Flipt, Unleash, Flagsmith)
-ships OpenFeature providers. Providing one lets teams adopt pbflags without
-client-side vendor lock-in and enables interop with the OpenFeature hook
-ecosystem. The evaluation context model from item 9 maps naturally to
-OpenFeature's `EvaluationContext`.
-
-**Depends on:** Item 10 (percentage rollouts) — OpenFeature's evaluation model
-assumes the backend supports contextual evaluation; evaluation context is now
-in place but targeting rules and rollouts are needed for the provider to add
-meaningful value.
-
 **Key files:** New `clients/openfeature/` packages for Go and Java
 
-### 12. Additional SDK Support (Rust)
+### 8. Additional SDK Support (Rust)
 
 Expand SDK coverage beyond Go, Java, and TypeScript.
 
@@ -234,18 +164,7 @@ Expand SDK coverage beyond Go, Java, and TypeScript.
   crates.io as `pbflags`. Never-panic guarantee via `Result` with default fallback.
 - **OpenFeature providers** for additional languages (lower bar than full codegen)
 
-**Why:** With OpenFeature in place, teams using unsupported languages can use
-the OpenFeature SDK with a pbflags provider as the breadth path, while codegen
-clients remain the premium type-safe path. Rust is a natural fit for
-proto-first systems. LaunchDarkly ships 29+ SDKs — pbflags doesn't need
-parity, but breadth matters for platform adoption.
-
-**Depends on:** Item 11 (OpenFeature) — OpenFeature providers for new languages
-are faster to ship than full codegen targets and provide immediate coverage.
-
-**Key files:** `internal/codegen/` (new `rustgen/` package), `cmd/protoc-gen-pbflags/main.go`
-
-### 13. Experimentation Framework (A/B Testing)
+### 9. Experimentation Framework (A/B Testing)
 
 Measure the impact of flag variations with statistical analysis.
 
@@ -254,26 +173,14 @@ Measure the impact of flag variations with statistical analysis.
   entity context)
 - Metrics pipeline: ingest outcome events (conversion, latency, error rate) and
   correlate with flag assignments
-- Statistical engine: significance testing (frequentist or Bayesian), sample size
-  estimation, guardrail metrics
+- Statistical engine: significance testing, sample size estimation, guardrail metrics
 - Experiment lifecycle: create experiment → assign traffic via rollouts →
   collect data → analyze → conclude
 - Admin UI for experiment creation, monitoring, and results
-- Integration with external analytics (export to warehouse, webhook on conclusion)
 
-**Why:** Experimentation is the end state of feature management — not just
-"is the flag on?" but "is the flag *working*?" LaunchDarkly has built-in
-A/B testing; most open-source tools do not. This is a significant
-differentiator but also the highest-effort item on the roadmap. It requires
-targeting + rollouts as prerequisites, plus an event/metrics pipeline that
-doesn't exist yet.
+**Depends on:** Launches (done) — experiments are rollouts with measurement.
 
-**Depends on:** Items 9-10 (targeting + rollouts) — experiments are rollouts
-with measurement.
-
-**Key files:** New `internal/experiment/` package, `proto/pbflags/v1/experiment.proto`
-
-### 14. Flag Dependencies / Prerequisites
+### 10. Flag Dependencies / Prerequisites
 
 Conditional flag activation based on other flag states.
 
@@ -281,54 +188,18 @@ Conditional flag activation based on other flag states.
 - New `prerequisites` field: list of `(feature_id/field_number, required_state)` pairs
 - Evaluation checks prerequisites before applying flag's own state
 - If any prerequisite fails → flag evaluates to compiled default
-- Cycle detection at configuration time (admin API rejects cycles)
+- Cycle detection at configuration time
 - Dependency graph visible in admin UI and CLI
 
-**Why:** Complex feature rollouts often have ordering constraints ("Flag B
-requires Flag A"). Without prerequisites, operators must manually coordinate
-flag states — error-prone during incidents. Dependency tracking makes the
-implicit explicit.
-
-**Key files:** `internal/evaluator/evaluator.go`, `proto/pbflags/v1/types.proto`, `internal/admin/store.go`
-
-### 15. Scheduled Activation / Deactivation
+### 11. Scheduled Activation / Deactivation
 
 Time-based flag lifecycle management.
 
 **Scope:**
 - New fields: `activate_at` and `deactivate_at` timestamps on flag state
 - Evaluator checks wall clock against schedule during evaluation
-- Scheduler goroutine for proactive state transitions (vs. lazy evaluation)
 - Admin API and CLI support for setting schedules
 - Audit log records scheduled transitions
-- Timezone-aware with UTC storage
-
-**Why:** "Enable the holiday banner at 9am EST on Black Friday, disable at
-midnight" is a common use case. Currently requires manual intervention or
-external cron jobs. Built-in scheduling reduces operational burden and
-eliminates the risk of forgetting to disable a flag.
-
-**Key files:** `internal/evaluator/evaluator.go`, `proto/pbflags/v1/types.proto`, `internal/admin/store.go`
-
-### 16. CLI Tool for Flag Management
-
-A `pbflags` CLI for scriptable flag operations.
-
-**Scope:**
-- `pbflags flags list` — list features and flag states
-- `pbflags flags get <feature_id>/<field_number>` — show flag details
-- `pbflags flags set <feature_id>/<field_number> --state=ENABLED --value=...`
-- `pbflags flags kill <feature_id>/<field_number>` — emergency kill switch
-- `pbflags overrides set <feature_id>/<field_number> --entity=<id> --value=...`
-- `pbflags overrides remove <feature_id>/<field_number> --entity=<id>`
-- `pbflags audit <feature_id>` — view audit log
-- Connect to admin API via `--server` flag, authenticate via `--token` or env var
-- Output formats: table (default), JSON, YAML
-
-**Why:** Flag operations shouldn't require curl/grpcurl incantations or a UI.
-A CLI enables scripting (CI/CD flag gates, incident runbooks).
-
-**Key files:** New `cmd/pbflags/` directory, consumes admin API client
 
 ---
 
@@ -336,9 +207,10 @@ A CLI enables scripting (CI/CD flag gates, incident runbooks).
 
 | Phase | Items | Signal |
 |-------|-------|--------|
-| **Soon** | 1-4 | Client-side story, security hardening |
-| **Later** | 5-8 | Testing, benchmarks, operator tooling |
-| **Future** | ~~9~~ 10-16 | Feature management platform (evaluation context done), not committed |
+| **Done** | Auth, Context, Rollouts, CLI | Foundation complete |
+| **Soon** | 1-3 | Client-side story, security hardening |
+| **Later** | 4-6 | Testing, benchmarks, operator tooling |
+| **Future** | 7-11 | Platform features, not committed |
 
 ---
 
