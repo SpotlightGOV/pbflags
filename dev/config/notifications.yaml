@@ -41,3 +41,16 @@ flags:
       - 5
       - 30
       - 120
+
+# Percentage-based rollouts.
+launches:
+  email_enabled_pro_rollout:
+    flag: email_enabled
+    dimension: user_id
+    population: "ctx.plan == PlanLevel.PRO"
+    value: true
+
+  hourly_digest_rollout:
+    flag: digest_frequency
+    dimension: user_id
+    value: "hourly"

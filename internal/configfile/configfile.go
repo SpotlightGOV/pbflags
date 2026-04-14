@@ -127,7 +127,7 @@ func Parse(data []byte, flagTypes map[string]pbflagsv1.FlagType) (*Config, []str
 	if raw.Feature == "" {
 		return nil, nil, errors.New("missing required field: feature")
 	}
-	if len(raw.Flags) == 0 {
+	if len(raw.Flags) == 0 && len(raw.Launches) == 0 {
 		return nil, nil, errors.New("missing required field: flags")
 	}
 
@@ -153,10 +153,11 @@ func Parse(data []byte, flagTypes map[string]pbflagsv1.FlagType) (*Config, []str
 		cfg.Flags[name] = entry
 	}
 
-	// Check for proto flags missing from config.
+	// Warn (not error) for proto flags missing from config — only flags
+	// with overrides need to be present in the YAML.
 	for name := range flagTypes {
 		if _, ok := raw.Flags[name]; !ok {
-			errs = append(errs, fmt.Errorf("flag %q: defined in proto but missing from config", name))
+			warnings = append(warnings, fmt.Sprintf("flag %q: defined in proto but not in config (will use compiled default)", name))
 		}
 	}
 

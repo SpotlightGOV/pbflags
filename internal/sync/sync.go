@@ -102,22 +102,20 @@ func syncInTx(ctx context.Context, tx pgx.Tx, defs []evaluator.FlagDef, logger *
 			}
 		}
 
-		layer := LayerDBString(d.Layer)
 		flagType := FlagTypeString(d.FlagType)
 
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO feature_flags.flags (flag_id, feature_id, field_number, display_name, flag_type, layer, description, default_value, supported_values)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			`INSERT INTO feature_flags.flags (flag_id, feature_id, field_number, display_name, flag_type, description, default_value, supported_values)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			 ON CONFLICT (flag_id) DO UPDATE SET
 			   display_name = EXCLUDED.display_name,
 			   flag_type = EXCLUDED.flag_type,
-			   layer = EXCLUDED.layer,
 			   description = EXCLUDED.description,
 			   default_value = EXCLUDED.default_value,
 			   supported_values = EXCLUDED.supported_values,
 			   archived_at = NULL,
 			   updated_at = now()`,
-			d.FlagID, d.FeatureID, d.FieldNum, d.Name, flagType, layer, "", defaultBytes, supportedBytes,
+			d.FlagID, d.FeatureID, d.FieldNum, d.Name, flagType, "", defaultBytes, supportedBytes,
 		); err != nil {
 			return Result{}, fmt.Errorf("upsert flag %q: %w", d.FlagID, err)
 		}
@@ -180,13 +178,4 @@ func syncInTx(ctx context.Context, tx pgx.Tx, defs []evaluator.FlagDef, logger *
 func FlagTypeString(ft pbflagsv1.FlagType) string {
 	s := ft.String()
 	return strings.TrimPrefix(s, "FLAG_TYPE_")
-}
-
-// LayerDBString normalizes the layer name for DB storage (uppercase).
-// Empty or "global" maps to "GLOBAL".
-func LayerDBString(layer string) string {
-	if layer == "" || strings.EqualFold(layer, "global") {
-		return "GLOBAL"
-	}
-	return strings.ToUpper(layer)
 }

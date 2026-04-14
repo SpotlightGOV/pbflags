@@ -173,6 +173,40 @@ flags:
 	}
 }
 
+func TestParseMissingFlagWarns(t *testing.T) {
+	// A config that omits some proto flags should succeed with a warning,
+	// not fail with an error. Only flags with overrides need to be present.
+	yaml := `
+feature: notifications
+flags:
+  email_enabled:
+    value: true
+  digest_frequency:
+    value: "weekly"
+`
+	cfg, warnings, err := Parse([]byte(yaml), flagTypes)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("expected config")
+	}
+	if len(cfg.Flags) != 2 {
+		t.Errorf("expected 2 flags, got %d", len(cfg.Flags))
+	}
+	// Should have warnings for the missing flags.
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "not in config") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning about missing flags, got %v", warnings)
+	}
+}
+
 func TestParseErrors(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -210,22 +244,6 @@ flags:
   bogus:
     value: true`,
 			`not defined in proto`,
-		},
-		{
-			"missing proto flag",
-			`feature: notifications
-flags:
-  email_enabled:
-    value: true
-  digest_frequency:
-    value: "weekly"
-  max_retries:
-    value: 3
-  score_threshold:
-    value: 0.5
-  notification_emails:
-    value: ["ops@example.com"]`,
-			`missing from config`,
 		},
 		{
 			"both value and conditions",
