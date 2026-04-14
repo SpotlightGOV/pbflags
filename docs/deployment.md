@@ -239,9 +239,12 @@ pbflags-admin --standalone --descriptors=descriptors.pb --database=...
 ```
 
 ```bash
-# CLI / automation usage:
-curl -H "Authorization: Bearer my-secret-token" \
+# CLI / automation usage (Connect JSON):
+curl -X POST \
+     -H "Authorization: Bearer my-secret-token" \
      -H "X-Actor: deploy-bot" \
+     -H "Content-Type: application/json" \
+     -d '{}' \
      http://localhost:9200/pbflags.v1.FlagAdminService/ListFeatures
 ```
 

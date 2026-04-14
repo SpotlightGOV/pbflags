@@ -1,6 +1,7 @@
 package authn
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -168,10 +169,9 @@ func TestSubjectFromContext(t *testing.T) {
 	})
 
 	t.Run("empty subject returns fallback", func(t *testing.T) {
-		r := httptest.NewRequest("GET", "/", nil)
 		// Simulate a zero Identity stored in context — shouldn't happen in
 		// practice, but exercise the guard.
-		ctx := r.Context()
+		ctx := context.WithValue(context.Background(), ctxKey{}, Identity{})
 		assert.Equal(t, "fallback", SubjectFromContext(ctx, "fallback"))
 	})
 }
