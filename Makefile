@@ -43,9 +43,9 @@ generate:
 
 # Build all Go binaries.
 build:
+	go build ./cmd/pbflags
 	go build ./cmd/pbflags-admin
 	go build ./cmd/pbflags-evaluator
-	go build ./cmd/pbflags-sync
 	go build ./cmd/protoc-gen-pbflags
 
 # Run Go tests.
@@ -93,7 +93,7 @@ setup-beads:
 
 # Remove build artifacts.
 clean:
-	rm -f pbflags-admin pbflags-evaluator pbflags-sync protoc-gen-pbflags
+	rm -f pbflags pbflags-admin pbflags-evaluator protoc-gen-pbflags
 
 # Build the Docker image.
 docker:
@@ -156,7 +156,7 @@ dev/descriptors.pb: $(shell find proto -name '*.proto' -type f)
 # Seed the running dev database with demo flag conditions via the sync binary.
 # Call from a second terminal after `make dev` is running.
 dev-seed: dev/descriptors.pb
-	go run ./cmd/pbflags-sync \
+	go run ./cmd/pbflags sync \
 		--database=postgres://admin:admin@localhost:5433/pbflags?sslmode=disable \
 		--descriptors=dev/descriptors.pb \
 		--features=dev/config

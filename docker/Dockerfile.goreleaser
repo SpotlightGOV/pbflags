@@ -4,7 +4,7 @@ ARG TARGETARCH
 RUN apk add --no-cache ca-certificates
 COPY linux/${TARGETARCH}/pbflags-admin /usr/local/bin/pbflags-admin
 COPY linux/${TARGETARCH}/pbflags-evaluator /usr/local/bin/pbflags-evaluator
-COPY linux/${TARGETARCH}/pbflags-sync /usr/local/bin/pbflags-sync
+COPY linux/${TARGETARCH}/pbflags /usr/local/bin/pbflags
 
 EXPOSE 9200 9201
 

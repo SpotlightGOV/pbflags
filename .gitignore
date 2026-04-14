@@ -2,9 +2,9 @@
 release-notes.md
 
 # Go build artifacts (root only, not cmd/ subdirectories)
+/pbflags
 /pbflags-admin
 /pbflags-evaluator
-/pbflags-sync
 /protoc-gen-pbflags
 
 # Dev build artifacts

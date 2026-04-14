@@ -28,9 +28,9 @@ builds:
     ldflags:
       - -s -w -X main.version={{.Version}}
 
-  - id: pbflags-sync
-    main: ./cmd/pbflags-sync
-    binary: pbflags-sync
+  - id: pbflags
+    main: ./cmd/pbflags
+    binary: pbflags
     env: [CGO_ENABLED=0]
     goos: [linux, darwin]
     goarch: [amd64, arm64]
@@ -62,9 +62,9 @@ archives:
       - goos: darwin
         formats: [zip]
 
-  - id: pbflags-sync
-    ids: [pbflags-sync]
-    name_template: "pbflags-sync_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: pbflags
+    ids: [pbflags]
+    name_template: "pbflags_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
     format_overrides:
       - goos: darwin
@@ -87,7 +87,7 @@ dockers_v2:
       - "{{ .Version }}"
       - latest
     dockerfile: docker/Dockerfile.goreleaser
-    ids: [pbflags-admin, pbflags-evaluator, pbflags-sync]
+    ids: [pbflags-admin, pbflags-evaluator, pbflags]
     labels:
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.source: "{{ .GitURL }}"

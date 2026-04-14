@@ -3,7 +3,7 @@
 // It provides the admin API, web UI, and a local evaluator interface.
 // Requires a PostgreSQL database with R/W access.
 //
-// Normal mode (requires external pbflags-sync for migrations and definition sync):
+// Normal mode (requires external "pbflags sync" for migrations and definition sync):
 //
 //	pbflags-admin --database=postgres://user:pass@localhost:5432/flags
 //

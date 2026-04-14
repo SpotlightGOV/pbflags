@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package pbflags.v1;
+
+option go_package = "github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1";
+option java_multiple_files = true;
+option java_package = "org.spotlightgov.pbflags.v1.proto";
+
+// CompiledBundle is a pre-compiled config artifact containing everything
+// needed to sync flag definitions and conditions to the database without
+// requiring proto descriptors or the CEL compiler at load time.
+//
+// Produced by "pbflags compile", consumed by "pbflags load".
+message CompiledBundle {
+  repeated CompiledFeature features = 1;
+  string cel_version = 2; // CEL library version used during compilation
+}
+
+// CompiledFeature holds the compiled state for a single feature.
+message CompiledFeature {
+  string feature_id = 1;
+  string display_name = 2;
+  string description = 3;
+  string owner = 4;
+  repeated CompiledFlag flags = 5;
+  repeated CompiledLaunch launches = 6;
+}
+
+// CompiledFlag holds a flag's compiled conditions and metadata.
+message CompiledFlag {
+  string flag_id = 1;
+  string name = 2; // proto field name
+  int32 field_number = 3;
+  string flag_type = 4; // e.g. "BOOL", "STRING"
+  bytes default_value = 5; // proto-encoded FlagValue
+  bytes supported_values = 6;
+
+  // Pre-compiled condition chain and dimension metadata (JSONB-ready).
+  // Nil for flags without conditions.
+  bytes conditions_json = 7;
+  bytes dimension_metadata_json = 8;
+}
+
+// CompiledLaunch holds a launch definition ready for DB upsert.
+message CompiledLaunch {
+  string launch_id = 1;
+  string flag_id = 2;
+  string dimension = 3;
+  string population_cel = 4; // empty = all entities
+  bytes value_json = 5; // protojson-encoded FlagValue
+}
