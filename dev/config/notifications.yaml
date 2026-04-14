@@ -39,6 +39,9 @@ flags:
 
   score_threshold:
     value: 0.75
+    launch:
+      id: scoring_experiment
+      value: 0.5
 
   notification_emails:
     value:
@@ -62,3 +65,8 @@ launches:
   hourly_digest_rollout:
     dimension: user_id
     description: "Roll out hourly digest for Pro users"
+
+  scoring_experiment:
+    dimension: session_id
+    ramp_percentage: 50
+    description: "Test lower score threshold"

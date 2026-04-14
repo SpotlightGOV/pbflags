@@ -160,7 +160,8 @@ dev-seed: dev/descriptors.pb
 		--database=postgres://admin:admin@localhost:5433/pbflags?sslmode=disable \
 		--descriptors=dev/descriptors.pb \
 		--features=dev/config
-	@echo "Demo data synced. Refresh the admin UI."
+	psql postgres://admin:admin@localhost:5433/pbflags?sslmode=disable < dev/seed-launches.sql
+	@echo "Demo data synced (flags + launch states). Refresh the admin UI."
 
 # Run the admin server locally with live asset reloading (standalone mode).
 # CSS/template changes take effect on browser refresh; Go changes need a restart.
