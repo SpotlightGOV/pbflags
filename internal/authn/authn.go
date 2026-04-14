@@ -93,7 +93,7 @@ func (s *SharedSecret) Authenticate(r *http.Request) (Identity, error) {
 	}
 	const prefix = "Bearer "
 	if !strings.HasPrefix(auth, prefix) {
-		return Identity{}, fmt.Errorf("Authorization header must use Bearer scheme")
+		return Identity{}, fmt.Errorf("authorization header must use Bearer scheme")
 	}
 	got := []byte(strings.TrimPrefix(auth, prefix))
 	if subtle.ConstantTimeCompare(got, s.token) != 1 {
