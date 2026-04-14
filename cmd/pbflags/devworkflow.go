@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/SpotlightGOV/pbflags/db"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 	"github.com/SpotlightGOV/pbflags/internal/lint"
 )
@@ -130,4 +132,24 @@ flags:
 	fmt.Println("Initialized pbflags project:")
 	fmt.Printf("  .pbflags.yaml\n")
 	fmt.Printf("  %s/example.yaml\n", *featuresPath)
+}
+
+// --- migrate ---
+
+func runMigrate(args []string) {
+	fs := flag.NewFlagSet("pb migrate", flag.ExitOnError)
+	database := fs.String("database", "", "PostgreSQL connection string (or PBFLAGS_DATABASE)")
+	fs.Parse(args)
+
+	resolveEnv(database, nil, nil, nil)
+	if *database == "" {
+		fmt.Fprintln(os.Stderr, "error: --database or PBFLAGS_DATABASE is required")
+		os.Exit(1)
+	}
+
+	fmt.Println("Running database migrations...")
+	if err := db.Migrate(context.Background(), *database); err != nil {
+		fatal(fmt.Errorf("migration failed: %w", err))
+	}
+	fmt.Println("Migrations complete.")
 }

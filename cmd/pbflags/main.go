@@ -46,6 +46,7 @@ Config commands:
   compile    Compile YAML configs into a binary bundle
   load       Load a compiled bundle into the database
   lint       Detect breaking changes in proto definitions
+  migrate    Run database migrations
 
 Admin commands:
   flag       Flag operations (list, get, kill, unkill)
@@ -89,6 +90,8 @@ func main() {
 		runLoad(args[1:])
 	case "lint":
 		runLint(args[1:])
+	case "migrate":
+		runMigrate(args[1:])
 	case "flag":
 		runFlag(args[1:])
 	case "launch":
