@@ -6,6 +6,7 @@ release-notes.md
 /pbflags-admin
 /pbflags-evaluator
 /protoc-gen-pbflags
+/pbflags-sync
 
 # Dev build artifacts
 dev/descriptors.pb
