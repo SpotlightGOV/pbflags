@@ -28,6 +28,7 @@ func Generate(plugin *protogen.Plugin, packagePrefix string) error {
 		return fmt.Errorf("generating flagmeta package: %w", err)
 	}
 
+	var features []*featureInfo
 	for _, f := range plugin.Files {
 		if !f.Generate {
 			continue
@@ -37,11 +38,21 @@ func Generate(plugin *protogen.Plugin, packagePrefix string) error {
 			if feat == nil {
 				continue
 			}
+			features = append(features, feat)
 			if err := generateFeature(plugin, msg, feat, packagePrefix); err != nil {
 				return fmt.Errorf("generating %s: %w", feat.id, err)
 			}
 		}
 	}
+
+	// Generate per-scope *Features types if scopes and features are defined.
+	scopes := contextutil.DiscoverScopes(plugin)
+	if ctxDef != nil && len(scopes) > 0 && len(features) > 0 {
+		if err := generateScopesPackage(plugin, ctxDef, scopes, features, packagePrefix); err != nil {
+			return fmt.Errorf("generating scopes package: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -49,6 +60,7 @@ type featureInfo struct {
 	id          string
 	description string
 	owner       string
+	scopes      []string // evaluation scope names
 }
 
 type flagInfo struct {
@@ -311,6 +323,11 @@ func extractFeatureOptions(msg *protogen.Message) *featureInfo {
 					info.description = innerV.String()
 				case "owner":
 					info.owner = innerV.String()
+				case "scopes":
+					list := innerV.List()
+					for i := 0; i < list.Len(); i++ {
+						info.scopes = append(info.scopes, list.Get(i).String())
+					}
 				}
 				return true
 			})
@@ -383,6 +400,8 @@ func parseFeatureMessage(b []byte) *featureInfo {
 			info.description = string(data)
 		case 3:
 			info.owner = string(data)
+		case 4: // repeated string scopes
+			info.scopes = append(info.scopes, string(data))
 		}
 	}
 	if info.id == "" {

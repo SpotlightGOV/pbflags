@@ -80,6 +80,118 @@ type ContextDef struct {
 	Message     *protogen.Message
 }
 
+// ScopeDef describes a single evaluation scope.
+type ScopeDef struct {
+	Name       string   // scope name (e.g., "anon", "user", "tenant")
+	Dimensions []string // additional dimensions beyond globally required
+}
+
+const scopeExtNum = 51005 // (pbflags.scope) on FileOptions
+
+// DiscoverScopes scans all files for (pbflags.scope) file-level options.
+func DiscoverScopes(plugin *protogen.Plugin) []ScopeDef {
+	var scopes []ScopeDef
+	for _, f := range plugin.Files {
+		opts := f.Desc.Options()
+		if opts == nil {
+			continue
+		}
+		rm := opts.ProtoReflect()
+		rm.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
+			if fd.Number() == scopeExtNum && fd.IsExtension() {
+				list := v.List()
+				for i := 0; i < list.Len(); i++ {
+					scope := parseScopeMessage(list.Get(i).Message())
+					scopes = append(scopes, scope)
+				}
+			}
+			return true
+		})
+		// Also try unknown fields for unresolved extensions.
+		if len(scopes) == 0 {
+			scopes = append(scopes, parseScopesFromUnknown(rm.GetUnknown())...)
+		}
+	}
+	return scopes
+}
+
+func parseScopeMessage(msg protoreflect.Message) ScopeDef {
+	var scope ScopeDef
+	msg.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
+		switch fd.Name() {
+		case "name":
+			scope.Name = v.String()
+		case "dimensions":
+			list := v.List()
+			for i := 0; i < list.Len(); i++ {
+				scope.Dimensions = append(scope.Dimensions, list.Get(i).String())
+			}
+		}
+		return true
+	})
+	return scope
+}
+
+func parseScopesFromUnknown(b []byte) []ScopeDef {
+	var scopes []ScopeDef
+	for len(b) > 0 {
+		num, typ, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			return scopes
+		}
+		b = b[n:]
+		if num == scopeExtNum && typ == protowire.BytesType {
+			data, n := protowire.ConsumeBytes(b)
+			if n < 0 {
+				return scopes
+			}
+			b = b[n:]
+			scopes = append(scopes, parseScopeOptionsBytes(data))
+			continue
+		}
+		n = skipField(b, typ)
+		if n < 0 {
+			return scopes
+		}
+		b = b[n:]
+	}
+	return scopes
+}
+
+func parseScopeOptionsBytes(b []byte) ScopeDef {
+	var scope ScopeDef
+	for len(b) > 0 {
+		num, typ, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			return scope
+		}
+		b = b[n:]
+		switch {
+		case num == 1 && typ == protowire.BytesType: // name
+			data, n := protowire.ConsumeBytes(b)
+			if n < 0 {
+				return scope
+			}
+			scope.Name = string(data)
+			b = b[n:]
+		case num == 2 && typ == protowire.BytesType: // dimensions (repeated string)
+			data, n := protowire.ConsumeBytes(b)
+			if n < 0 {
+				return scope
+			}
+			scope.Dimensions = append(scope.Dimensions, string(data))
+			b = b[n:]
+		default:
+			n = skipField(b, typ)
+			if n < 0 {
+				return scope
+			}
+			b = b[n:]
+		}
+	}
+	return scope
+}
+
 // DiscoverContext scans all files in the plugin request for a message annotated
 // with option (pbflags.context). Returns the context definition, or nil if
 // none is found. Returns an error if multiple are found or if validation fails.
