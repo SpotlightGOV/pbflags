@@ -234,9 +234,10 @@ flags:
 
 Rules:
 - Each condition may have at most **one** launch override.
-- Launch dimensions must have `distribution: UNIFORM` in the proto definition.
+- Launch dimensions must have `distribution: UNIFORM` in the proto definition (high cardinality, suitable for hash-based traffic splitting).
+- The launch dimension must be present in **every scope** of every affected feature. For example, a launch on `user_id` cannot be used by features available in the `anon` scope (which lacks `user_id`). Use a globally required dimension like `session_id` if the launch must span all scopes.
 - Feature-scoped launches (in a feature config) can only be referenced from that feature. Cross-feature launches go in a top-level `launches/` directory.
-- `ramp_percentage` is only applied on first sync. Subsequent ramp changes are made via the admin UI or CLI.
+- `ramp_percentage` is only applied on first sync. Subsequent ramp changes are made via the admin UI or `pb launch ramp`.
 
 ### Validate configs in CI
 
@@ -317,6 +318,34 @@ import "<MODULE>/gen/flags/flagmeta"
 ```
 
 Note: flag methods take only `context.Context` — dimensions are bound on the evaluator via `With()`, not passed per-call.
+
+#### Scope-based access (recommended)
+
+If your proto defines evaluation scopes, prefer the generated `*Features` types over manual `With()` calls. Scope constructors require their dimensions as typed parameters — missing a dimension is a compile error:
+
+```go
+import "<MODULE>/gen/flags/dims"
+
+// Scope constructors enforce dimension contracts at compile time.
+userFeatures := dims.NewUserFeatures(eval, sessionID, userID)
+val := userFeatures.<Feature>().<FlagName>(ctx)
+
+// Anonymous scope — only session_id required.
+anonFeatures := dims.NewAnonFeatures(eval, sessionID)
+val := anonFeatures.<Feature>().<FlagName>(ctx)
+
+// Context storage — store once in middleware, retrieve in handlers.
+ctx = dims.ContextWithUserFeatures(ctx, userFeatures)
+// ... later:
+userFeatures := dims.UserFeaturesFrom(ctx)
+
+// Duck-typed interfaces let handlers declare what they need.
+func handleNotification(features dims.HasNotifications) {
+    freq := features.Notifications().DigestFrequency(ctx)
+}
+```
+
+See [Go client docs](go.md#scope-based-access-recommended) for full details.
 
 ### Java
 
