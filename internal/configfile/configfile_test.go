@@ -584,8 +584,8 @@ flags:
 		if launch.Dimension != "user_id" {
 			t.Errorf("Dimension = %q, want user_id", launch.Dimension)
 		}
-		if launch.RampPercentage != 50 {
-			t.Errorf("RampPercentage = %d, want 50", launch.RampPercentage)
+		if launch.RampPercentage == nil || *launch.RampPercentage != 50 {
+			t.Errorf("RampPercentage = %v, want 50", launch.RampPercentage)
 		}
 		if launch.Description != "Pro email rollout" {
 			t.Errorf("Description = %q, want 'Pro email rollout'", launch.Description)
@@ -606,8 +606,8 @@ flags:
 		if err != nil {
 			t.Fatalf("Parse: %v", err)
 		}
-		if cfg.Launches["rollout_1"].RampPercentage != 0 {
-			t.Errorf("RampPercentage = %d, want 0", cfg.Launches["rollout_1"].RampPercentage)
+		if cfg.Launches["rollout_1"].RampPercentage != nil {
+			t.Errorf("RampPercentage = %v, want nil", cfg.Launches["rollout_1"].RampPercentage)
 		}
 	})
 

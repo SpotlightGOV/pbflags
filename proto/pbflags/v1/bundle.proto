@@ -58,7 +58,7 @@ message CompiledLaunch {
   reserved 4;
   // Field 5 was value_json — values are per-condition overrides now.
   reserved 5;
-  int32 ramp_percentage = 6; // initial ramp (0-100); applied on insert only
+  optional int32 ramp_percentage = 6; // ramp (0-100); authoritative when set in config
   // Where the launch is defined. Empty for cross-feature launches (launches/ dir).
   string scope_feature_id = 7;
   // All features that reference this launch. Populated by sync.

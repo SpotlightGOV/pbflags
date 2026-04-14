@@ -122,13 +122,22 @@ func (a *AdminService) UpdateLaunchRamp(ctx context.Context, req *connect.Reques
 	if req.Msg.GetLaunchId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
 	}
+	source := req.Msg.GetSource()
+	if source == "" {
+		source = "cli" // default for API callers
+	}
 	actor := authn.SubjectFromContext(ctx, "api")
 	a.logger.Info("updating launch ramp",
-		"launch_id", req.Msg.GetLaunchId(), "ramp_pct", req.Msg.GetRampPercentage(), "actor", actor)
-	if err := a.store.UpdateLaunchRamp(ctx, req.Msg.GetLaunchId(), int(req.Msg.GetRampPercentage()), actor); err != nil {
+		"launch_id", req.Msg.GetLaunchId(), "ramp_pct", req.Msg.GetRampPercentage(), "source", source, "actor", actor)
+	prevSource, err := a.store.UpdateLaunchRamp(ctx, req.Msg.GetLaunchId(), int(req.Msg.GetRampPercentage()), source, actor)
+	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&pbflagsv1.UpdateLaunchRampResponse{}), nil
+	resp := &pbflagsv1.UpdateLaunchRampResponse{}
+	if prevSource == "config" {
+		resp.Warning = "ramp_percentage is defined in config; this change will be overwritten on next sync"
+	}
+	return connect.NewResponse(resp), nil
 }
 
 // validLaunchStatuses is the set of allowed launch lifecycle statuses,
@@ -194,6 +203,7 @@ func launchToProto(l *Launch) *pbflagsv1.LaunchDetail {
 		LaunchId:         l.LaunchID,
 		Dimension:        l.Dimension,
 		RampPercentage:   int32(l.RampPct),
+		RampSource:       l.RampSource,
 		Status:           l.Status,
 		AffectedFeatures: l.AffectedFeatures,
 		CreatedAt:        timestamppb.New(l.CreatedAt),

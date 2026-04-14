@@ -25,7 +25,7 @@ type Config struct {
 // via LaunchOverride on Condition, not on the launch definition.
 type LaunchEntry struct {
 	Dimension      string // hashable dimension to hash on (must be UNIFORM)
-	RampPercentage int    // initial ramp percentage (0-100); only applied on insert, not on update
+	RampPercentage *int   // ramp percentage (0-100); nil = not set in config (CLI/UI controls persist)
 	Description    string // optional human-readable description
 }
 
@@ -223,19 +223,13 @@ func Parse(data []byte, flagTypes map[string]pbflagsv1.FlagType) (*Config, []str
 				errs = append(errs, fmt.Errorf("launch %q: missing required field: dimension", launchID))
 				continue
 			}
-			var rampPct int
 			if rawLaunch.RampPercentage != nil {
-				rampPct = *rawLaunch.RampPercentage
-				if rampPct < 0 || rampPct > 100 {
-					errs = append(errs, fmt.Errorf("launch %q: ramp_percentage must be 0-100, got %d", launchID, rampPct))
+				if *rawLaunch.RampPercentage < 0 || *rawLaunch.RampPercentage > 100 {
+					errs = append(errs, fmt.Errorf("launch %q: ramp_percentage must be 0-100, got %d", launchID, *rawLaunch.RampPercentage))
 					continue
 				}
 			}
-			cfg.Launches[launchID] = LaunchEntry{
-				Dimension:      rawLaunch.Dimension,
-				RampPercentage: rampPct,
-				Description:    rawLaunch.Description,
-			}
+			cfg.Launches[launchID] = LaunchEntry(rawLaunch)
 		}
 	}
 
@@ -511,18 +505,12 @@ func ParseCrossFeatureLaunch(data []byte) (LaunchEntry, error) {
 	if raw.Dimension == "" {
 		return LaunchEntry{}, errors.New("missing required field: dimension")
 	}
-	var rampPct int
 	if raw.RampPercentage != nil {
-		rampPct = *raw.RampPercentage
-		if rampPct < 0 || rampPct > 100 {
-			return LaunchEntry{}, fmt.Errorf("ramp_percentage must be 0-100, got %d", rampPct)
+		if *raw.RampPercentage < 0 || *raw.RampPercentage > 100 {
+			return LaunchEntry{}, fmt.Errorf("ramp_percentage must be 0-100, got %d", *raw.RampPercentage)
 		}
 	}
-	return LaunchEntry{
-		Dimension:      raw.Dimension,
-		RampPercentage: rampPct,
-		Description:    raw.Description,
-	}, nil
+	return LaunchEntry(raw), nil
 }
 
 // stripComment removes the leading "# " (or "#") from a yaml.Node comment

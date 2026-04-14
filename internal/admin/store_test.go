@@ -638,14 +638,16 @@ func TestUpdateLaunchRamp(t *testing.T) {
 
 	createTestLaunch(t, pool, launchID, tf.FeatureID, "user_id", 0)
 
-	err := store.UpdateLaunchRamp(ctx, launchID, 50, "test")
+	prevSource, err := store.UpdateLaunchRamp(ctx, launchID, 50, "cli", "test")
 	require.NoError(t, err)
+	assert.Equal(t, "unspecified", prevSource)
 
 	launch, err := store.GetLaunch(ctx, launchID)
 	require.NoError(t, err)
 	assert.Equal(t, 50, launch.RampPct)
+	assert.Equal(t, "cli", launch.RampSource)
 
 	// Out of range.
-	err = store.UpdateLaunchRamp(ctx, launchID, 150, "test")
+	_, err = store.UpdateLaunchRamp(ctx, launchID, 150, "cli", "test")
 	assert.Error(t, err)
 }

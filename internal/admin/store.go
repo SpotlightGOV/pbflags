@@ -453,6 +453,7 @@ type Launch struct {
 	ScopeFeatureID   *string // nil for cross-feature launches
 	Dimension        string
 	RampPct          int
+	RampSource       string // "unspecified", "config", "cli", "ui"
 	Status           string
 	KilledAt         *time.Time
 	AffectedFeatures []string
@@ -465,11 +466,11 @@ type Launch struct {
 func (s *Store) GetLaunch(ctx context.Context, launchID string) (*Launch, error) {
 	var l Launch
 	err := s.pool.QueryRow(ctx, `
-		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, status,
+		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, status,
 		       killed_at, affected_features, description, created_at, updated_at
 		FROM feature_flags.launches
 		WHERE launch_id = $1`, launchID).Scan(
-		&l.LaunchID, &l.ScopeFeatureID, &l.Dimension, &l.RampPct, &l.Status,
+		&l.LaunchID, &l.ScopeFeatureID, &l.Dimension, &l.RampPct, &l.RampSource, &l.Status,
 		&l.KilledAt, &l.AffectedFeatures, &l.Description, &l.CreatedAt, &l.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -483,7 +484,7 @@ func (s *Store) GetLaunch(ctx context.Context, launchID string) (*Launch, error)
 // ListLaunches returns launches scoped to a feature (defined in the feature config).
 func (s *Store) ListLaunches(ctx context.Context, featureID string) ([]Launch, error) {
 	return s.queryLaunches(ctx, `
-		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, status,
+		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, status,
 		       killed_at, affected_features, description, created_at, updated_at
 		FROM feature_flags.launches
 		WHERE scope_feature_id = $1
@@ -493,7 +494,7 @@ func (s *Store) ListLaunches(ctx context.Context, featureID string) ([]Launch, e
 // ListLaunchesAffecting returns all launches that affect a feature (including cross-feature).
 func (s *Store) ListLaunchesAffecting(ctx context.Context, featureID string) ([]Launch, error) {
 	return s.queryLaunches(ctx, `
-		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, status,
+		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, status,
 		       killed_at, affected_features, description, created_at, updated_at
 		FROM feature_flags.launches
 		WHERE $1 = ANY(affected_features)
@@ -503,7 +504,7 @@ func (s *Store) ListLaunchesAffecting(ctx context.Context, featureID string) ([]
 // ListAllLaunches returns all launches.
 func (s *Store) ListAllLaunches(ctx context.Context) ([]Launch, error) {
 	return s.queryLaunches(ctx, `
-		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, status,
+		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, status,
 		       killed_at, affected_features, description, created_at, updated_at
 		FROM feature_flags.launches
 		ORDER BY created_at ASC`)
@@ -520,7 +521,7 @@ func (s *Store) queryLaunches(ctx context.Context, query string, args ...any) ([
 	for rows.Next() {
 		var l Launch
 		if err := rows.Scan(
-			&l.LaunchID, &l.ScopeFeatureID, &l.Dimension, &l.RampPct, &l.Status,
+			&l.LaunchID, &l.ScopeFeatureID, &l.Dimension, &l.RampPct, &l.RampSource, &l.Status,
 			&l.KilledAt, &l.AffectedFeatures, &l.Description, &l.CreatedAt, &l.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -612,30 +613,32 @@ func (s *Store) UnkillLaunch(ctx context.Context, launchID string, actor string)
 }
 
 // UpdateLaunchRamp changes the ramp percentage for a launch and records an audit log entry.
-func (s *Store) UpdateLaunchRamp(ctx context.Context, launchID string, pct int, actor string) error {
+// Returns the previous ramp_source so callers can warn when overriding config-managed ramp.
+func (s *Store) UpdateLaunchRamp(ctx context.Context, launchID string, pct int, source, actor string) (prevSource string, err error) {
 	if pct < 0 || pct > 100 {
-		return fmt.Errorf("ramp percentage must be 0-100, got %d", pct)
+		return "", fmt.Errorf("ramp percentage must be 0-100, got %d", pct)
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+		return "", fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
 	var oldPct int
-	err = tx.QueryRow(ctx, `SELECT ramp_percentage FROM feature_flags.launches WHERE launch_id = $1`, launchID).Scan(&oldPct)
+	var oldSource string
+	err = tx.QueryRow(ctx, `SELECT ramp_percentage, ramp_source FROM feature_flags.launches WHERE launch_id = $1`, launchID).Scan(&oldPct, &oldSource)
 	if err == pgx.ErrNoRows {
-		return fmt.Errorf("launch %s not found", launchID)
+		return "", fmt.Errorf("launch %s not found", launchID)
 	}
 	if err != nil {
-		return fmt.Errorf("read launch: %w", err)
+		return "", fmt.Errorf("read launch: %w", err)
 	}
 
 	if _, err = tx.Exec(ctx, `
-		UPDATE feature_flags.launches SET ramp_percentage = $2, updated_at = now() WHERE launch_id = $1`,
-		launchID, pct,
+		UPDATE feature_flags.launches SET ramp_percentage = $2, ramp_source = $3, updated_at = now() WHERE launch_id = $1`,
+		launchID, pct, source,
 	); err != nil {
-		return fmt.Errorf("update ramp: %w", err)
+		return "", fmt.Errorf("update ramp: %w", err)
 	}
 
 	oldBytes, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: fmt.Sprintf("%d%%", oldPct)}})
@@ -645,10 +648,10 @@ func (s *Store) UpdateLaunchRamp(ctx context.Context, launchID string, pct int, 
 		VALUES ($1, 'UPDATE_LAUNCH_RAMP', $2, $3, $4)`,
 		launchID, oldBytes, newBytes, actor,
 	); err != nil {
-		return fmt.Errorf("insert audit log: %w", err)
+		return "", fmt.Errorf("insert audit log: %w", err)
 	}
 
-	return tx.Commit(ctx)
+	return oldSource, tx.Commit(ctx)
 }
 
 // UpdateLaunchStatus changes the lifecycle status of a launch.

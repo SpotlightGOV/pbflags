@@ -136,6 +136,9 @@ func runLaunchGet(args []string) {
 	}
 	fmt.Printf("Dimension:  %s\n", l.GetDimension())
 	fmt.Printf("Ramp:       %d%%\n", l.GetRampPercentage())
+	if l.GetRampSource() != "" && l.GetRampSource() != "unspecified" {
+		fmt.Printf("Ramp src:   %s\n", l.GetRampSource())
+	}
 	fmt.Printf("Status:     %s\n", l.GetStatus())
 	if l.GetKilledAt() != nil {
 		fmt.Printf("Killed at:  %s\n", l.GetKilledAt().AsTime().Local().Format(time.DateTime))
@@ -176,6 +179,7 @@ func runLaunchRamp(args []string) {
 	resp, err := client.UpdateLaunchRamp(context.Background(), connect.NewRequest(&pbflagsv1.UpdateLaunchRampRequest{
 		LaunchId:       fs.Args()[0],
 		RampPercentage: int32(pct),
+		Source:         "cli",
 	}))
 	if err != nil {
 		fatal(fmt.Errorf("update launch ramp: %w", err))
@@ -186,6 +190,9 @@ func runLaunchRamp(args []string) {
 		return
 	}
 	fmt.Printf("%s ramped to %d%%\n", fs.Args()[0], pct)
+	if resp.Msg.GetWarning() != "" {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", resp.Msg.GetWarning())
+	}
 }
 
 func runLaunchStatus(args []string) {

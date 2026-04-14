@@ -181,10 +181,13 @@ func Compile(descriptorData []byte, configDir string) ([]byte, error) {
 		cl := &pbflagsv1.CompiledLaunch{
 			LaunchId:         launchID,
 			Dimension:        def.Entry.Dimension,
-			RampPercentage:   int32(def.Entry.RampPercentage),
 			ScopeFeatureId:   def.ScopeFeatureID,
 			AffectedFeatures: lc.AffectedFeatures(launchID),
 			Description:      def.Entry.Description,
+		}
+		if def.Entry.RampPercentage != nil {
+			rp := int32(*def.Entry.RampPercentage)
+			cl.RampPercentage = &rp
 		}
 		bundle.Launches = append(bundle.Launches, cl)
 	}
@@ -273,19 +276,44 @@ func LoadBundle(ctx context.Context, conn *pgx.Conn, bundleData []byte, sha stri
 		if launch.ScopeFeatureId != "" {
 			scopeFeatureID = &launch.ScopeFeatureId
 		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO feature_flags.launches
-				(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
-			VALUES ($1, $2, $3, $4, $5, $6)
-			ON CONFLICT (launch_id) DO UPDATE SET
-				dimension = EXCLUDED.dimension,
-				affected_features = EXCLUDED.affected_features,
-				description = EXCLUDED.description,
-				updated_at = now()`,
-			launch.LaunchId, scopeFeatureID, launch.Dimension, launch.RampPercentage,
-			launch.AffectedFeatures, launch.Description,
-		); err != nil {
-			return LoadResult{}, fmt.Errorf("upsert launch %q: %w", launch.LaunchId, err)
+		var rampPct int32
+		if launch.RampPercentage != nil {
+			rampPct = *launch.RampPercentage
+		}
+		if launch.RampPercentage != nil {
+			// Config specifies ramp — authoritative on every sync.
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO feature_flags.launches
+					(launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, affected_features, description)
+				VALUES ($1, $2, $3, $4, 'config', $5, $6)
+				ON CONFLICT (launch_id) DO UPDATE SET
+					dimension = EXCLUDED.dimension,
+					ramp_percentage = EXCLUDED.ramp_percentage,
+					ramp_source = 'config',
+					affected_features = EXCLUDED.affected_features,
+					description = EXCLUDED.description,
+					updated_at = now()`,
+				launch.LaunchId, scopeFeatureID, launch.Dimension, rampPct,
+				launch.AffectedFeatures, launch.Description,
+			); err != nil {
+				return LoadResult{}, fmt.Errorf("upsert launch %q: %w", launch.LaunchId, err)
+			}
+		} else {
+			// No ramp in config — preserve runtime ramp value and source.
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO feature_flags.launches
+					(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
+				VALUES ($1, $2, $3, $4, $5, $6)
+				ON CONFLICT (launch_id) DO UPDATE SET
+					dimension = EXCLUDED.dimension,
+					affected_features = EXCLUDED.affected_features,
+					description = EXCLUDED.description,
+					updated_at = now()`,
+				launch.LaunchId, scopeFeatureID, launch.Dimension, rampPct,
+				launch.AffectedFeatures, launch.Description,
+			); err != nil {
+				return LoadResult{}, fmt.Errorf("upsert launch %q: %w", launch.LaunchId, err)
+			}
 		}
 	}
 

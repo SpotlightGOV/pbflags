@@ -166,19 +166,44 @@ func SyncConditions(
 
 		// Upsert feature-scoped launches.
 		for launchID, launch := range cfg.Launches {
-			if _, err := tx.Exec(ctx, `
-				INSERT INTO feature_flags.launches
-					(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
-				VALUES ($1, $2, $3, $4, $5, $6)
-				ON CONFLICT (launch_id) DO UPDATE SET
-					dimension = EXCLUDED.dimension,
-					affected_features = EXCLUDED.affected_features,
-					description = EXCLUDED.description,
-					updated_at = now()`,
-				launchID, featureID, launch.Dimension, launch.RampPercentage,
-				lc.AffectedFeatures(launchID), launch.Description,
-			); err != nil {
-				return ConditionResult{}, fmt.Errorf("upsert launch %q: %w", launchID, err)
+			var rampPct int
+			if launch.RampPercentage != nil {
+				rampPct = *launch.RampPercentage
+			}
+			if launch.RampPercentage != nil {
+				// Config specifies ramp — authoritative on every sync.
+				if _, err := tx.Exec(ctx, `
+					INSERT INTO feature_flags.launches
+						(launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, affected_features, description)
+					VALUES ($1, $2, $3, $4, 'config', $5, $6)
+					ON CONFLICT (launch_id) DO UPDATE SET
+						dimension = EXCLUDED.dimension,
+						ramp_percentage = EXCLUDED.ramp_percentage,
+						ramp_source = 'config',
+						affected_features = EXCLUDED.affected_features,
+						description = EXCLUDED.description,
+						updated_at = now()`,
+					launchID, featureID, launch.Dimension, rampPct,
+					lc.AffectedFeatures(launchID), launch.Description,
+				); err != nil {
+					return ConditionResult{}, fmt.Errorf("upsert launch %q: %w", launchID, err)
+				}
+			} else {
+				// No ramp in config — preserve runtime ramp value and source.
+				if _, err := tx.Exec(ctx, `
+					INSERT INTO feature_flags.launches
+						(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
+					VALUES ($1, $2, $3, $4, $5, $6)
+					ON CONFLICT (launch_id) DO UPDATE SET
+						dimension = EXCLUDED.dimension,
+						affected_features = EXCLUDED.affected_features,
+						description = EXCLUDED.description,
+						updated_at = now()`,
+					launchID, featureID, launch.Dimension, rampPct,
+					lc.AffectedFeatures(launchID), launch.Description,
+				); err != nil {
+					return ConditionResult{}, fmt.Errorf("upsert launch %q: %w", launchID, err)
+				}
 			}
 		}
 		if len(cfg.Launches) > 0 {
@@ -191,19 +216,42 @@ func SyncConditions(
 		if def.ScopeFeatureID != "" {
 			continue
 		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO feature_flags.launches
-				(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
-			VALUES ($1, NULL, $2, $3, $4, $5)
-			ON CONFLICT (launch_id) DO UPDATE SET
-				dimension = EXCLUDED.dimension,
-				affected_features = EXCLUDED.affected_features,
-				description = EXCLUDED.description,
-				updated_at = now()`,
-			launchID, def.Entry.Dimension, def.Entry.RampPercentage,
-			lc.AffectedFeatures(launchID), def.Entry.Description,
-		); err != nil {
-			return ConditionResult{}, fmt.Errorf("upsert cross-feature launch %q: %w", launchID, err)
+		var rampPct int
+		if def.Entry.RampPercentage != nil {
+			rampPct = *def.Entry.RampPercentage
+		}
+		if def.Entry.RampPercentage != nil {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO feature_flags.launches
+					(launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, affected_features, description)
+				VALUES ($1, NULL, $2, $3, 'config', $4, $5)
+				ON CONFLICT (launch_id) DO UPDATE SET
+					dimension = EXCLUDED.dimension,
+					ramp_percentage = EXCLUDED.ramp_percentage,
+					ramp_source = 'config',
+					affected_features = EXCLUDED.affected_features,
+					description = EXCLUDED.description,
+					updated_at = now()`,
+				launchID, def.Entry.Dimension, rampPct,
+				lc.AffectedFeatures(launchID), def.Entry.Description,
+			); err != nil {
+				return ConditionResult{}, fmt.Errorf("upsert cross-feature launch %q: %w", launchID, err)
+			}
+		} else {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO feature_flags.launches
+					(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
+				VALUES ($1, NULL, $2, $3, $4, $5)
+				ON CONFLICT (launch_id) DO UPDATE SET
+					dimension = EXCLUDED.dimension,
+					affected_features = EXCLUDED.affected_features,
+					description = EXCLUDED.description,
+					updated_at = now()`,
+				launchID, def.Entry.Dimension, rampPct,
+				lc.AffectedFeatures(launchID), def.Entry.Description,
+			); err != nil {
+				return ConditionResult{}, fmt.Errorf("upsert cross-feature launch %q: %w", launchID, err)
+			}
 		}
 		logger.Info("synced cross-feature launch", "launch_id", launchID)
 	}

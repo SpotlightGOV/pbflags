@@ -945,10 +945,14 @@ func (h *Handler) updateLaunchRamp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := actorFromRequest(r)
-	if err := h.store.UpdateLaunchRamp(r.Context(), launchID, pct, actor); err != nil {
+	prevSource, err := h.store.UpdateLaunchRamp(r.Context(), launchID, pct, "ui", actor)
+	if err != nil {
 		h.logger.Error("update launch ramp failed", "launch_id", launchID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if prevSource == "config" {
+		w.Header().Set("X-Warning", "ramp_percentage is defined in config; this change will be overwritten on next sync")
 	}
 	w.WriteHeader(http.StatusOK)
 }

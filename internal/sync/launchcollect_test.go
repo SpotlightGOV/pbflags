@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func intPtr(v int) *int { return &v }
+
 func TestCollectLaunches_ScopePresenceValidation(t *testing.T) {
 	// Setup: a launch on user_id, feature with scopes ["anon", "user"].
 	// Scope "anon" only has session_id, scope "user" has session_id + user_id.
@@ -28,7 +30,7 @@ func TestCollectLaunches_ScopePresenceValidation(t *testing.T) {
 				},
 			},
 			Launches: map[string]configfile.LaunchEntry{
-				"gradual-emails": {Dimension: "user_id", RampPercentage: 50},
+				"gradual-emails": {Dimension: "user_id", RampPercentage: intPtr(50)},
 			},
 		},
 	}
@@ -67,7 +69,7 @@ func TestCollectLaunches_ScopePresenceValid(t *testing.T) {
 				},
 			},
 			Launches: map[string]configfile.LaunchEntry{
-				"gradual-emails": {Dimension: "session_id", RampPercentage: 50},
+				"gradual-emails": {Dimension: "session_id", RampPercentage: intPtr(50)},
 			},
 		},
 	}
@@ -104,7 +106,7 @@ func TestCollectLaunches_NilScopeInfoSkipsValidation(t *testing.T) {
 				},
 			},
 			Launches: map[string]configfile.LaunchEntry{
-				"gradual-emails": {Dimension: "user_id", RampPercentage: 50},
+				"gradual-emails": {Dimension: "user_id", RampPercentage: intPtr(50)},
 			},
 		},
 	}

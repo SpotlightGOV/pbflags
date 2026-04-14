@@ -276,7 +276,7 @@ type CompiledLaunch struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	LaunchId       string                 `protobuf:"bytes,1,opt,name=launch_id,json=launchId,proto3" json:"launch_id,omitempty"`
 	Dimension      string                 `protobuf:"bytes,3,opt,name=dimension,proto3" json:"dimension,omitempty"`
-	RampPercentage int32                  `protobuf:"varint,6,opt,name=ramp_percentage,json=rampPercentage,proto3" json:"ramp_percentage,omitempty"` // initial ramp (0-100); applied on insert only
+	RampPercentage *int32                 `protobuf:"varint,6,opt,name=ramp_percentage,json=rampPercentage,proto3,oneof" json:"ramp_percentage,omitempty"` // ramp (0-100); authoritative when set in config
 	// Where the launch is defined. Empty for cross-feature launches (launches/ dir).
 	ScopeFeatureId string `protobuf:"bytes,7,opt,name=scope_feature_id,json=scopeFeatureId,proto3" json:"scope_feature_id,omitempty"`
 	// All features that reference this launch. Populated by sync.
@@ -331,8 +331,8 @@ func (x *CompiledLaunch) GetDimension() string {
 }
 
 func (x *CompiledLaunch) GetRampPercentage() int32 {
-	if x != nil {
-		return x.RampPercentage
+	if x != nil && x.RampPercentage != nil {
+		return *x.RampPercentage
 	}
 	return 0
 }
@@ -384,14 +384,15 @@ const file_pbflags_v1_bundle_proto_rawDesc = "" +
 	"\rdefault_value\x18\x05 \x01(\fR\fdefaultValue\x12)\n" +
 	"\x10supported_values\x18\x06 \x01(\fR\x0fsupportedValues\x12'\n" +
 	"\x0fconditions_json\x18\a \x01(\fR\x0econditionsJson\x126\n" +
-	"\x17dimension_metadata_json\x18\b \x01(\fR\x15dimensionMetadataJson\"\xff\x01\n" +
+	"\x17dimension_metadata_json\x18\b \x01(\fR\x15dimensionMetadataJson\"\x98\x02\n" +
 	"\x0eCompiledLaunch\x12\x1b\n" +
 	"\tlaunch_id\x18\x01 \x01(\tR\blaunchId\x12\x1c\n" +
-	"\tdimension\x18\x03 \x01(\tR\tdimension\x12'\n" +
-	"\x0framp_percentage\x18\x06 \x01(\x05R\x0erampPercentage\x12(\n" +
+	"\tdimension\x18\x03 \x01(\tR\tdimension\x12,\n" +
+	"\x0framp_percentage\x18\x06 \x01(\x05H\x00R\x0erampPercentage\x88\x01\x01\x12(\n" +
 	"\x10scope_feature_id\x18\a \x01(\tR\x0escopeFeatureId\x12+\n" +
 	"\x11affected_features\x18\b \x03(\tR\x10affectedFeatures\x12 \n" +
-	"\vdescription\x18\t \x01(\tR\vdescriptionJ\x04\b\x02\x10\x03J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06B_\n" +
+	"\vdescription\x18\t \x01(\tR\vdescriptionB\x12\n" +
+	"\x10_ramp_percentageJ\x04\b\x02\x10\x03J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06B_\n" +
 	"!org.spotlightgov.pbflags.v1.protoP\x01Z8github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1b\x06proto3"
 
 var (
@@ -429,6 +430,7 @@ func file_pbflags_v1_bundle_proto_init() {
 	if File_pbflags_v1_bundle_proto != nil {
 		return
 	}
+	file_pbflags_v1_bundle_proto_msgTypes[3].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
