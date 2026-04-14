@@ -84,6 +84,8 @@ func Compile(descriptorData []byte, configDir string) ([]byte, error) {
 	}
 
 	hashableDims := celenv.HashableDimsFromDescriptor(contextMsg)
+	scopeDims := celenv.ScopeDimsFromFiles(files, contextMsg)
+	featureScopes := celenv.FeatureScopesFromFiles(files)
 
 	bundle := &pbflagsv1.CompiledBundle{
 		CelVersion: compileCELVersion(),
@@ -126,7 +128,7 @@ func Compile(descriptorData []byte, configDir string) ([]byte, error) {
 	}
 
 	// Collect and validate launches (same rules as SyncConditions).
-	lc, err := CollectLaunches(configsByFeature, configDir, hashableDims)
+	lc, err := CollectLaunches(configsByFeature, configDir, hashableDims, scopeDims, featureScopes)
 	if err != nil {
 		return nil, err
 	}

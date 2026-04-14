@@ -68,6 +68,8 @@ func Validate(descriptorData []byte, configDir string) (*ValidateResult, error) 
 	}
 
 	hashableDims := celenv.HashableDimsFromDescriptor(contextMsg)
+	scopeDims := celenv.ScopeDimsFromFiles(files, contextMsg)
+	featureScopes := celenv.FeatureScopesFromFiles(files)
 
 	result := &ValidateResult{}
 
@@ -101,8 +103,8 @@ func Validate(descriptorData []byte, configDir string) (*ValidateResult, error) 
 		}
 	}
 
-	// Validate launch references, scopes, dimensions, and duplicates.
-	if _, err := sync.CollectLaunches(parsedConfigs, configDir, hashableDims); err != nil {
+	// Validate launch references, scopes, dimensions, scope-presence, and duplicates.
+	if _, err := sync.CollectLaunches(parsedConfigs, configDir, hashableDims, scopeDims, featureScopes); err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("launch validation: %v", err))
 	}
 

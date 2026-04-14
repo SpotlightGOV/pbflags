@@ -25,11 +25,19 @@ type launchCollection struct {
 
 // collectLaunches gathers launch definitions and references from parsed configs
 // and the launches/ subdirectory. Returns an error if validation fails
-// (duplicate IDs, missing references, scope violations, non-UNIFORM dimensions).
+// (duplicate IDs, missing references, scope violations, non-UNIFORM dimensions,
+// dimension not present in all affected scopes).
+//
+// scopeDims maps scope name → set of available dimension names.
+// featureScopes maps featureID → list of scope names.
+// Both may be nil to skip scope-presence validation (e.g. when descriptors
+// are not available).
 func CollectLaunches(
 	configs map[string]*configfile.Config,
 	configDir string,
 	hashableDims map[string]bool,
+	scopeDims map[string]map[string]bool,
+	featureScopes map[string][]string,
 ) (*launchCollection, error) {
 	lc := &launchCollection{
 		Defined: map[string]launchDef{},
@@ -104,6 +112,25 @@ func CollectLaunches(
 	for launchID, def := range lc.Defined {
 		if !hashableDims[def.Entry.Dimension] {
 			return nil, fmt.Errorf("launch %q: dimension %q is not marked UNIFORM in proto", launchID, def.Entry.Dimension)
+		}
+	}
+
+	// Validate launch dimension is present in every scope of every affected feature.
+	if scopeDims != nil && featureScopes != nil {
+		for launchID, def := range lc.Defined {
+			dim := def.Entry.Dimension
+			affected := lc.AffectedFeatures(launchID)
+			for _, featureID := range affected {
+				for _, scopeName := range featureScopes[featureID] {
+					avail := scopeDims[scopeName]
+					if avail != nil && !avail[dim] {
+						return nil, fmt.Errorf(
+							"launch %q: dimension %q is not available in scope %q (used by feature %q); "+
+								"the launch dimension must be present in every scope of every affected feature",
+							launchID, dim, scopeName, featureID)
+					}
+				}
+			}
 		}
 	}
 

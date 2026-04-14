@@ -8,6 +8,7 @@ import (
 	celast "github.com/google/cel-go/common/ast"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/reflect/protoregistry"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
@@ -262,6 +263,124 @@ func HashableDimsFromDescriptor(md protoreflect.MessageDescriptor) map[string]bo
 		})
 	}
 	return hashable
+}
+
+// RequiredDimsFromDescriptor returns the set of dimension names with
+// presence: REQUIRED in an EvaluationContext message descriptor.
+func RequiredDimsFromDescriptor(md protoreflect.MessageDescriptor) map[string]bool {
+	required := map[string]bool{}
+	fields := md.Fields()
+	for i := 0; i < fields.Len(); i++ {
+		f := fields.Get(i)
+		opts := f.Options()
+		if opts == nil {
+			continue
+		}
+		rm := opts.(interface{ ProtoReflect() protoreflect.Message }).ProtoReflect()
+		rm.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
+			if fd.Number() == 51004 && fd.IsExtension() {
+				dimMsg := v.Message()
+				dimMsg.Range(func(dfd protoreflect.FieldDescriptor, dv protoreflect.Value) bool {
+					// presence is field 4 (enum). REQUIRED = 1.
+					if dfd.Name() == "presence" && dv.Enum() == 1 {
+						required[string(f.Name())] = true
+					}
+					return true
+				})
+			}
+			return true
+		})
+	}
+	return required
+}
+
+// ScopeDimsFromFiles builds a map of scope name → available dimension names
+// by combining globally required dimensions with each scope's declared
+// dimensions. Uses file-level (pbflags.scope) extensions (field 51005).
+func ScopeDimsFromFiles(files *protoregistry.Files, contextMsg protoreflect.MessageDescriptor) map[string]map[string]bool {
+	globalDims := RequiredDimsFromDescriptor(contextMsg)
+
+	// Collect scopes from file options.
+	scopeDims := map[string]map[string]bool{}
+	files.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+		opts := fd.Options()
+		if opts == nil {
+			return true
+		}
+		rm := opts.ProtoReflect()
+		rm.Range(func(extFd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
+			if extFd.Number() == 51005 && extFd.IsExtension() {
+				list := v.List()
+				for i := 0; i < list.Len(); i++ {
+					var name string
+					var dims []string
+					list.Get(i).Message().Range(func(mfd protoreflect.FieldDescriptor, mv protoreflect.Value) bool {
+						switch mfd.Name() {
+						case "name":
+							name = mv.String()
+						case "dimensions":
+							dl := mv.List()
+							for j := 0; j < dl.Len(); j++ {
+								dims = append(dims, dl.Get(j).String())
+							}
+						}
+						return true
+					})
+					avail := map[string]bool{}
+					for g := range globalDims {
+						avail[g] = true
+					}
+					for _, d := range dims {
+						avail[d] = true
+					}
+					scopeDims[name] = avail
+				}
+			}
+			return true
+		})
+		return true
+	})
+	return scopeDims
+}
+
+// FeatureScopesFromFiles builds a map of featureID → list of scope names
+// from (pbflags.feature) message options (field 51000).
+func FeatureScopesFromFiles(files *protoregistry.Files) map[string][]string {
+	featureScopes := map[string][]string{}
+	files.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+		for i := 0; i < fd.Messages().Len(); i++ {
+			msg := fd.Messages().Get(i)
+			opts := msg.Options()
+			if opts == nil {
+				continue
+			}
+			rm := opts.ProtoReflect()
+			rm.Range(func(extFd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
+				if extFd.Number() == 51000 && extFd.IsExtension() {
+					var featureID string
+					var scopes []string
+					v.Message().Range(func(mfd protoreflect.FieldDescriptor, mv protoreflect.Value) bool {
+						switch mfd.Name() {
+						case "id":
+							featureID = mv.String()
+						case "scopes":
+							sl := mv.List()
+							for j := 0; j < sl.Len(); j++ {
+								scopes = append(scopes, sl.Get(j).String())
+							}
+						}
+						return true
+					})
+					if featureID != "" {
+						featureScopes[featureID] = scopes
+					}
+				}
+				return true
+			})
+		}
+		return true
+	})
+	return featureScopes
 }
 
 // BoundedDimsFromDescriptor returns the set of inherently bounded dimension

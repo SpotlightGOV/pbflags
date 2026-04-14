@@ -77,6 +77,8 @@ func SyncConditions(
 
 	boundedDims := celenv.BoundedDimsFromDescriptor(contextMsg)
 	hashableDims := celenv.HashableDimsFromDescriptor(contextMsg)
+	scopeDims := celenv.ScopeDimsFromFiles(files, contextMsg)
+	featureScopes := celenv.FeatureScopesFromFiles(files)
 	celVersion := getCELVersion()
 	idx := buildFeatureIndex(defs)
 
@@ -125,8 +127,8 @@ func SyncConditions(
 		parsedConfigs[featureID] = cfg
 	}
 
-	// Collect and validate launches (references, scope, dimensions).
-	lc, err := CollectLaunches(parsedConfigs, configDir, hashableDims)
+	// Collect and validate launches (references, scope, dimensions, scope-presence).
+	lc, err := CollectLaunches(parsedConfigs, configDir, hashableDims, scopeDims, featureScopes)
 	if err != nil {
 		return ConditionResult{}, err
 	}
