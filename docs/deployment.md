@@ -108,9 +108,10 @@ The admin UI is available at `http://localhost:9200/` by default (configurable v
 
 ### Security
 
+- **Authentication**: The admin API supports pluggable authentication via `PBFLAGS_AUTH_STRATEGY`. Default is `none` (no authentication). See the [Authentication](#authentication) section below.
 - **CSRF protection**: All mutating requests (POST/DELETE) require a valid CSRF token via double-submit cookie pattern. htmx sends the token automatically.
 - **Input validation**: Flag IDs are validated against the `feature_id/field_number` format before processing.
-- **Internal network only**: The admin UI has no authentication. Deploy it behind a VPN, bastion, or internal network. Do not expose it to the public internet.
+- **Internal network only**: When using `PBFLAGS_AUTH_STRATEGY=none` (the default), deploy the admin UI behind a VPN, bastion, or internal network. Do not expose it to the public internet without enabling authentication.
 
 ## Configuration
 
@@ -217,6 +218,45 @@ Environment variables override CLI flags:
 | `PBFLAGS_CACHE_KILL_TTL` | admin, evaluator | `--cache-kill-ttl` | Kill set poll interval (default `30s`) |
 | `PBFLAGS_CACHE_FLAG_TTL` | admin, evaluator | `--cache-flag-ttl` | Flag state cache TTL (default `10m`, `0` for write-through) |
 | `PBFLAGS_CACHE_CONDITION_TTL` | admin, evaluator | `--cache-condition-ttl` | Condition evaluation cache TTL (default `10m`, `0` for write-through) |
+| `PBFLAGS_AUTH_STRATEGY` | admin | — | Authentication strategy: `none`, `shared-secret`, `trusted-header` (default `none`) |
+| `PBFLAGS_AUTH_TOKEN` | admin | — | Bearer token for `shared-secret` strategy |
+| `PBFLAGS_AUTH_HEADER` | admin | — | Header name for `trusted-header` strategy (default `X-Forwarded-User`) |
+
+## Authentication
+
+The admin API supports pluggable authentication. The evaluator API is unauthenticated (designed for internal networks; mTLS planned for a future release).
+
+### Strategies
+
+**`none`** (default) — No authentication. All requests succeed as `anonymous`. Suitable for internal-network deployments behind a VPN.
+
+**`shared-secret`** — Validates a `Bearer` token in the `Authorization` header against a pre-shared secret. Callers can set `X-Actor: alice@example.com` to identify themselves for audit logging (defaults to `api` if omitted).
+
+```bash
+export PBFLAGS_AUTH_STRATEGY=shared-secret
+export PBFLAGS_AUTH_TOKEN=my-secret-token
+pbflags-admin --standalone --descriptors=descriptors.pb --database=...
+```
+
+```bash
+# CLI / automation usage:
+curl -H "Authorization: Bearer my-secret-token" \
+     -H "X-Actor: deploy-bot" \
+     http://localhost:9200/pbflags.v1.FlagAdminService/ListFeatures
+```
+
+**`trusted-header`** — Reads identity from a header set by a reverse proxy (e.g. oauth2-proxy, Pomerium, Envoy). The header name defaults to `X-Forwarded-User` and is configurable via `PBFLAGS_AUTH_HEADER`.
+
+```bash
+export PBFLAGS_AUTH_STRATEGY=trusted-header
+export PBFLAGS_AUTH_HEADER=X-Forwarded-User  # optional, this is the default
+pbflags-admin --standalone --descriptors=descriptors.pb --database=...
+```
+
+### What is not authenticated
+
+- `/healthz` — always accessible without credentials
+- The evaluator service (`:9201`) — not covered by admin auth
 
 ## Proto Definitions (BSR)
 

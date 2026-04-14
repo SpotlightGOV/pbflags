@@ -8,6 +8,7 @@ import (
 	"connectrpc.com/connect"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
+	"github.com/SpotlightGOV/pbflags/internal/authn"
 )
 
 // AdminService implements the FlagAdminService Connect handler.
@@ -54,10 +55,13 @@ func (a *AdminService) UpdateFlagState(ctx context.Context, req *connect.Request
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
 	}
 
-	a.logger.Info("updating flag state",
-		"flag_id", msg.FlagId, "state", msg.State.String(), "actor", msg.Actor)
+	// Prefer authenticated identity; fall back to request-level actor field.
+	actor := authn.SubjectFromContext(ctx, msg.Actor)
 
-	if err := a.store.UpdateFlagState(ctx, msg.FlagId, msg.State, msg.Actor); err != nil {
+	a.logger.Info("updating flag state",
+		"flag_id", msg.FlagId, "state", msg.State.String(), "actor", actor)
+
+	if err := a.store.UpdateFlagState(ctx, msg.FlagId, msg.State, actor); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&pbflagsv1.UpdateFlagStateResponse{}), nil

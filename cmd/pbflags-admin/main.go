@@ -28,6 +28,9 @@
 //	PBFLAGS_CACHE_KILL_TTL      Kill set cache TTL (default: 30s)
 //	PBFLAGS_CACHE_FLAG_TTL      Global flag state cache TTL (default: 10m)
 //	PBFLAGS_CACHE_OVERRIDE_TTL  Per-entity override cache TTL (default: 10m)
+//	PBFLAGS_AUTH_STRATEGY       Authentication strategy: none, shared-secret, trusted-header (default: none)
+//	PBFLAGS_AUTH_TOKEN           Shared-secret Bearer token (required if strategy=shared-secret)
+//	PBFLAGS_AUTH_HEADER          Header name for trusted-header strategy (default: X-Forwarded-User)
 package main
 
 import (
@@ -55,6 +58,7 @@ import (
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
 	"github.com/SpotlightGOV/pbflags/internal/admin"
 	adminweb "github.com/SpotlightGOV/pbflags/internal/admin/web"
+	"github.com/SpotlightGOV/pbflags/internal/authn"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 	"github.com/SpotlightGOV/pbflags/internal/flagfile"
 	"github.com/SpotlightGOV/pbflags/internal/projectconfig"
@@ -133,7 +137,17 @@ func main() {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	if err := run(cfg, *standalone, *configDir, *devAssets, logger); err != nil {
+	authCfg := authn.LoadConfig()
+	auth, err := authn.NewAuthenticator(authCfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if authCfg.Strategy != "" && authCfg.Strategy != "none" {
+		logger.Info("admin auth enabled", "strategy", authCfg.Strategy)
+	}
+
+	if err := run(cfg, *standalone, *configDir, *devAssets, auth, logger); err != nil {
 		logger.Error("fatal", "error", err)
 		os.Exit(1)
 	}
@@ -151,7 +165,7 @@ func setDurationEnvIfFlag(key string, d time.Duration) {
 	}
 }
 
-func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, logger *slog.Logger) error {
+func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, auth authn.Authenticator, logger *slog.Logger) error {
 	mode := "normal"
 	if standalone {
 		mode = "standalone"
@@ -307,6 +321,7 @@ func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, 
 	store := admin.NewStore(pool, adminLogger)
 	adminService := admin.NewAdminService(store, adminLogger)
 
+	// Inner mux holds all authenticated admin routes.
 	adminMux := http.NewServeMux()
 	adminPath, adminHandler := pbflagsv1connect.NewFlagAdminServiceHandler(adminService)
 	adminMux.Handle(adminPath, adminHandler)
@@ -322,7 +337,10 @@ func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, 
 	}
 	webHandler.Register(adminMux)
 
-	adminMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	// Outer mux: healthz is unauthenticated, everything else goes
+	// through the auth middleware.
+	outerMux := http.NewServeMux()
+	outerMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := pool.Ping(r.Context()); err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			fmt.Fprintf(w, "unhealthy: %v", err)
@@ -331,10 +349,11 @@ func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, 
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "ok")
 	})
+	outerMux.Handle("/", authn.Middleware(auth, adminMux))
 
 	adminServer := &http.Server{
 		Addr:    cfg.Admin,
-		Handler: h2c.NewHandler(adminMux, &http2.Server{}),
+		Handler: h2c.NewHandler(outerMux, &http2.Server{}),
 	}
 
 	go func() {

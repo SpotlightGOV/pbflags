@@ -21,6 +21,7 @@ import (
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/internal/admin"
+	"github.com/SpotlightGOV/pbflags/internal/authn"
 )
 
 //go:embed assets
@@ -391,10 +392,7 @@ func (h *Handler) updateFlagState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actor := r.FormValue("actor")
-	if actor == "" {
-		actor = "admin-ui"
-	}
+	actor := actorFromRequest(r)
 
 	if err := h.store.UpdateFlagState(r.Context(), flagID, state, actor); err != nil {
 		h.serverError(w, "update flag state", err)
@@ -946,10 +944,7 @@ func (h *Handler) updateLaunchRamp(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "ramp_percentage must be 0-100", http.StatusBadRequest)
 		return
 	}
-	actor := r.FormValue("actor")
-	if actor == "" {
-		actor = "admin-ui"
-	}
+	actor := actorFromRequest(r)
 	if err := h.store.UpdateLaunchRamp(r.Context(), launchID, pct, actor); err != nil {
 		h.logger.Error("update launch ramp failed", "launch_id", launchID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -972,10 +967,7 @@ func (h *Handler) updateLaunchStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid status", http.StatusBadRequest)
 		return
 	}
-	actor := r.FormValue("actor")
-	if actor == "" {
-		actor = "admin-ui"
-	}
+	actor := actorFromRequest(r)
 	if err := h.store.UpdateLaunchStatus(r.Context(), launchID, status, actor); err != nil {
 		h.logger.Error("update launch status failed", "launch_id", launchID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -991,10 +983,7 @@ func (h *Handler) killLaunch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing launch ID", http.StatusBadRequest)
 		return
 	}
-	actor := r.FormValue("actor")
-	if actor == "" {
-		actor = "admin-ui"
-	}
+	actor := actorFromRequest(r)
 	if err := h.store.KillLaunch(r.Context(), launchID, actor); err != nil {
 		h.logger.Error("kill launch failed", "launch_id", launchID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1011,10 +1000,7 @@ func (h *Handler) unkillLaunch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing launch ID", http.StatusBadRequest)
 		return
 	}
-	actor := r.FormValue("actor")
-	if actor == "" {
-		actor = "admin-ui"
-	}
+	actor := actorFromRequest(r)
 	if err := h.store.UnkillLaunch(r.Context(), launchID, actor); err != nil {
 		h.logger.Error("unkill launch failed", "launch_id", launchID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1022,4 +1008,17 @@ func (h *Handler) unkillLaunch(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("HX-Refresh", "true")
 	w.WriteHeader(http.StatusOK)
+}
+
+// actorFromRequest resolves the actor for audit logging. It prefers the
+// authenticated identity from the request context (set by authn.Middleware),
+// then falls back to an explicit form/query "actor" parameter, then "admin-ui".
+func actorFromRequest(r *http.Request) string {
+	if actor := authn.SubjectFromContext(r.Context(), ""); actor != "" {
+		return actor
+	}
+	if actor := r.FormValue("actor"); actor != "" {
+		return actor
+	}
+	return "admin-ui"
 }
