@@ -235,21 +235,23 @@ func processConfigFile(
 			}
 
 			// Upsert launch — insert if new, update structure fields if changed.
-			// Do NOT update ramp_percentage or status (those are operator-controlled).
+			// ramp_percentage is included in INSERT (initial ramp from config) but
+			// NOT in ON CONFLICT UPDATE — operator-set ramp is preserved on existing launches.
+			// status is never set by sync (operator-controlled).
 			var popCEL *string
 			if launch.Population != "" {
 				popCEL = &launch.Population
 			}
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO feature_flags.launches
-					(launch_id, feature_id, flag_id, dimension, population_cel, value)
-				VALUES ($1, $2, $3, $4, $5, $6)
+					(launch_id, feature_id, flag_id, dimension, population_cel, value, ramp_percentage)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
 				ON CONFLICT (launch_id) DO UPDATE SET
 					dimension = EXCLUDED.dimension,
 					population_cel = EXCLUDED.population_cel,
 					value = EXCLUDED.value,
 					updated_at = now()`,
-				launchID, featureID, info.FlagID, launch.Dimension, popCEL, valueBytes,
+				launchID, featureID, info.FlagID, launch.Dimension, popCEL, valueBytes, launch.RampPercentage,
 			); err != nil {
 				return featureID, 0, nil, fmt.Errorf("upsert launch %q: %w", launchID, err)
 			}
@@ -292,7 +294,7 @@ func compileFlag(
 		}
 
 		if cond.When == "" {
-			conditions = append(conditions, flagfmt.StoredCondition{CEL: nil, Value: fvBytes})
+			conditions = append(conditions, flagfmt.StoredCondition{CEL: nil, Value: fvBytes, Comment: cond.Comment})
 			asts = append(asts, nil)
 		} else {
 			compiled, compileErr := compiler.Compile(cond.When)
@@ -300,7 +302,7 @@ func compileFlag(
 				return nil, nil, nil, fmt.Errorf("condition %d: %w", i, compileErr)
 			}
 			celStr := cond.When
-			conditions = append(conditions, flagfmt.StoredCondition{CEL: &celStr, Value: fvBytes})
+			conditions = append(conditions, flagfmt.StoredCondition{CEL: &celStr, Value: fvBytes, Comment: cond.Comment})
 			asts = append(asts, compiled.AST)
 		}
 		values = append(values, cond.Value)

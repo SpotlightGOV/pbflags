@@ -185,11 +185,12 @@ func Compile(descriptorData []byte, configDir string) ([]byte, error) {
 				}
 
 				cf.Launches = append(cf.Launches, &pbflagsv1.CompiledLaunch{
-					LaunchId:      launchID,
-					FlagId:        flagID,
-					Dimension:     launch.Dimension,
-					PopulationCel: launch.Population,
-					ValueJson:     valueBytes,
+					LaunchId:       launchID,
+					FlagId:         flagID,
+					Dimension:      launch.Dimension,
+					PopulationCel:  launch.Population,
+					ValueJson:      valueBytes,
+					RampPercentage: int32(launch.RampPercentage),
 				})
 			}
 		}
@@ -281,14 +282,14 @@ func LoadBundle(ctx context.Context, conn *pgx.Conn, bundleData []byte, sha stri
 			}
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO feature_flags.launches
-					(launch_id, feature_id, flag_id, dimension, population_cel, value)
-				VALUES ($1, $2, $3, $4, $5, $6)
+					(launch_id, feature_id, flag_id, dimension, population_cel, value, ramp_percentage)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
 				ON CONFLICT (launch_id) DO UPDATE SET
 					dimension = EXCLUDED.dimension,
 					population_cel = EXCLUDED.population_cel,
 					value = EXCLUDED.value,
 					updated_at = now()`,
-				launch.LaunchId, cf.FeatureId, launch.FlagId, launch.Dimension, popCEL, launch.ValueJson,
+				launch.LaunchId, cf.FeatureId, launch.FlagId, launch.Dimension, popCEL, launch.ValueJson, launch.RampPercentage,
 			); err != nil {
 				return LoadResult{}, fmt.Errorf("upsert launch %q: %w", launch.LaunchId, err)
 			}

@@ -48,4 +48,5 @@ message CompiledLaunch {
   string dimension = 3;
   string population_cel = 4; // empty = all entities
   bytes value_json = 5; // protojson-encoded FlagValue
+  int32 ramp_percentage = 6; // initial ramp (0-100); applied on insert only
 }

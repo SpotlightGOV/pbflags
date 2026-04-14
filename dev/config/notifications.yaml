@@ -5,8 +5,10 @@ feature: notifications
 flags:
   email_enabled:
     conditions:
+      # Dogfood: all internal users see email enabled
       - when: "ctx.is_internal"
         value: true
+      # Enterprise tier always gets email
       - when: "ctx.plan == PlanLevel.ENTERPRISE"
         value: true
       - otherwise: false
@@ -49,6 +51,7 @@ launches:
     dimension: user_id
     population: "ctx.plan == PlanLevel.PRO"
     value: true
+    ramp_percentage: 25
 
   hourly_digest_rollout:
     flag: digest_frequency

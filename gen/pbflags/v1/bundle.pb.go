@@ -269,14 +269,15 @@ func (x *CompiledFlag) GetDimensionMetadataJson() []byte {
 
 // CompiledLaunch holds a launch definition ready for DB upsert.
 type CompiledLaunch struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	LaunchId      string                 `protobuf:"bytes,1,opt,name=launch_id,json=launchId,proto3" json:"launch_id,omitempty"`
-	FlagId        string                 `protobuf:"bytes,2,opt,name=flag_id,json=flagId,proto3" json:"flag_id,omitempty"`
-	Dimension     string                 `protobuf:"bytes,3,opt,name=dimension,proto3" json:"dimension,omitempty"`
-	PopulationCel string                 `protobuf:"bytes,4,opt,name=population_cel,json=populationCel,proto3" json:"population_cel,omitempty"` // empty = all entities
-	ValueJson     []byte                 `protobuf:"bytes,5,opt,name=value_json,json=valueJson,proto3" json:"value_json,omitempty"`             // protojson-encoded FlagValue
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	LaunchId       string                 `protobuf:"bytes,1,opt,name=launch_id,json=launchId,proto3" json:"launch_id,omitempty"`
+	FlagId         string                 `protobuf:"bytes,2,opt,name=flag_id,json=flagId,proto3" json:"flag_id,omitempty"`
+	Dimension      string                 `protobuf:"bytes,3,opt,name=dimension,proto3" json:"dimension,omitempty"`
+	PopulationCel  string                 `protobuf:"bytes,4,opt,name=population_cel,json=populationCel,proto3" json:"population_cel,omitempty"`     // empty = all entities
+	ValueJson      []byte                 `protobuf:"bytes,5,opt,name=value_json,json=valueJson,proto3" json:"value_json,omitempty"`                 // protojson-encoded FlagValue
+	RampPercentage int32                  `protobuf:"varint,6,opt,name=ramp_percentage,json=rampPercentage,proto3" json:"ramp_percentage,omitempty"` // initial ramp (0-100); applied on insert only
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CompiledLaunch) Reset() {
@@ -344,6 +345,13 @@ func (x *CompiledLaunch) GetValueJson() []byte {
 	return nil
 }
 
+func (x *CompiledLaunch) GetRampPercentage() int32 {
+	if x != nil {
+		return x.RampPercentage
+	}
+	return 0
+}
+
 var File_pbflags_v1_bundle_proto protoreflect.FileDescriptor
 
 const file_pbflags_v1_bundle_proto_rawDesc = "" +
@@ -370,14 +378,15 @@ const file_pbflags_v1_bundle_proto_rawDesc = "" +
 	"\rdefault_value\x18\x05 \x01(\fR\fdefaultValue\x12)\n" +
 	"\x10supported_values\x18\x06 \x01(\fR\x0fsupportedValues\x12'\n" +
 	"\x0fconditions_json\x18\a \x01(\fR\x0econditionsJson\x126\n" +
-	"\x17dimension_metadata_json\x18\b \x01(\fR\x15dimensionMetadataJson\"\xaa\x01\n" +
+	"\x17dimension_metadata_json\x18\b \x01(\fR\x15dimensionMetadataJson\"\xd3\x01\n" +
 	"\x0eCompiledLaunch\x12\x1b\n" +
 	"\tlaunch_id\x18\x01 \x01(\tR\blaunchId\x12\x17\n" +
 	"\aflag_id\x18\x02 \x01(\tR\x06flagId\x12\x1c\n" +
 	"\tdimension\x18\x03 \x01(\tR\tdimension\x12%\n" +
 	"\x0epopulation_cel\x18\x04 \x01(\tR\rpopulationCel\x12\x1d\n" +
 	"\n" +
-	"value_json\x18\x05 \x01(\fR\tvalueJsonB_\n" +
+	"value_json\x18\x05 \x01(\fR\tvalueJson\x12'\n" +
+	"\x0framp_percentage\x18\x06 \x01(\x05R\x0erampPercentageB_\n" +
 	"!org.spotlightgov.pbflags.v1.protoP\x01Z8github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1b\x06proto3"
 
 var (

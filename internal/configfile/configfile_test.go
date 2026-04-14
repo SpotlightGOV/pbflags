@@ -490,6 +490,157 @@ func TestToFloat64EdgeCases(t *testing.T) {
 	}
 }
 
+func TestParseConditionComments(t *testing.T) {
+	t.Run("head comment", func(t *testing.T) {
+		yaml := `
+feature: notifications
+flags:
+  email_enabled:
+    conditions:
+      # Dogfood for internal users
+      - when: "ctx.is_internal"
+        value: true
+      - otherwise: false
+`
+		cfg, _, err := Parse([]byte(yaml), flagTypes)
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		conds := cfg.Flags["email_enabled"].Conditions
+		if len(conds) != 2 {
+			t.Fatalf("expected 2 conditions, got %d", len(conds))
+		}
+		if conds[0].Comment != "Dogfood for internal users" {
+			t.Errorf("Comment = %q, want %q", conds[0].Comment, "Dogfood for internal users")
+		}
+		if conds[1].Comment != "" {
+			t.Errorf("otherwise Comment = %q, want empty", conds[1].Comment)
+		}
+	})
+
+	t.Run("inline comment", func(t *testing.T) {
+		yaml := `
+feature: notifications
+flags:
+  email_enabled:
+    conditions:
+      - when: "ctx.is_internal" # internal dogfood
+        value: true
+      - otherwise: false
+`
+		cfg, _, err := Parse([]byte(yaml), flagTypes)
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		conds := cfg.Flags["email_enabled"].Conditions
+		if conds[0].Comment != "internal dogfood" {
+			t.Errorf("Comment = %q, want %q", conds[0].Comment, "internal dogfood")
+		}
+	})
+
+	t.Run("no comment", func(t *testing.T) {
+		yaml := `
+feature: notifications
+flags:
+  email_enabled:
+    conditions:
+      - when: "ctx.is_internal"
+        value: true
+      - otherwise: false
+`
+		cfg, _, err := Parse([]byte(yaml), flagTypes)
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		for _, c := range cfg.Flags["email_enabled"].Conditions {
+			if c.Comment != "" {
+				t.Errorf("expected empty comment, got %q", c.Comment)
+			}
+		}
+	})
+}
+
+func TestParseLaunchRampPercentage(t *testing.T) {
+	t.Run("valid ramp_percentage", func(t *testing.T) {
+		yaml := `
+feature: notifications
+launches:
+  rollout_1:
+    flag: email_enabled
+    dimension: user_id
+    value: true
+    ramp_percentage: 50
+`
+		cfg, _, err := Parse([]byte(yaml), flagTypes)
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		launch, ok := cfg.Launches["rollout_1"]
+		if !ok {
+			t.Fatal("expected launch rollout_1")
+		}
+		if launch.RampPercentage != 50 {
+			t.Errorf("RampPercentage = %d, want 50", launch.RampPercentage)
+		}
+	})
+
+	t.Run("omitted defaults to 0", func(t *testing.T) {
+		yaml := `
+feature: notifications
+launches:
+  rollout_1:
+    flag: email_enabled
+    dimension: user_id
+    value: true
+`
+		cfg, _, err := Parse([]byte(yaml), flagTypes)
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		if cfg.Launches["rollout_1"].RampPercentage != 0 {
+			t.Errorf("RampPercentage = %d, want 0", cfg.Launches["rollout_1"].RampPercentage)
+		}
+	})
+
+	t.Run("out of range", func(t *testing.T) {
+		yaml := `
+feature: notifications
+launches:
+  rollout_1:
+    flag: email_enabled
+    dimension: user_id
+    value: true
+    ramp_percentage: 150
+`
+		_, _, err := Parse([]byte(yaml), flagTypes)
+		if err == nil {
+			t.Fatal("expected error for ramp_percentage > 100")
+		}
+		if !strings.Contains(err.Error(), "ramp_percentage must be 0-100") {
+			t.Errorf("error = %q, want substring about ramp_percentage range", err.Error())
+		}
+	})
+
+	t.Run("negative", func(t *testing.T) {
+		yaml := `
+feature: notifications
+launches:
+  rollout_1:
+    flag: email_enabled
+    dimension: user_id
+    value: true
+    ramp_percentage: -1
+`
+		_, _, err := Parse([]byte(yaml), flagTypes)
+		if err == nil {
+			t.Fatal("expected error for negative ramp_percentage")
+		}
+		if !strings.Contains(err.Error(), "ramp_percentage must be 0-100") {
+			t.Errorf("error = %q, want substring about ramp_percentage range", err.Error())
+		}
+	})
+}
+
 func TestParseIntAsDouble(t *testing.T) {
 	// YAML integer should be accepted for double flags.
 	yaml := `

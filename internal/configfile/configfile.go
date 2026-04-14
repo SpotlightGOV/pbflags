@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"gopkg.in/yaml.v3"
@@ -21,10 +22,11 @@ type Config struct {
 
 // LaunchEntry defines a percentage-based rollout for a flag.
 type LaunchEntry struct {
-	Flag       string               // flag field name within the feature
-	Dimension  string               // hashable dimension to hash on
-	Population string               // CEL expression restricting eligible population (empty = all)
-	Value      *pbflagsv1.FlagValue // value for entities in the ramp
+	Flag           string               // flag field name within the feature
+	Dimension      string               // hashable dimension to hash on
+	Population     string               // CEL expression restricting eligible population (empty = all)
+	Value          *pbflagsv1.FlagValue // value for entities in the ramp
+	RampPercentage int                  // initial ramp percentage (0-100); only applied on insert, not on update
 }
 
 // FlagEntry is a single flag's configuration — either a static value or
@@ -36,8 +38,9 @@ type FlagEntry struct {
 
 // Condition is one entry in a condition chain.
 type Condition struct {
-	When  string               // CEL expression; empty means "otherwise" (default)
-	Value *pbflagsv1.FlagValue // the value to return when the condition matches
+	When    string               // CEL expression; empty means "otherwise" (default)
+	Value   *pbflagsv1.FlagValue // the value to return when the condition matches
+	Comment string               // annotation from YAML comment (head or inline)
 }
 
 // YAML unmarshaling types.
@@ -48,10 +51,11 @@ type rawConfig struct {
 }
 
 type rawLaunchEntry struct {
-	Flag       string `yaml:"flag"`
-	Dimension  string `yaml:"dimension"`
-	Population string `yaml:"population"`
-	Value      any    `yaml:"value"`
+	Flag           string `yaml:"flag"`
+	Dimension      string `yaml:"dimension"`
+	Population     string `yaml:"population"`
+	Value          any    `yaml:"value"`
+	RampPercentage *int   `yaml:"ramp_percentage"`
 }
 
 type rawFlagEntry struct {
@@ -88,6 +92,7 @@ type rawCondition struct {
 	Otherwise any    `yaml:"otherwise"`
 	hasValue  bool
 	hasOther  bool
+	comment   string
 }
 
 func (r *rawCondition) UnmarshalYAML(node *yaml.Node) error {
@@ -110,6 +115,20 @@ func (r *rawCondition) UnmarshalYAML(node *yaml.Node) error {
 		r.hasOther = true
 		if err := oNode.Decode(&r.Otherwise); err != nil {
 			return err
+		}
+	}
+
+	// Capture YAML comments: prefer head comment (line above the entry),
+	// fall back to line comment (inline after the when/otherwise key).
+	r.comment = stripComment(node.HeadComment)
+	if r.comment == "" {
+		if wNode, ok := m["when"]; ok {
+			r.comment = stripComment(wNode.LineComment)
+		}
+		if r.comment == "" {
+			if oNode, ok := m["otherwise"]; ok {
+				r.comment = stripComment(oNode.LineComment)
+			}
 		}
 	}
 	return nil
@@ -187,11 +206,20 @@ func Parse(data []byte, flagTypes map[string]pbflagsv1.FlagType) (*Config, []str
 				errs = append(errs, fmt.Errorf("launch %q: %w", launchID, err))
 				continue
 			}
+			var rampPct int
+			if rawLaunch.RampPercentage != nil {
+				rampPct = *rawLaunch.RampPercentage
+				if rampPct < 0 || rampPct > 100 {
+					errs = append(errs, fmt.Errorf("launch %q: ramp_percentage must be 0-100, got %d", launchID, rampPct))
+					continue
+				}
+			}
 			cfg.Launches[launchID] = LaunchEntry{
-				Flag:       rawLaunch.Flag,
-				Dimension:  rawLaunch.Dimension,
-				Population: rawLaunch.Population,
-				Value:      fv,
+				Flag:           rawLaunch.Flag,
+				Dimension:      rawLaunch.Dimension,
+				Population:     rawLaunch.Population,
+				Value:          fv,
+				RampPercentage: rampPct,
 			}
 		}
 	}
@@ -257,7 +285,7 @@ func convertFlagEntry(name string, raw rawFlagEntry, ft pbflagsv1.FlagType) (Fla
 		if err != nil {
 			return FlagEntry{}, nil, err
 		}
-		conds = append(conds, Condition{When: rc.When, Value: fv})
+		conds = append(conds, Condition{When: rc.When, Value: fv, Comment: rc.comment})
 	}
 
 	if !hasOtherwise {
@@ -426,4 +454,12 @@ func toFloat64(v any) (float64, error) {
 	default:
 		return 0, fmt.Errorf("expected number, got %T(%v)", v, v)
 	}
+}
+
+// stripComment removes the leading "# " (or "#") from a yaml.Node comment
+// field and trims surrounding whitespace. Returns "" if the input is empty.
+func stripComment(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "#")
+	return strings.TrimSpace(s)
 }
