@@ -128,10 +128,11 @@ flags:
     value: "daily"
 ```
 
-Validate it before syncing:
+Validate and format before syncing:
 
 ```bash
 pb validate --descriptors=descriptors.pb --features=./features
+pb format --descriptors=descriptors.pb --features=./features --check
 ```
 
 ### 4. Run the server

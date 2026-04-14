@@ -60,7 +60,7 @@ Key references for contributors:
 
 ## Quick reference
 
-Runtime services: `pbflags-admin`, `pbflags-evaluator`, `pbflags-sync`. Build tools: `protoc-gen-pbflags`. The unified CLI (`pb`) provides all developer commands: `pb sync`, `pb validate`, `pb lint`, `pb flag`, `pb launch`, `pb audit`, `pb auth`. See [docs/deployment.md](docs/deployment.md) for details.
+Runtime services: `pbflags-admin`, `pbflags-evaluator`, `pbflags-sync`. Build tools: `protoc-gen-pbflags`. The unified CLI (`pb`) provides all developer commands: `pb sync`, `pb validate`, `pb format`, `pb lint`, `pb flag`, `pb launch`, `pb audit`, `pb auth`. See [docs/deployment.md](docs/deployment.md) for details.
 
 All Go dev tools (lefthook, staticcheck, goimports, Playwright CLI) are declared as `tool` dependencies in `go.mod` and invoked via `go tool <name>` — no separate install step needed.
 

@@ -26,7 +26,9 @@ annotations. Generated `dims` package with dimension constructors.
 **Implemented in v0.17.0** as "Launches" — per-condition value overrides with
 deterministic FNV-32a hashing, evaluation scopes with typed codegen, inline
 launch overrides on conditions and static values, admin UI kill/unkill, and
-mechanical `pb launch land` for YAML transform.
+full launch lifecycle CLI: `pb launch soak` (ramp to 100% + SOAKING),
+`pb launch land` (promote values and remove launch from config),
+`pb launch abandon` (permanent close without landing).
 
 Phase 2 (future): `launch.in_ramp()` in CEL expressions for structural condition
 chain changes under a launch, with CEL simplification for mechanical landing.
@@ -35,9 +37,11 @@ chain changes under a launch, with CEL simplification for mechanical landing.
 
 **Implemented in v0.18.0.** Unified `pb` CLI with admin commands (`pb flag`,
 `pb launch`, `pb audit`), auth management (`pb auth`), config commands
-(`pb sync`, `pb validate`, `pb show`, `pb compile`, `pb load`, `pb export`),
-and developer workflow commands (`pb init`, `pb lint`, `pb migrate`).
-All admin commands support `--json` for scripting.
+(`pb sync`, `pb validate`, `pb format`, `pb show`, `pb compile`, `pb load`,
+`pb export`), and developer workflow commands (`pb init`, `pb lint`, `pb migrate`).
+All admin commands support `--json` for scripting. `pb format` round-trips
+YAML configs through the parser for canonical formatting and lossy-parsing
+detection (`--check` for CI).
 
 ---
 

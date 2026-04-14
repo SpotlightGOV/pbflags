@@ -93,6 +93,10 @@ The `pb` CLI has offline subcommands that do not require a database connection:
 # Validate YAML config files against descriptors (for CI)
 pb validate --descriptors=descriptors.pb --features=./features
 
+# Format YAML config files into canonical form (round-trips through parser)
+pb format --descriptors=descriptors.pb --features=./features
+pb format --check   # exit 1 if any file needs formatting (for CI)
+
 # Show the compiled condition chain for a single flag
 pb show --descriptors=descriptors.pb --features=./features <feature/field>
 
@@ -123,7 +127,7 @@ The `pb` CLI discovers a `.pbflags.yaml` file by walking up from the working dir
 features_path: features   # default --features directory for sync/validate/show
 ```
 
-When `features_path` is set, `--features` can be omitted from `pb sync`, `pb validate`, and `pb show` commands.
+When `features_path` is set, `--features` can be omitted from `pb sync`, `pb validate`, `pb format`, and `pb show` commands.
 
 ## Repository structure
 

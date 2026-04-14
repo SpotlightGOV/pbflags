@@ -239,7 +239,20 @@ Rules:
 - Feature-scoped launches (in a feature config) can only be referenced from that feature. Cross-feature launches go in a top-level `launches/` directory.
 - `ramp_percentage` is only applied on first sync. Subsequent ramp changes are made via the admin UI or `pb launch ramp`.
 
-### Validate configs in CI
+Launch lifecycle commands (require admin API):
+
+```bash
+pb launch ramp <id> <pct>   # Set ramp percentage (0-100)
+pb launch soak <id>          # Set ramp to 100% and status to SOAKING
+pb launch land <id>          # Promote launch values to defaults, remove launch from config
+pb launch abandon <id>       # Set status to ABANDONED (launch will not be landed)
+pb launch kill <id>          # Emergency disable (reversible)
+pb launch unkill <id>        # Restore a killed launch
+```
+
+`pb launch land` transforms the YAML config files: it replaces each condition's `value` with the launch override value, removes `launch:` keys, deletes the launch definition, sets status to COMPLETED, and opens a PR. The launch must be SOAKING to land. Use `--dry-run` to preview changes without writing, or `--no-pr` to skip PR creation.
+
+### Validate and format configs in CI
 
 Use `pb validate` to catch syntax and CEL compilation errors before deploy:
 
@@ -248,6 +261,13 @@ pb validate --descriptors=descriptors.pb --features=./features
 ```
 
 This checks YAML structure, CEL expression compilation, and value type compatibility against the proto descriptors — all without a database connection.
+
+Use `pb format` to enforce canonical YAML formatting. It round-trips each config file through the parser, catching lossy parsing as a side effect:
+
+```bash
+pb format --descriptors=descriptors.pb --features=./features          # rewrite files
+pb format --descriptors=descriptors.pb --features=./features --check  # CI mode: exit 1 if unformatted
+```
 
 ### Inspect a flag's condition chain
 
@@ -264,7 +284,7 @@ To avoid repeating `--features` and `--descriptors` on every command, create a `
 features_path: features
 ```
 
-When `features_path` is set, `pbflags-sync`, `validate`, and `show` automatically use it as the default `--features` directory.
+When `features_path` is set, `pb sync`, `pb validate`, `pb format`, and `pb show` automatically use it as the default `--features` directory.
 
 ## 9. Use in application code
 
