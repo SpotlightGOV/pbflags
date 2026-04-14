@@ -287,6 +287,22 @@ func LoadBundle(ctx context.Context, conn *pgx.Conn, bundleData []byte, sha stri
 		}
 	}
 
+	// Abandon launches no longer in the bundle.
+	bundleLaunchIDs := make([]string, len(bundle.Launches))
+	for i, l := range bundle.Launches {
+		bundleLaunchIDs[i] = l.LaunchId
+	}
+	if tag, err := tx.Exec(ctx, `
+		UPDATE feature_flags.launches SET status = 'ABANDONED', updated_at = now()
+		WHERE launch_id != ALL($1)
+		  AND status NOT IN ('COMPLETED', 'ABANDONED')`,
+		bundleLaunchIDs,
+	); err != nil {
+		return LoadResult{}, fmt.Errorf("abandon stale launches: %w", err)
+	} else if tag.RowsAffected() > 0 {
+		slog.Info("abandoned stale launches", "count", tag.RowsAffected())
+	}
+
 	// Archive flags no longer in the bundle.
 	rows, err := tx.Query(ctx,
 		`SELECT flag_id FROM feature_flags.flags
