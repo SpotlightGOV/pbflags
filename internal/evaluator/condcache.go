@@ -1,7 +1,6 @@
 package evaluator
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -181,14 +180,21 @@ func BuildCacheKey(flagID string, version uint64, meta CachedDimMeta, evalCtx pr
 	return b.String()
 }
 
-// ParseDimMeta deserializes the dimension_metadata JSONB.
+// ParseDimMeta deserializes the dimension_metadata bytea column.
 func ParseDimMeta(data []byte) CachedDimMeta {
 	if len(data) == 0 {
 		return nil
 	}
-	var meta CachedDimMeta
-	if err := json.Unmarshal(data, &meta); err != nil {
+	var stored pbflagsv1.StoredDimensionMetadata
+	if err := proto.Unmarshal(data, &stored); err != nil {
 		return nil
+	}
+	meta := make(CachedDimMeta, len(stored.Dimensions))
+	for name, dm := range stored.Dimensions {
+		meta[name] = &celenv.DimensionMeta{
+			Classification: celenv.DimClassification(dm.Classification),
+			LiteralSet:     dm.LiteralSet,
+		}
 	}
 	return meta
 }

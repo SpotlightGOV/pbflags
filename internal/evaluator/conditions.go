@@ -1,12 +1,10 @@
 package evaluator
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
 	"github.com/google/cel-go/cel"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
@@ -14,7 +12,6 @@ import (
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/internal/celenv"
-	"github.com/SpotlightGOV/pbflags/internal/flagfmt"
 )
 
 // CachedCondition is a compiled condition ready for evaluation.
@@ -51,24 +48,24 @@ func NewConditionEvaluator(md protoreflect.MessageDescriptor, logger *slog.Logge
 	}, nil
 }
 
-// CompileConditions parses the conditions JSONB and compiles CEL programs.
-// Returns nil if conditionsJSON is nil (no conditions). On compile failure,
+// CompileConditions parses the stored conditions proto and compiles CEL programs.
+// Returns nil if conditionsData is nil (no conditions). On compile failure,
 // logs the error and returns nil (graceful degradation to default).
-func (ce *ConditionEvaluator) CompileConditions(flagID string, conditionsJSON []byte) []CachedCondition {
-	if len(conditionsJSON) == 0 {
+func (ce *ConditionEvaluator) CompileConditions(flagID string, conditionsData []byte) []CachedCondition {
+	if len(conditionsData) == 0 {
 		return nil
 	}
 
-	var stored []flagfmt.StoredCondition
-	if err := json.Unmarshal(conditionsJSON, &stored); err != nil {
-		ce.logger.Error("failed to parse conditions JSON", "flag_id", flagID, "error", err)
+	var stored pbflagsv1.StoredConditions
+	if err := proto.Unmarshal(conditionsData, &stored); err != nil {
+		ce.logger.Error("failed to parse stored conditions", "flag_id", flagID, "error", err)
 		return nil
 	}
 
-	conditions := make([]CachedCondition, 0, len(stored))
-	for i, sc := range stored {
+	conditions := make([]CachedCondition, 0, len(stored.Conditions))
+	for i, sc := range stored.Conditions {
 		fv := &pbflagsv1.FlagValue{}
-		if err := protojson.Unmarshal(sc.Value, fv); err != nil {
+		if err := proto.Unmarshal(sc.Value, fv); err != nil {
 			ce.logger.Error("failed to unmarshal condition value", "flag_id", flagID, "index", i, "error", err)
 			return nil
 		}
@@ -76,30 +73,30 @@ func (ce *ConditionEvaluator) CompileConditions(flagID string, conditionsJSON []
 		cc := CachedCondition{Value: fv}
 
 		// Parse launch override if present.
-		if sc.LaunchID != "" && len(sc.LaunchValue) > 0 {
+		if sc.LaunchId != "" && len(sc.LaunchValue) > 0 {
 			lv := &pbflagsv1.FlagValue{}
-			if err := protojson.Unmarshal(sc.LaunchValue, lv); err != nil {
-				ce.logger.Error("failed to unmarshal launch value", "flag_id", flagID, "index", i, "launch_id", sc.LaunchID, "error", err)
+			if err := proto.Unmarshal(sc.LaunchValue, lv); err != nil {
+				ce.logger.Error("failed to unmarshal launch value", "flag_id", flagID, "index", i, "launch_id", sc.LaunchId, "error", err)
 				// Degrade: ignore the launch override, use base value.
 			} else {
-				cc.LaunchID = sc.LaunchID
+				cc.LaunchID = sc.LaunchId
 				cc.LaunchValue = lv
 			}
 		}
 
-		if sc.CEL == nil {
+		if sc.Cel == "" {
 			// "otherwise" clause — no program, just the value.
 			conditions = append(conditions, cc)
 			continue
 		}
 
-		compiled, err := ce.compiler.Compile(*sc.CEL)
+		compiled, err := ce.compiler.Compile(sc.Cel)
 		if err != nil {
-			ce.logger.Error("failed to compile CEL condition", "flag_id", flagID, "index", i, "cel", *sc.CEL, "error", err)
+			ce.logger.Error("failed to compile CEL condition", "flag_id", flagID, "index", i, "cel", sc.Cel, "error", err)
 			return nil // degrade: fall back to compiled default
 		}
 		cc.Program = compiled.Program
-		cc.Source = *sc.CEL
+		cc.Source = sc.Cel
 		conditions = append(conditions, cc)
 	}
 

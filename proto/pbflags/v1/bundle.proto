@@ -40,15 +40,44 @@ message CompiledFlag {
   bytes default_value = 5; // proto-encoded FlagValue
   bytes supported_values = 6;
 
-  // Pre-compiled condition chain and dimension metadata (JSONB-ready).
-  // Nil for flags without conditions.
-  bytes conditions_json = 7;
-  bytes dimension_metadata_json = 8;
+  // Fields 7-8 were conditions_json / dimension_metadata_json (bytes).
+  // Replaced by typed proto fields below.
+  reserved 7, 8;
+
+  // Typed condition chain. Empty for flags without conditions.
+  repeated CompiledCondition conditions = 9;
+  // Typed dimension metadata. Empty for flags without conditions.
+  map<string, CompiledDimensionMeta> dimension_metadata = 10;
+}
+
+// CompiledCondition represents a single entry in a flag's condition chain.
+message CompiledCondition {
+  string cel = 1; // CEL expression text; empty = "otherwise" (always-match fallback)
+  bytes value = 2; // proto-encoded FlagValue
+  string comment = 3; // human-readable annotation from YAML config
+  string launch_id = 4; // launch override (at most one per condition)
+  bytes launch_value = 5; // proto-encoded FlagValue when entity is in launch ramp
+}
+
+// CompiledDimensionMeta holds classification metadata for a single dimension.
+message CompiledDimensionMeta {
+  string classification = 1; // bounded, finite_filter_uniform, finite_filter_distinct, unbounded
+  repeated string literal_set = 2;
+}
+
+// StoredConditions wraps a condition chain for DB storage as bytea.
+message StoredConditions {
+  repeated CompiledCondition conditions = 1;
+}
+
+// StoredDimensionMetadata wraps dimension metadata for DB storage as bytea.
+message StoredDimensionMetadata {
+  map<string, CompiledDimensionMeta> dimensions = 1;
 }
 
 // CompiledLaunch holds a launch definition ready for DB upsert.
 // Launch-to-flag binding is expressed inline via launch overrides on
-// individual StoredConditions, not on the launch definition.
+// individual CompiledConditions, not on the launch definition.
 message CompiledLaunch {
   string launch_id = 1;
   // Field 2 was flag_id — binding is now inline in conditions.

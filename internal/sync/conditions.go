@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,7 +11,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 	"github.com/jackc/pgx/v5"
-	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"gopkg.in/yaml.v3"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
@@ -20,7 +19,6 @@ import (
 	"github.com/SpotlightGOV/pbflags/internal/codegen/contextutil"
 	"github.com/SpotlightGOV/pbflags/internal/configfile"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
-	"github.com/SpotlightGOV/pbflags/internal/flagfmt"
 )
 
 // ConditionResult reports what the condition sync did.
@@ -142,22 +140,35 @@ func SyncConditions(
 
 		for flagName, entry := range cfg.Flags {
 			info := featureFlags[flagName]
-			condJSON, dimJSON, warns, compileErr := compileFlag(flagName, entry, compiler, boundedDims)
+			compiled, compileErr := compileFlag(flagName, entry, compiler, boundedDims)
 			if compileErr != nil {
 				return ConditionResult{}, fmt.Errorf("feature %s flag %q: %w", featureID, flagName, compileErr)
 			}
-			result.Warnings = append(result.Warnings, warns...)
+			result.Warnings = append(result.Warnings, compiled.Warnings...)
 
+			var condBytes, dimBytes []byte
 			var cv *string
-			if condJSON != nil {
+			var condCount int
+			if len(compiled.Conditions) > 0 {
 				cv = &celVersion
+				condCount = len(compiled.Conditions)
+				condBytes, err = proto.Marshal(&pbflagsv1.StoredConditions{Conditions: compiled.Conditions})
+				if err != nil {
+					return ConditionResult{}, fmt.Errorf("marshal conditions for %q: %w", info.FlagID, err)
+				}
+				if len(compiled.DimMeta) > 0 {
+					dimBytes, err = proto.Marshal(&pbflagsv1.StoredDimensionMetadata{Dimensions: compiled.DimMeta})
+					if err != nil {
+						return ConditionResult{}, fmt.Errorf("marshal dim metadata for %q: %w", info.FlagID, err)
+					}
+				}
 			}
 			if _, err := tx.Exec(ctx,
 				`UPDATE feature_flags.flags
 				 SET conditions = $2, dimension_metadata = $3, cel_version = $4,
-				     updated_at = now()
+				     condition_count = $5, updated_at = now()
 				 WHERE flag_id = $1`,
-				info.FlagID, condJSON, dimJSON, cv,
+				info.FlagID, condBytes, dimBytes, cv, condCount,
 			); err != nil {
 				return ConditionResult{}, fmt.Errorf("update flag %q: %w", info.FlagID, err)
 			}
@@ -306,95 +317,97 @@ func SyncConditions(
 	return result, nil
 }
 
+// compileFlagResult holds the compiled output of a flag's condition chain.
+type compileFlagResult struct {
+	Conditions []*pbflagsv1.CompiledCondition
+	DimMeta    map[string]*pbflagsv1.CompiledDimensionMeta
+	Warnings   []string
+}
+
 func compileFlag(
 	flagName string,
 	entry configfile.FlagEntry,
 	compiler *celenv.Compiler,
 	boundedDims map[string]bool,
-) (condJSON []byte, dimJSON []byte, warnings []string, err error) {
+) (*compileFlagResult, error) {
 	if entry.Value != nil {
 		// Static value — store as a single "otherwise" condition entry
 		// so all flag behavior flows through the conditions column.
-		fvBytes, marshalErr := protojson.Marshal(entry.Value)
+		fvBytes, marshalErr := proto.Marshal(entry.Value)
 		if marshalErr != nil {
-			return nil, nil, nil, fmt.Errorf("marshal static value: %w", marshalErr)
+			return nil, fmt.Errorf("marshal static value: %w", marshalErr)
 		}
-		sc := flagfmt.StoredCondition{CEL: nil, Value: fvBytes}
+		cc := &pbflagsv1.CompiledCondition{Value: fvBytes}
 		// Static value launch override.
 		if entry.Launch != nil {
-			lvBytes, lvErr := protojson.Marshal(entry.Launch.Value)
+			lvBytes, lvErr := proto.Marshal(entry.Launch.Value)
 			if lvErr != nil {
-				return nil, nil, nil, fmt.Errorf("marshal launch override value: %w", lvErr)
+				return nil, fmt.Errorf("marshal launch override value: %w", lvErr)
 			}
-			sc.LaunchID = entry.Launch.ID
-			sc.LaunchValue = lvBytes
+			cc.LaunchId = entry.Launch.ID
+			cc.LaunchValue = lvBytes
 		}
-		conds := []flagfmt.StoredCondition{sc}
-		condJSON, jsonErr := json.Marshal(conds)
-		if jsonErr != nil {
-			return nil, nil, nil, fmt.Errorf("marshal static conditions: %w", jsonErr)
-		}
-		return condJSON, nil, nil, nil
+		return &compileFlagResult{Conditions: []*pbflagsv1.CompiledCondition{cc}}, nil
 	}
 
-	var conditions []flagfmt.StoredCondition
+	var conditions []*pbflagsv1.CompiledCondition
 	var asts []*cel.Ast
 	var values []*pbflagsv1.FlagValue
 
 	for i, cond := range entry.Conditions {
-		fvBytes, marshalErr := protojson.Marshal(cond.Value)
+		fvBytes, marshalErr := proto.Marshal(cond.Value)
 		if marshalErr != nil {
-			return nil, nil, nil, fmt.Errorf("condition %d: marshal value: %w", i, marshalErr)
+			return nil, fmt.Errorf("condition %d: marshal value: %w", i, marshalErr)
 		}
 
-		sc := flagfmt.StoredCondition{Value: fvBytes, Comment: cond.Comment}
+		cc := &pbflagsv1.CompiledCondition{Value: fvBytes, Comment: cond.Comment}
 
 		if cond.When == "" {
 			asts = append(asts, nil)
 		} else {
 			compiled, compileErr := compiler.Compile(cond.When)
 			if compileErr != nil {
-				return nil, nil, nil, fmt.Errorf("condition %d: %w", i, compileErr)
+				return nil, fmt.Errorf("condition %d: %w", i, compileErr)
 			}
-			celStr := cond.When
-			sc.CEL = &celStr
+			cc.Cel = cond.When
 			asts = append(asts, compiled.AST)
 		}
 
 		// Per-condition launch override.
 		if cond.Launch != nil {
-			lvBytes, lvErr := protojson.Marshal(cond.Launch.Value)
+			lvBytes, lvErr := proto.Marshal(cond.Launch.Value)
 			if lvErr != nil {
-				return nil, nil, nil, fmt.Errorf("condition %d: marshal launch value: %w", i, lvErr)
+				return nil, fmt.Errorf("condition %d: marshal launch value: %w", i, lvErr)
 			}
-			sc.LaunchID = cond.Launch.ID
-			sc.LaunchValue = lvBytes
+			cc.LaunchId = cond.Launch.ID
+			cc.LaunchValue = lvBytes
 		}
 
-		conditions = append(conditions, sc)
+		conditions = append(conditions, cc)
 		values = append(values, cond.Value)
 	}
 
-	condJSON, err = json.Marshal(conditions)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("marshal conditions: %w", err)
-	}
-
-	dimMeta := celenv.ClassifyDimensions(asts, values, boundedDims)
-	if len(dimMeta) > 0 {
-		dimJSON, err = json.Marshal(dimMeta)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("marshal dimension_metadata: %w", err)
+	dimClassify := celenv.ClassifyDimensions(asts, values, boundedDims)
+	dimMeta := make(map[string]*pbflagsv1.CompiledDimensionMeta, len(dimClassify))
+	for name, meta := range dimClassify {
+		dimMeta[name] = &pbflagsv1.CompiledDimensionMeta{
+			Classification: string(meta.Classification),
+			LiteralSet:     meta.LiteralSet,
 		}
 	}
 
-	for name, meta := range dimMeta {
+	var warnings []string
+	for name, meta := range dimClassify {
 		if meta.Classification == celenv.Unbounded {
 			warnings = append(warnings, fmt.Sprintf("flag %q: dimension %q is unbounded (cache will use LRU)", flagName, name))
 		}
 	}
 
-	return condJSON, dimJSON, warnings, nil
+	return &compileFlagResult{
+		Conditions: conditions,
+		DimMeta:    dimMeta,
+		Warnings:   warnings,
+	}, nil
 }
 
 func peekFeature(data []byte) (string, error) {

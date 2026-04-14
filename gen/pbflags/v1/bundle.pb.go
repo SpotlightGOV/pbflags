@@ -175,12 +175,12 @@ type CompiledFlag struct {
 	FlagType        string                 `protobuf:"bytes,4,opt,name=flag_type,json=flagType,proto3" json:"flag_type,omitempty"`             // e.g. "BOOL", "STRING"
 	DefaultValue    []byte                 `protobuf:"bytes,5,opt,name=default_value,json=defaultValue,proto3" json:"default_value,omitempty"` // proto-encoded FlagValue
 	SupportedValues []byte                 `protobuf:"bytes,6,opt,name=supported_values,json=supportedValues,proto3" json:"supported_values,omitempty"`
-	// Pre-compiled condition chain and dimension metadata (JSONB-ready).
-	// Nil for flags without conditions.
-	ConditionsJson        []byte `protobuf:"bytes,7,opt,name=conditions_json,json=conditionsJson,proto3" json:"conditions_json,omitempty"`
-	DimensionMetadataJson []byte `protobuf:"bytes,8,opt,name=dimension_metadata_json,json=dimensionMetadataJson,proto3" json:"dimension_metadata_json,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// Typed condition chain. Empty for flags without conditions.
+	Conditions []*CompiledCondition `protobuf:"bytes,9,rep,name=conditions,proto3" json:"conditions,omitempty"`
+	// Typed dimension metadata. Empty for flags without conditions.
+	DimensionMetadata map[string]*CompiledDimensionMeta `protobuf:"bytes,10,rep,name=dimension_metadata,json=dimensionMetadata,proto3" json:"dimension_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *CompiledFlag) Reset() {
@@ -255,23 +255,243 @@ func (x *CompiledFlag) GetSupportedValues() []byte {
 	return nil
 }
 
-func (x *CompiledFlag) GetConditionsJson() []byte {
+func (x *CompiledFlag) GetConditions() []*CompiledCondition {
 	if x != nil {
-		return x.ConditionsJson
+		return x.Conditions
 	}
 	return nil
 }
 
-func (x *CompiledFlag) GetDimensionMetadataJson() []byte {
+func (x *CompiledFlag) GetDimensionMetadata() map[string]*CompiledDimensionMeta {
 	if x != nil {
-		return x.DimensionMetadataJson
+		return x.DimensionMetadata
+	}
+	return nil
+}
+
+// CompiledCondition represents a single entry in a flag's condition chain.
+type CompiledCondition struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Cel           string                 `protobuf:"bytes,1,opt,name=cel,proto3" json:"cel,omitempty"`                                    // CEL expression text; empty = "otherwise" (always-match fallback)
+	Value         []byte                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`                                // proto-encoded FlagValue
+	Comment       string                 `protobuf:"bytes,3,opt,name=comment,proto3" json:"comment,omitempty"`                            // human-readable annotation from YAML config
+	LaunchId      string                 `protobuf:"bytes,4,opt,name=launch_id,json=launchId,proto3" json:"launch_id,omitempty"`          // launch override (at most one per condition)
+	LaunchValue   []byte                 `protobuf:"bytes,5,opt,name=launch_value,json=launchValue,proto3" json:"launch_value,omitempty"` // proto-encoded FlagValue when entity is in launch ramp
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompiledCondition) Reset() {
+	*x = CompiledCondition{}
+	mi := &file_pbflags_v1_bundle_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompiledCondition) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompiledCondition) ProtoMessage() {}
+
+func (x *CompiledCondition) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_bundle_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompiledCondition.ProtoReflect.Descriptor instead.
+func (*CompiledCondition) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_bundle_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *CompiledCondition) GetCel() string {
+	if x != nil {
+		return x.Cel
+	}
+	return ""
+}
+
+func (x *CompiledCondition) GetValue() []byte {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+func (x *CompiledCondition) GetComment() string {
+	if x != nil {
+		return x.Comment
+	}
+	return ""
+}
+
+func (x *CompiledCondition) GetLaunchId() string {
+	if x != nil {
+		return x.LaunchId
+	}
+	return ""
+}
+
+func (x *CompiledCondition) GetLaunchValue() []byte {
+	if x != nil {
+		return x.LaunchValue
+	}
+	return nil
+}
+
+// CompiledDimensionMeta holds classification metadata for a single dimension.
+type CompiledDimensionMeta struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Classification string                 `protobuf:"bytes,1,opt,name=classification,proto3" json:"classification,omitempty"` // bounded, finite_filter_uniform, finite_filter_distinct, unbounded
+	LiteralSet     []string               `protobuf:"bytes,2,rep,name=literal_set,json=literalSet,proto3" json:"literal_set,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CompiledDimensionMeta) Reset() {
+	*x = CompiledDimensionMeta{}
+	mi := &file_pbflags_v1_bundle_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompiledDimensionMeta) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompiledDimensionMeta) ProtoMessage() {}
+
+func (x *CompiledDimensionMeta) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_bundle_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompiledDimensionMeta.ProtoReflect.Descriptor instead.
+func (*CompiledDimensionMeta) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_bundle_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *CompiledDimensionMeta) GetClassification() string {
+	if x != nil {
+		return x.Classification
+	}
+	return ""
+}
+
+func (x *CompiledDimensionMeta) GetLiteralSet() []string {
+	if x != nil {
+		return x.LiteralSet
+	}
+	return nil
+}
+
+// StoredConditions wraps a condition chain for DB storage as bytea.
+type StoredConditions struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Conditions    []*CompiledCondition   `protobuf:"bytes,1,rep,name=conditions,proto3" json:"conditions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StoredConditions) Reset() {
+	*x = StoredConditions{}
+	mi := &file_pbflags_v1_bundle_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StoredConditions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StoredConditions) ProtoMessage() {}
+
+func (x *StoredConditions) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_bundle_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StoredConditions.ProtoReflect.Descriptor instead.
+func (*StoredConditions) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_bundle_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *StoredConditions) GetConditions() []*CompiledCondition {
+	if x != nil {
+		return x.Conditions
+	}
+	return nil
+}
+
+// StoredDimensionMetadata wraps dimension metadata for DB storage as bytea.
+type StoredDimensionMetadata struct {
+	state         protoimpl.MessageState            `protogen:"open.v1"`
+	Dimensions    map[string]*CompiledDimensionMeta `protobuf:"bytes,1,rep,name=dimensions,proto3" json:"dimensions,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StoredDimensionMetadata) Reset() {
+	*x = StoredDimensionMetadata{}
+	mi := &file_pbflags_v1_bundle_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StoredDimensionMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StoredDimensionMetadata) ProtoMessage() {}
+
+func (x *StoredDimensionMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_bundle_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StoredDimensionMetadata.ProtoReflect.Descriptor instead.
+func (*StoredDimensionMetadata) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_bundle_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *StoredDimensionMetadata) GetDimensions() map[string]*CompiledDimensionMeta {
+	if x != nil {
+		return x.Dimensions
 	}
 	return nil
 }
 
 // CompiledLaunch holds a launch definition ready for DB upsert.
 // Launch-to-flag binding is expressed inline via launch overrides on
-// individual StoredConditions, not on the launch definition.
+// individual CompiledConditions, not on the launch definition.
 type CompiledLaunch struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	LaunchId       string                 `protobuf:"bytes,1,opt,name=launch_id,json=launchId,proto3" json:"launch_id,omitempty"`
@@ -288,7 +508,7 @@ type CompiledLaunch struct {
 
 func (x *CompiledLaunch) Reset() {
 	*x = CompiledLaunch{}
-	mi := &file_pbflags_v1_bundle_proto_msgTypes[3]
+	mi := &file_pbflags_v1_bundle_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -300,7 +520,7 @@ func (x *CompiledLaunch) String() string {
 func (*CompiledLaunch) ProtoMessage() {}
 
 func (x *CompiledLaunch) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_bundle_proto_msgTypes[3]
+	mi := &file_pbflags_v1_bundle_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -313,7 +533,7 @@ func (x *CompiledLaunch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompiledLaunch.ProtoReflect.Descriptor instead.
 func (*CompiledLaunch) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_bundle_proto_rawDescGZIP(), []int{3}
+	return file_pbflags_v1_bundle_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CompiledLaunch) GetLaunchId() string {
@@ -375,16 +595,43 @@ const file_pbflags_v1_bundle_proto_rawDesc = "" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x14\n" +
 	"\x05owner\x18\x04 \x01(\tR\x05owner\x12.\n" +
-	"\x05flags\x18\x05 \x03(\v2\x18.pbflags.v1.CompiledFlagR\x05flagsJ\x04\b\x06\x10\a\"\xac\x02\n" +
+	"\x05flags\x18\x05 \x03(\v2\x18.pbflags.v1.CompiledFlagR\x05flagsJ\x04\b\x06\x10\a\"\xdf\x03\n" +
 	"\fCompiledFlag\x12\x17\n" +
 	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12!\n" +
 	"\ffield_number\x18\x03 \x01(\x05R\vfieldNumber\x12\x1b\n" +
 	"\tflag_type\x18\x04 \x01(\tR\bflagType\x12#\n" +
 	"\rdefault_value\x18\x05 \x01(\fR\fdefaultValue\x12)\n" +
-	"\x10supported_values\x18\x06 \x01(\fR\x0fsupportedValues\x12'\n" +
-	"\x0fconditions_json\x18\a \x01(\fR\x0econditionsJson\x126\n" +
-	"\x17dimension_metadata_json\x18\b \x01(\fR\x15dimensionMetadataJson\"\x98\x02\n" +
+	"\x10supported_values\x18\x06 \x01(\fR\x0fsupportedValues\x12=\n" +
+	"\n" +
+	"conditions\x18\t \x03(\v2\x1d.pbflags.v1.CompiledConditionR\n" +
+	"conditions\x12^\n" +
+	"\x12dimension_metadata\x18\n" +
+	" \x03(\v2/.pbflags.v1.CompiledFlag.DimensionMetadataEntryR\x11dimensionMetadata\x1ag\n" +
+	"\x16DimensionMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x127\n" +
+	"\x05value\x18\x02 \x01(\v2!.pbflags.v1.CompiledDimensionMetaR\x05value:\x028\x01J\x04\b\a\x10\bJ\x04\b\b\x10\t\"\x95\x01\n" +
+	"\x11CompiledCondition\x12\x10\n" +
+	"\x03cel\x18\x01 \x01(\tR\x03cel\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value\x12\x18\n" +
+	"\acomment\x18\x03 \x01(\tR\acomment\x12\x1b\n" +
+	"\tlaunch_id\x18\x04 \x01(\tR\blaunchId\x12!\n" +
+	"\flaunch_value\x18\x05 \x01(\fR\vlaunchValue\"`\n" +
+	"\x15CompiledDimensionMeta\x12&\n" +
+	"\x0eclassification\x18\x01 \x01(\tR\x0eclassification\x12\x1f\n" +
+	"\vliteral_set\x18\x02 \x03(\tR\n" +
+	"literalSet\"Q\n" +
+	"\x10StoredConditions\x12=\n" +
+	"\n" +
+	"conditions\x18\x01 \x03(\v2\x1d.pbflags.v1.CompiledConditionR\n" +
+	"conditions\"\xd0\x01\n" +
+	"\x17StoredDimensionMetadata\x12S\n" +
+	"\n" +
+	"dimensions\x18\x01 \x03(\v23.pbflags.v1.StoredDimensionMetadata.DimensionsEntryR\n" +
+	"dimensions\x1a`\n" +
+	"\x0fDimensionsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x127\n" +
+	"\x05value\x18\x02 \x01(\v2!.pbflags.v1.CompiledDimensionMetaR\x05value:\x028\x01\"\x98\x02\n" +
 	"\x0eCompiledLaunch\x12\x1b\n" +
 	"\tlaunch_id\x18\x01 \x01(\tR\blaunchId\x12\x1c\n" +
 	"\tdimension\x18\x03 \x01(\tR\tdimension\x12,\n" +
@@ -407,22 +654,34 @@ func file_pbflags_v1_bundle_proto_rawDescGZIP() []byte {
 	return file_pbflags_v1_bundle_proto_rawDescData
 }
 
-var file_pbflags_v1_bundle_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_pbflags_v1_bundle_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_pbflags_v1_bundle_proto_goTypes = []any{
-	(*CompiledBundle)(nil),  // 0: pbflags.v1.CompiledBundle
-	(*CompiledFeature)(nil), // 1: pbflags.v1.CompiledFeature
-	(*CompiledFlag)(nil),    // 2: pbflags.v1.CompiledFlag
-	(*CompiledLaunch)(nil),  // 3: pbflags.v1.CompiledLaunch
+	(*CompiledBundle)(nil),          // 0: pbflags.v1.CompiledBundle
+	(*CompiledFeature)(nil),         // 1: pbflags.v1.CompiledFeature
+	(*CompiledFlag)(nil),            // 2: pbflags.v1.CompiledFlag
+	(*CompiledCondition)(nil),       // 3: pbflags.v1.CompiledCondition
+	(*CompiledDimensionMeta)(nil),   // 4: pbflags.v1.CompiledDimensionMeta
+	(*StoredConditions)(nil),        // 5: pbflags.v1.StoredConditions
+	(*StoredDimensionMetadata)(nil), // 6: pbflags.v1.StoredDimensionMetadata
+	(*CompiledLaunch)(nil),          // 7: pbflags.v1.CompiledLaunch
+	nil,                             // 8: pbflags.v1.CompiledFlag.DimensionMetadataEntry
+	nil,                             // 9: pbflags.v1.StoredDimensionMetadata.DimensionsEntry
 }
 var file_pbflags_v1_bundle_proto_depIdxs = []int32{
 	1, // 0: pbflags.v1.CompiledBundle.features:type_name -> pbflags.v1.CompiledFeature
-	3, // 1: pbflags.v1.CompiledBundle.launches:type_name -> pbflags.v1.CompiledLaunch
+	7, // 1: pbflags.v1.CompiledBundle.launches:type_name -> pbflags.v1.CompiledLaunch
 	2, // 2: pbflags.v1.CompiledFeature.flags:type_name -> pbflags.v1.CompiledFlag
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	3, // 3: pbflags.v1.CompiledFlag.conditions:type_name -> pbflags.v1.CompiledCondition
+	8, // 4: pbflags.v1.CompiledFlag.dimension_metadata:type_name -> pbflags.v1.CompiledFlag.DimensionMetadataEntry
+	3, // 5: pbflags.v1.StoredConditions.conditions:type_name -> pbflags.v1.CompiledCondition
+	9, // 6: pbflags.v1.StoredDimensionMetadata.dimensions:type_name -> pbflags.v1.StoredDimensionMetadata.DimensionsEntry
+	4, // 7: pbflags.v1.CompiledFlag.DimensionMetadataEntry.value:type_name -> pbflags.v1.CompiledDimensionMeta
+	4, // 8: pbflags.v1.StoredDimensionMetadata.DimensionsEntry.value:type_name -> pbflags.v1.CompiledDimensionMeta
+	9, // [9:9] is the sub-list for method output_type
+	9, // [9:9] is the sub-list for method input_type
+	9, // [9:9] is the sub-list for extension type_name
+	9, // [9:9] is the sub-list for extension extendee
+	0, // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_pbflags_v1_bundle_proto_init() }
@@ -430,14 +689,14 @@ func file_pbflags_v1_bundle_proto_init() {
 	if File_pbflags_v1_bundle_proto != nil {
 		return
 	}
-	file_pbflags_v1_bundle_proto_msgTypes[3].OneofWrappers = []any{}
+	file_pbflags_v1_bundle_proto_msgTypes[7].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pbflags_v1_bundle_proto_rawDesc), len(file_pbflags_v1_bundle_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -161,12 +161,12 @@ func Compile(descriptorData []byte, configDir string) ([]byte, error) {
 			// Compile conditions from config.
 			if cfg != nil {
 				if entry, ok := cfg.Flags[d.Name]; ok {
-					condJSON, dimJSON, _, compileErr := compileFlag(d.Name, entry, compiler, boundedDims)
+					compiled, compileErr := compileFlag(d.Name, entry, compiler, boundedDims)
 					if compileErr != nil {
 						return nil, fmt.Errorf("feature %s flag %s: %w", featureID, d.Name, compileErr)
 					}
-					cflag.ConditionsJson = condJSON
-					cflag.DimensionMetadataJson = dimJSON
+					cflag.Conditions = compiled.Conditions
+					cflag.DimensionMetadata = compiled.DimMeta
 				}
 			}
 
@@ -235,17 +235,29 @@ func LoadBundle(ctx context.Context, conn *pgx.Conn, bundleData []byte, sha stri
 		for _, fl := range cf.Flags {
 			allFlagIDs[fl.FlagId] = struct{}{}
 
+			var condBytes, dimBytes []byte
 			var cv *string
-			if fl.ConditionsJson != nil {
+			condCount := len(fl.Conditions)
+			if condCount > 0 {
 				v := bundle.CelVersion
 				cv = &v
+				condBytes, err = proto.Marshal(&pbflagsv1.StoredConditions{Conditions: fl.Conditions})
+				if err != nil {
+					return LoadResult{}, fmt.Errorf("marshal conditions for %q: %w", fl.FlagId, err)
+				}
+				if len(fl.DimensionMetadata) > 0 {
+					dimBytes, err = proto.Marshal(&pbflagsv1.StoredDimensionMetadata{Dimensions: fl.DimensionMetadata})
+					if err != nil {
+						return LoadResult{}, fmt.Errorf("marshal dim metadata for %q: %w", fl.FlagId, err)
+					}
+				}
 			}
 
 			if _, err := tx.Exec(ctx,
 				`INSERT INTO feature_flags.flags
 				   (flag_id, feature_id, field_number, display_name, flag_type, description,
-				    default_value, supported_values, conditions, dimension_metadata, cel_version)
-				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+				    default_value, supported_values, conditions, dimension_metadata, cel_version, condition_count)
+				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 				 ON CONFLICT (flag_id) DO UPDATE SET
 				   display_name = EXCLUDED.display_name,
 				   flag_type = EXCLUDED.flag_type,
@@ -255,15 +267,16 @@ func LoadBundle(ctx context.Context, conn *pgx.Conn, bundleData []byte, sha stri
 				   conditions = EXCLUDED.conditions,
 				   dimension_metadata = EXCLUDED.dimension_metadata,
 				   cel_version = EXCLUDED.cel_version,
+				   condition_count = EXCLUDED.condition_count,
 				   archived_at = NULL,
 				   updated_at = now()`,
 				fl.FlagId, cf.FeatureId, fl.FieldNumber, fl.Name, fl.FlagType, "",
-				fl.DefaultValue, fl.SupportedValues, fl.ConditionsJson, fl.DimensionMetadataJson, cv,
+				fl.DefaultValue, fl.SupportedValues, condBytes, dimBytes, cv, condCount,
 			); err != nil {
 				return LoadResult{}, fmt.Errorf("upsert flag %q: %w", fl.FlagId, err)
 			}
 			result.FlagsUpserted++
-			if fl.ConditionsJson != nil {
+			if condCount > 0 {
 				result.ConditionsUpdated++
 			}
 		}

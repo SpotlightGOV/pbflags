@@ -5,6 +5,7 @@ import (
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestDisplayString(t *testing.T) {
@@ -216,6 +217,13 @@ func TestDisplayString(t *testing.T) {
 	}
 }
 
+func mustMarshalFV(t *testing.T, fv *pbflagsv1.FlagValue) []byte {
+	t.Helper()
+	b, err := proto.Marshal(fv)
+	require.NoError(t, err)
+	return b
+}
+
 func TestDisplayConditionValue(t *testing.T) {
 	t.Parallel()
 
@@ -230,38 +238,38 @@ func TestDisplayConditionValue(t *testing.T) {
 			want: "—",
 		},
 		{
-			name: "valid protojson bool true",
-			raw:  []byte(`{"boolValue":true}`),
+			name: "proto bool true",
+			raw:  mustMarshalFV(t, &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}}),
 			want: "true",
 		},
 		{
-			name: "valid protojson bool false",
-			raw:  []byte(`{"boolValue":false}`),
+			name: "proto bool false",
+			raw:  mustMarshalFV(t, &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: false}}),
 			want: "false",
 		},
 		{
-			name: "valid protojson string value",
-			raw:  []byte(`{"stringValue":"hello"}`),
+			name: "proto string value",
+			raw:  mustMarshalFV(t, &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: "hello"}}),
 			want: "hello",
 		},
 		{
-			name: "valid protojson int64 value",
-			raw:  []byte(`{"int64Value":"42"}`),
+			name: "proto int64 value",
+			raw:  mustMarshalFV(t, &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64Value{Int64Value: 42}}),
 			want: "42",
 		},
 		{
-			name: "valid protojson double value",
-			raw:  []byte(`{"doubleValue":3.14}`),
+			name: "proto double value",
+			raw:  mustMarshalFV(t, &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleValue{DoubleValue: 3.14}}),
 			want: "3.14",
 		},
 		{
-			name: "invalid protojson returns raw string",
-			raw:  []byte(`not valid json`),
-			want: "not valid json",
+			name: "invalid bytes returns em dash",
+			raw:  []byte(`not valid`),
+			want: "—",
 		},
 		{
-			name: "empty JSON object returns em dash",
-			raw:  []byte(`{}`),
+			name: "empty proto returns em dash",
+			raw:  mustMarshalFV(t, &pbflagsv1.FlagValue{}),
 			want: "—",
 		},
 	}

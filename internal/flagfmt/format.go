@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
-	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 // DisplayString formats a FlagValue for human display (admin UI, CLI show).
@@ -62,15 +62,15 @@ func DisplayString(v *pbflagsv1.FlagValue) string {
 	}
 }
 
-// DisplayConditionValue formats a protojson-encoded FlagValue (from the
-// conditions JSONB column) for human display.
+// DisplayConditionValue formats a proto-encoded FlagValue (from the
+// conditions bytea column) for human display.
 func DisplayConditionValue(raw []byte) string {
 	if raw == nil {
 		return "—"
 	}
 	var fv pbflagsv1.FlagValue
-	if err := protojson.Unmarshal(raw, &fv); err != nil {
-		return string(raw)
+	if err := proto.Unmarshal(raw, &fv); err != nil {
+		return "—"
 	}
 	return DisplayString(&fv)
 }

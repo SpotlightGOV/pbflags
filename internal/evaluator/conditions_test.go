@@ -1,18 +1,15 @@
 package evaluator
 
 import (
-	"encoding/json"
 	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	example "github.com/SpotlightGOV/pbflags/gen/example"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
-	"github.com/SpotlightGOV/pbflags/internal/flagfmt"
 )
 
 // helpers ----------------------------------------------------------------
@@ -26,28 +23,26 @@ func testEvaluator(t *testing.T) *ConditionEvaluator {
 	return ce
 }
 
-func boolFlagValueJSON(t *testing.T, v bool) json.RawMessage {
+func boolFlagValueBytes(t *testing.T, v bool) []byte {
 	t.Helper()
-	b, err := protojson.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: v}})
+	b, err := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: v}})
 	require.NoError(t, err)
 	return b
 }
 
-func stringFlagValueJSON(t *testing.T, v string) json.RawMessage {
+func stringFlagValueBytes(t *testing.T, v string) []byte {
 	t.Helper()
-	b, err := protojson.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: v}})
+	b, err := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: v}})
 	require.NoError(t, err)
 	return b
 }
 
-func mustMarshalConditions(t *testing.T, conds []flagfmt.StoredCondition) []byte {
+func mustMarshalConditions(t *testing.T, conds []*pbflagsv1.CompiledCondition) []byte {
 	t.Helper()
-	b, err := json.Marshal(conds)
+	b, err := proto.Marshal(&pbflagsv1.StoredConditions{Conditions: conds})
 	require.NoError(t, err)
 	return b
 }
-
-func ptr[T any](v T) *T { return &v }
 
 // -----------------------------------------------------------------------
 // NewConditionEvaluator
@@ -95,10 +90,10 @@ func TestConditionCompile(t *testing.T) {
 		},
 		{
 			name: "valid condition with CEL expression",
-			input: mustMarshalConditions(t, []flagfmt.StoredCondition{
+			input: mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
 				{
-					CEL:   ptr(`ctx.plan == PlanLevel.ENTERPRISE`),
-					Value: boolFlagValueJSON(t, true),
+					Cel:   `ctx.plan == PlanLevel.ENTERPRISE`,
+					Value: boolFlagValueBytes(t, true),
 				},
 			}),
 			wantLen: 1,
@@ -109,11 +104,11 @@ func TestConditionCompile(t *testing.T) {
 			},
 		},
 		{
-			name: "otherwise clause with nil CEL",
-			input: mustMarshalConditions(t, []flagfmt.StoredCondition{
+			name: "otherwise clause with empty CEL",
+			input: mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
 				{
-					CEL:   nil,
-					Value: boolFlagValueJSON(t, false),
+					Cel:   "",
+					Value: boolFlagValueBytes(t, false),
 				},
 			}),
 			wantLen: 1,
@@ -124,38 +119,38 @@ func TestConditionCompile(t *testing.T) {
 			},
 		},
 		{
-			name:    "malformed JSON returns nil",
-			input:   []byte(`{not valid json`),
+			name:    "malformed proto returns nil",
+			input:   []byte(`{not valid`),
 			wantNil: true,
 		},
 		{
-			name: "invalid protojson value returns nil",
-			input: mustMarshalConditions(t, []flagfmt.StoredCondition{
+			name: "invalid proto value returns nil",
+			input: mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
 				{
-					CEL:   ptr(`ctx.is_internal`),
-					Value: json.RawMessage(`{"bogus_field": 999}`),
+					Cel:   `ctx.is_internal`,
+					Value: []byte("bogus"),
 				},
 			}),
 			wantNil: true,
 		},
 		{
 			name: "invalid CEL expression returns nil",
-			input: mustMarshalConditions(t, []flagfmt.StoredCondition{
+			input: mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
 				{
-					CEL:   ptr(`ctx.nonexistent_field == "x"`),
-					Value: boolFlagValueJSON(t, true),
+					Cel:   `ctx.nonexistent_field == "x"`,
+					Value: boolFlagValueBytes(t, true),
 				},
 			}),
 			wantNil: true,
 		},
 		{
 			name: "condition with valid launch override",
-			input: mustMarshalConditions(t, []flagfmt.StoredCondition{
+			input: mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
 				{
-					CEL:         ptr(`ctx.is_internal`),
-					Value:       boolFlagValueJSON(t, false),
-					LaunchID:    "launch-1",
-					LaunchValue: boolFlagValueJSON(t, true),
+					Cel:         `ctx.is_internal`,
+					Value:       boolFlagValueBytes(t, false),
+					LaunchId:    "launch-1",
+					LaunchValue: boolFlagValueBytes(t, true),
 				},
 			}),
 			wantLen: 1,
@@ -166,12 +161,12 @@ func TestConditionCompile(t *testing.T) {
 		},
 		{
 			name: "condition with invalid launch value degrades gracefully",
-			input: mustMarshalConditions(t, []flagfmt.StoredCondition{
+			input: mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
 				{
-					CEL:         ptr(`ctx.is_internal`),
-					Value:       boolFlagValueJSON(t, false),
-					LaunchID:    "launch-1",
-					LaunchValue: json.RawMessage(`{"bogus": 42}`),
+					Cel:         `ctx.is_internal`,
+					Value:       boolFlagValueBytes(t, false),
+					LaunchId:    "launch-1",
+					LaunchValue: []byte("bogus"),
 				},
 			}),
 			wantLen: 1,
@@ -183,18 +178,18 @@ func TestConditionCompile(t *testing.T) {
 		},
 		{
 			name: "multiple conditions compile in order",
-			input: mustMarshalConditions(t, []flagfmt.StoredCondition{
+			input: mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
 				{
-					CEL:   ptr(`ctx.plan == PlanLevel.ENTERPRISE`),
-					Value: stringFlagValueJSON(t, "enterprise"),
+					Cel:   `ctx.plan == PlanLevel.ENTERPRISE`,
+					Value: stringFlagValueBytes(t, "enterprise"),
 				},
 				{
-					CEL:   ptr(`ctx.plan == PlanLevel.PRO`),
-					Value: stringFlagValueJSON(t, "pro"),
+					Cel:   `ctx.plan == PlanLevel.PRO`,
+					Value: stringFlagValueBytes(t, "pro"),
 				},
 				{
-					CEL:   nil,
-					Value: stringFlagValueJSON(t, "default"),
+					Cel:   "",
+					Value: stringFlagValueBytes(t, "default"),
 				},
 			}),
 			wantLen: 3,
@@ -241,8 +236,8 @@ func TestConditionEvaluate(t *testing.T) {
 
 	t.Run("nil evalCtx returns empty result", func(t *testing.T) {
 		t.Parallel()
-		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []flagfmt.StoredCondition{
-			{CEL: nil, Value: boolFlagValueJSON(t, true)},
+		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
+			{Cel: "", Value: boolFlagValueBytes(t, true)},
 		}))
 		require.NotNil(t, conds)
 		res := ce.EvaluateConditions("flag-1", conds, nil)
@@ -252,14 +247,14 @@ func TestConditionEvaluate(t *testing.T) {
 
 	t.Run("first matching condition returns its value", func(t *testing.T) {
 		t.Parallel()
-		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []flagfmt.StoredCondition{
+		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
 			{
-				CEL:   ptr(`ctx.plan == PlanLevel.ENTERPRISE`),
-				Value: stringFlagValueJSON(t, "enterprise-val"),
+				Cel:   `ctx.plan == PlanLevel.ENTERPRISE`,
+				Value: stringFlagValueBytes(t, "enterprise-val"),
 			},
 			{
-				CEL:   ptr(`ctx.plan == PlanLevel.PRO`),
-				Value: stringFlagValueJSON(t, "pro-val"),
+				Cel:   `ctx.plan == PlanLevel.PRO`,
+				Value: stringFlagValueBytes(t, "pro-val"),
 			},
 		}))
 		require.NotNil(t, conds)
@@ -273,14 +268,14 @@ func TestConditionEvaluate(t *testing.T) {
 
 	t.Run("non-matching conditions skip to next", func(t *testing.T) {
 		t.Parallel()
-		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []flagfmt.StoredCondition{
+		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
 			{
-				CEL:   ptr(`ctx.plan == PlanLevel.ENTERPRISE`),
-				Value: stringFlagValueJSON(t, "enterprise-val"),
+				Cel:   `ctx.plan == PlanLevel.ENTERPRISE`,
+				Value: stringFlagValueBytes(t, "enterprise-val"),
 			},
 			{
-				CEL:   ptr(`ctx.plan == PlanLevel.PRO`),
-				Value: stringFlagValueJSON(t, "pro-val"),
+				Cel:   `ctx.plan == PlanLevel.PRO`,
+				Value: stringFlagValueBytes(t, "pro-val"),
 			},
 		}))
 		require.NotNil(t, conds)
@@ -294,10 +289,10 @@ func TestConditionEvaluate(t *testing.T) {
 
 	t.Run("no match returns empty result", func(t *testing.T) {
 		t.Parallel()
-		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []flagfmt.StoredCondition{
+		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
 			{
-				CEL:   ptr(`ctx.plan == PlanLevel.ENTERPRISE`),
-				Value: stringFlagValueJSON(t, "enterprise-val"),
+				Cel:   `ctx.plan == PlanLevel.ENTERPRISE`,
+				Value: stringFlagValueBytes(t, "enterprise-val"),
 			},
 		}))
 		require.NotNil(t, conds)
@@ -310,14 +305,14 @@ func TestConditionEvaluate(t *testing.T) {
 
 	t.Run("otherwise clause always matches", func(t *testing.T) {
 		t.Parallel()
-		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []flagfmt.StoredCondition{
+		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
 			{
-				CEL:   ptr(`ctx.plan == PlanLevel.ENTERPRISE`),
-				Value: stringFlagValueJSON(t, "enterprise-val"),
+				Cel:   `ctx.plan == PlanLevel.ENTERPRISE`,
+				Value: stringFlagValueBytes(t, "enterprise-val"),
 			},
 			{
-				CEL:   nil,
-				Value: stringFlagValueJSON(t, "otherwise-val"),
+				Cel:   "",
+				Value: stringFlagValueBytes(t, "otherwise-val"),
 			},
 		}))
 		require.NotNil(t, conds)
@@ -332,12 +327,12 @@ func TestConditionEvaluate(t *testing.T) {
 
 	t.Run("launch override applied when entity in ramp", func(t *testing.T) {
 		t.Parallel()
-		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []flagfmt.StoredCondition{
+		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
 			{
-				CEL:         ptr(`ctx.is_internal`),
-				Value:       stringFlagValueJSON(t, "base-val"),
-				LaunchID:    "launch-1",
-				LaunchValue: stringFlagValueJSON(t, "launch-val"),
+				Cel:         `ctx.is_internal`,
+				Value:       stringFlagValueBytes(t, "base-val"),
+				LaunchId:    "launch-1",
+				LaunchValue: stringFlagValueBytes(t, "launch-val"),
 			},
 		}))
 		require.NotNil(t, conds)
@@ -353,12 +348,12 @@ func TestConditionEvaluate(t *testing.T) {
 
 	t.Run("launch override not applied when entity not in ramp", func(t *testing.T) {
 		t.Parallel()
-		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []flagfmt.StoredCondition{
+		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
 			{
-				CEL:         ptr(`ctx.is_internal`),
-				Value:       stringFlagValueJSON(t, "base-val"),
-				LaunchID:    "launch-1",
-				LaunchValue: stringFlagValueJSON(t, "launch-val"),
+				Cel:         `ctx.is_internal`,
+				Value:       stringFlagValueBytes(t, "base-val"),
+				LaunchId:    "launch-1",
+				LaunchValue: stringFlagValueBytes(t, "launch-val"),
 			},
 		}))
 		require.NotNil(t, conds)
@@ -374,12 +369,12 @@ func TestConditionEvaluate(t *testing.T) {
 
 	t.Run("launch override not applied when launch not in map", func(t *testing.T) {
 		t.Parallel()
-		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []flagfmt.StoredCondition{
+		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
 			{
-				CEL:         ptr(`ctx.is_internal`),
-				Value:       stringFlagValueJSON(t, "base-val"),
-				LaunchID:    "launch-1",
-				LaunchValue: stringFlagValueJSON(t, "launch-val"),
+				Cel:         `ctx.is_internal`,
+				Value:       stringFlagValueBytes(t, "base-val"),
+				LaunchId:    "launch-1",
+				LaunchValue: stringFlagValueBytes(t, "launch-val"),
 			},
 		}))
 		require.NotNil(t, conds)
@@ -394,12 +389,12 @@ func TestConditionEvaluate(t *testing.T) {
 
 	t.Run("launch override on otherwise clause", func(t *testing.T) {
 		t.Parallel()
-		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []flagfmt.StoredCondition{
+		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
 			{
-				CEL:         nil, // otherwise
-				Value:       stringFlagValueJSON(t, "base-val"),
-				LaunchID:    "launch-2",
-				LaunchValue: stringFlagValueJSON(t, "launch-val"),
+				Cel:         "", // otherwise
+				Value:       stringFlagValueBytes(t, "base-val"),
+				LaunchId:    "launch-2",
+				LaunchValue: stringFlagValueBytes(t, "launch-val"),
 			},
 		}))
 		require.NotNil(t, conds)

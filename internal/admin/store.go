@@ -2,7 +2,6 @@ package admin
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -160,7 +159,7 @@ func (s *Store) ListFeatures(ctx context.Context) ([]*pbflagsv1.FeatureDetail, m
 		       fl.flag_type, fl.killed_at,
 		       fl.default_value, fl.supported_values,
 		       fl.archived_at IS NOT NULL as archived,
-		       COALESCE(CASE WHEN jsonb_typeof(fl.conditions) = 'array' THEN jsonb_array_length(fl.conditions) ELSE 0 END, 0) as condition_count
+		       fl.condition_count
 		FROM feature_flags.features f
 		JOIN feature_flags.flags fl ON fl.feature_id = f.feature_id
 		WHERE fl.archived_at IS NULL
@@ -300,21 +299,19 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 		extra.SyncSHA = *syncSHA
 	}
 	if conditionsJSON != nil {
-		var entries []flagfmt.StoredCondition
-		if err := json.Unmarshal(conditionsJSON, &entries); err != nil {
+		var stored pbflagsv1.StoredConditions
+		if err := proto.Unmarshal(conditionsJSON, &stored); err != nil {
 			s.logger.Warn("failed to unmarshal conditions", "flag_id", flagID, "error", err)
 			extra.ConditionsError = err.Error()
 		} else {
-			for _, e := range entries {
+			for _, e := range stored.Conditions {
 				fc := FlagCondition{
 					Value:   flagfmt.DisplayConditionValue(e.Value),
 					Comment: e.Comment,
+					CEL:     e.Cel,
 				}
-				if e.CEL != nil {
-					fc.CEL = *e.CEL
-				}
-				if e.LaunchID != "" {
-					fc.LaunchID = e.LaunchID
+				if e.LaunchId != "" {
+					fc.LaunchID = e.LaunchId
 					fc.LaunchValue = flagfmt.DisplayConditionValue(e.LaunchValue)
 				}
 				extra.Conditions = append(extra.Conditions, fc)

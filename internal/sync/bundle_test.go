@@ -61,7 +61,7 @@ flags:
 			}
 		}
 		require.NotNil(t, emailFlag, "email_enabled flag should be in bundle")
-		require.NotNil(t, emailFlag.ConditionsJson, "static value should produce conditions JSON")
+		require.NotEmpty(t, emailFlag.Conditions, "static value should produce conditions")
 	})
 
 	t.Run("condition chain config", func(t *testing.T) {
@@ -103,8 +103,8 @@ flags:
 			}
 		}
 		require.NotNil(t, emailFlag)
-		require.NotNil(t, emailFlag.ConditionsJson)
-		require.NotNil(t, emailFlag.DimensionMetadataJson, "conditions with CEL should produce dimension metadata")
+		require.NotEmpty(t, emailFlag.Conditions)
+		require.NotEmpty(t, emailFlag.DimensionMetadata, "conditions with CEL should produce dimension metadata")
 	})
 
 	t.Run("empty config dir", func(t *testing.T) {

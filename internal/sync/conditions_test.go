@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -20,7 +19,6 @@ import (
 	"github.com/SpotlightGOV/pbflags/internal/codegen/contextutil"
 	"github.com/SpotlightGOV/pbflags/internal/configfile"
 	"github.com/SpotlightGOV/pbflags/internal/evaluator"
-	"github.com/SpotlightGOV/pbflags/internal/flagfmt"
 	"github.com/SpotlightGOV/pbflags/internal/testdb"
 )
 
@@ -80,25 +78,18 @@ func TestCompileFlag(t *testing.T) {
 		entry := configfile.FlagEntry{
 			Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}},
 		}
-		condJSON, dimJSON, _, err := compileFlag("email_enabled", entry, compiler, boundedDims)
+		result, err := compileFlag("email_enabled", entry, compiler, boundedDims)
 		if err != nil {
 			t.Fatalf("compileFlag: %v", err)
 		}
-		if condJSON == nil {
-			t.Fatal("expected non-nil condJSON for static value")
+		if len(result.Conditions) != 1 {
+			t.Fatalf("got %d conditions, want 1", len(result.Conditions))
 		}
-		var conds []flagfmt.StoredCondition
-		if err := json.Unmarshal(condJSON, &conds); err != nil {
-			t.Fatalf("unmarshal conditions: %v", err)
+		if result.Conditions[0].Cel != "" {
+			t.Errorf("static value condition CEL should be empty, got %q", result.Conditions[0].Cel)
 		}
-		if len(conds) != 1 {
-			t.Fatalf("got %d conditions, want 1", len(conds))
-		}
-		if conds[0].CEL != nil {
-			t.Errorf("static value condition CEL should be nil, got %v", conds[0].CEL)
-		}
-		if dimJSON != nil {
-			t.Error("expected nil dimJSON for static value")
+		if len(result.DimMeta) != 0 {
+			t.Error("expected empty DimMeta for static value")
 		}
 	})
 
@@ -109,42 +100,26 @@ func TestCompileFlag(t *testing.T) {
 				{When: "", Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: "weekly"}}},
 			},
 		}
-		condJSON, dimJSON, warnings, err := compileFlag("digest_frequency", entry, compiler, boundedDims)
+		result, err := compileFlag("digest_frequency", entry, compiler, boundedDims)
 		if err != nil {
 			t.Fatalf("compileFlag: %v", err)
 		}
-		if condJSON == nil {
-			t.Fatal("expected non-nil condJSON")
+		if len(result.Conditions) != 2 {
+			t.Fatalf("got %d conditions, want 2", len(result.Conditions))
+		}
+		if result.Conditions[0].Cel != "ctx.plan == PlanLevel.ENTERPRISE" {
+			t.Errorf("condition 0 CEL = %q", result.Conditions[0].Cel)
+		}
+		if result.Conditions[1].Cel != "" {
+			t.Errorf("condition 1 (otherwise) CEL should be empty, got %q", result.Conditions[1].Cel)
 		}
 
-		var conds []flagfmt.StoredCondition
-		if err := json.Unmarshal(condJSON, &conds); err != nil {
-			t.Fatalf("unmarshal conditions: %v", err)
-		}
-		if len(conds) != 2 {
-			t.Fatalf("got %d conditions, want 2", len(conds))
-		}
-		if conds[0].CEL == nil || *conds[0].CEL != "ctx.plan == PlanLevel.ENTERPRISE" {
-			t.Errorf("condition 0 CEL = %v", conds[0].CEL)
-		}
-		if conds[1].CEL != nil {
-			t.Errorf("condition 1 (otherwise) CEL should be nil, got %v", conds[1].CEL)
-		}
-
-		if dimJSON == nil {
-			t.Fatal("expected non-nil dimJSON for condition with enum dimension")
-		}
-
-		var dims map[string]*celenv.DimensionMeta
-		if err := json.Unmarshal(dimJSON, &dims); err != nil {
-			t.Fatalf("unmarshal dims: %v", err)
-		}
-		if dims["plan"] == nil || dims["plan"].Classification != celenv.Bounded {
-			t.Errorf("plan classification = %v, want bounded", dims["plan"])
+		if result.DimMeta["plan"] == nil || result.DimMeta["plan"].Classification != string(celenv.Bounded) {
+			t.Errorf("plan classification = %v, want bounded", result.DimMeta["plan"])
 		}
 
 		// No unbounded warnings expected.
-		for _, w := range warnings {
+		for _, w := range result.Warnings {
 			if w != "" {
 				t.Errorf("unexpected warning: %s", w)
 			}
@@ -158,11 +133,11 @@ func TestCompileFlag(t *testing.T) {
 				{When: "", Value: &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: false}}},
 			},
 		}
-		_, _, warnings, err := compileFlag("test_flag", entry, compiler, boundedDims)
+		result, err := compileFlag("test_flag", entry, compiler, boundedDims)
 		if err != nil {
 			t.Fatalf("compileFlag: %v", err)
 		}
-		if len(warnings) == 0 {
+		if len(result.Warnings) == 0 {
 			t.Error("expected unbounded dimension warnings")
 		}
 	})
@@ -224,25 +199,25 @@ flags:
 	}
 
 	// Verify DB state for the conditional flag.
-	var condJSON, dimJSON []byte
+	var condBytes, dimBytes []byte
 	var celVersion *string
 	err = pool.QueryRow(ctx,
 		`SELECT conditions, dimension_metadata, cel_version FROM feature_flags.flags WHERE flag_id = $1`,
 		tf.FlagIDs[1],
-	).Scan(&condJSON, &dimJSON, &celVersion)
+	).Scan(&condBytes, &dimBytes, &celVersion)
 	if err != nil {
 		t.Fatalf("query flag: %v", err)
 	}
 
-	if condJSON == nil {
+	if condBytes == nil {
 		t.Fatal("conditions should be non-nil for conditional flag")
 	}
-	var conds []flagfmt.StoredCondition
-	if err := json.Unmarshal(condJSON, &conds); err != nil {
+	var stored pbflagsv1.StoredConditions
+	if err := proto.Unmarshal(condBytes, &stored); err != nil {
 		t.Fatalf("unmarshal conditions: %v", err)
 	}
-	if len(conds) != 2 {
-		t.Fatalf("got %d conditions, want 2", len(conds))
+	if len(stored.Conditions) != 2 {
+		t.Fatalf("got %d conditions, want 2", len(stored.Conditions))
 	}
 
 	if celVersion == nil || *celVersion == "" {
@@ -262,15 +237,15 @@ flags:
 	if staticCond == nil {
 		t.Fatal("static flag should have non-nil conditions")
 	}
-	var staticConds []flagfmt.StoredCondition
-	if err := json.Unmarshal(staticCond, &staticConds); err != nil {
+	var staticStored pbflagsv1.StoredConditions
+	if err := proto.Unmarshal(staticCond, &staticStored); err != nil {
 		t.Fatalf("unmarshal static conditions: %v", err)
 	}
-	if len(staticConds) != 1 {
-		t.Fatalf("got %d static conditions, want 1", len(staticConds))
+	if len(staticStored.Conditions) != 1 {
+		t.Fatalf("got %d static conditions, want 1", len(staticStored.Conditions))
 	}
-	if staticConds[0].CEL != nil {
-		t.Errorf("static condition CEL should be nil, got %v", staticConds[0].CEL)
+	if staticStored.Conditions[0].Cel != "" {
+		t.Errorf("static condition CEL should be empty, got %q", staticStored.Conditions[0].Cel)
 	}
 	if staticCelVersion == nil || *staticCelVersion == "" {
 		t.Error("static flag cel_version should be set")

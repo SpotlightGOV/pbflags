@@ -4,8 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	example "github.com/SpotlightGOV/pbflags/gen/example"
+	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/internal/celenv"
 )
 
@@ -130,7 +132,14 @@ func TestConditionCache_InvalidateFlag(t *testing.T) {
 }
 
 func TestParseDimMeta(t *testing.T) {
-	data := []byte(`{"plan":{"classification":"bounded"},"user_id":{"classification":"finite_filter_uniform","literal_set":["u1","u2"]}}`)
+	stored := &pbflagsv1.StoredDimensionMetadata{
+		Dimensions: map[string]*pbflagsv1.CompiledDimensionMeta{
+			"plan":    {Classification: "bounded"},
+			"user_id": {Classification: "finite_filter_uniform", LiteralSet: []string{"u1", "u2"}},
+		},
+	}
+	data, err := proto.Marshal(stored)
+	require.NoError(t, err)
 	meta := ParseDimMeta(data)
 	require.Len(t, meta, 2)
 	require.Equal(t, celenv.Bounded, meta["plan"].Classification)
