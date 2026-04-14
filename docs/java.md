@@ -94,6 +94,17 @@ NotificationsFlags flags = NotificationsFlags.forEvaluator(userEval);
 boolean enabled = flags.emailEnabled().get();
 ```
 
+### Scope-based access (recommended)
+
+If your proto defines evaluation scopes, the codegen produces per-scope `*Features` classes with typed constructor parameters. Feature accessors are cached on first call:
+
+```java
+// Scope constructors require their dimensions — compile-time safe.
+UserFeatures userFeatures = new UserFeatures(evaluator, sessionId, userId);
+NotificationsFlags notifications = userFeatures.notifications(); // cached
+boolean enabled = notifications.emailEnabled().get();
+```
+
 ### Flag ID constants
 
 Each flag has a constant for its ID, useful for testing and admin operations:

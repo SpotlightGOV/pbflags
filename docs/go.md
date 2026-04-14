@@ -94,6 +94,25 @@ notifications := notificationsflags.New(scoped)
 
 Returns compiled defaults on any evaluation error (never panics).
 
+### Scope-based access (recommended)
+
+If your proto defines evaluation scopes, the codegen produces per-scope `*Features` types with constructors that require the scope's dimensions. This makes missing dimensions a compile error:
+
+```go
+import "github.com/yourorg/yourrepo/gen/flags/dims"
+
+// Scope constructors require their dimensions as typed parameters.
+userFeatures := dims.NewUserFeatures(eval, sessionID, userID)
+notifications := userFeatures.Notifications()  // cached — no allocation after first call
+emailEnabled := notifications.EmailEnabled(ctx)
+
+// Duck-typed interfaces let handlers declare what they need.
+func handleNotification(features dims.HasNotifications) {
+    freq := features.Notifications().DigestFrequency(ctx)
+}
+// Accepts *UserFeatures, *TenantFeatures, or any scope with Notifications().
+```
+
 ### Context integration
 
 Store and retrieve evaluators via `context.Context` for use in middleware / request handlers:
