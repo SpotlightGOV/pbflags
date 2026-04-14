@@ -25,7 +25,7 @@ This order matters because `pbflags-admin` and `pbflags-evaluator` do not run mi
 
 - [Conditions and config-driven flags (v0.16.0)](#conditions-and-config-driven-flags-v0160) — migrating from overrides to YAML conditions
 - [Evaluation context dimensions (v0.15.0)](#evaluation-context-dimensions-v0150) — replacing layers with context dimensions
-- [User-defined layers](upgrade-guide-user-defined-layers.md) — historical guide for pre-v0.15 layer migrations
+- [User-defined layers](archive/upgrade-guide-user-defined-layers.md) — historical guide for pre-v0.15 layer migrations (archived)
 
 ---
 
