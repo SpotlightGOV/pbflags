@@ -131,7 +131,7 @@ flags:
 Validate it before syncing:
 
 ```bash
-pbflags-sync validate --descriptors=descriptors.pb --features=./features
+pb validate --descriptors=descriptors.pb --features=./features
 ```
 
 ### 4. Run the server

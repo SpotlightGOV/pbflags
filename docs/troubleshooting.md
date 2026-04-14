@@ -4,11 +4,11 @@
 
 ```
 database schema version 0 < required 1
-  run "pbflags-sync --database=..." to apply migrations, or
+  run "pb migrate --database=..." to apply migrations, or
   start with "pbflags-admin --standalone" to auto-migrate
 ```
 
-`pbflags-admin` and `pbflags-evaluator` do not run migrations — they verify the schema version on startup and fail fast if it is behind. Run `pbflags-sync` first, or use `pbflags-admin --standalone` which migrates automatically.
+`pbflags-admin` and `pbflags-evaluator` do not run migrations — they verify the schema version on startup and fail fast if it is behind. Run `pb migrate` (or `pb sync`, which migrates automatically) first, or use `pbflags-admin --standalone` which migrates automatically.
 
 ## Standalone lease warnings
 

@@ -240,10 +240,10 @@ Rules:
 
 ### Validate configs in CI
 
-Use `pbflags-sync validate` to catch syntax and CEL compilation errors before deploy:
+Use `pb validate` to catch syntax and CEL compilation errors before deploy:
 
 ```bash
-pbflags-sync validate --descriptors=descriptors.pb --features=./features
+pb validate --descriptors=descriptors.pb --features=./features
 ```
 
 This checks YAML structure, CEL expression compilation, and value type compatibility against the proto descriptors — all without a database connection.
@@ -251,7 +251,7 @@ This checks YAML structure, CEL expression compilation, and value type compatibi
 ### Inspect a flag's condition chain
 
 ```bash
-pbflags-sync show --descriptors=descriptors.pb --features=./features notifications/email_enabled
+pb show --descriptors=descriptors.pb --features=./features notifications/email_enabled
 ```
 
 ### Project config file

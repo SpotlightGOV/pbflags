@@ -87,25 +87,28 @@ When adding new routes, keep multi-segment IDs in a trailing `{...}` segment onl
 
 ## Config CLI subcommands
 
-`pbflags-sync` has two offline subcommands that do not require a database connection:
+The `pb` CLI has offline subcommands that do not require a database connection:
 
 ```bash
 # Validate YAML config files against descriptors (for CI)
-pbflags-sync validate --descriptors=descriptors.pb --features=./features
+pb validate --descriptors=descriptors.pb --features=./features
 
 # Show the compiled condition chain for a single flag
-pbflags-sync show --descriptors=descriptors.pb --features=./features <feature/field>
+pb show --descriptors=descriptors.pb --features=./features <feature/field>
+
+# Detect breaking changes in proto definitions
+pb lint proto/
 ```
 
-The main sync command also supports:
+The sync command also supports:
 
 - `--features=./features` — directory of YAML flag config files to compile into database conditions
 - `--sha=<hash>` — git commit SHA recorded on synced features (displayed in the admin UI)
 
-Additionally, `pbflags-sync export` generates YAML from existing database flag values and legacy per-entity overrides, useful as a migration bridge when moving to YAML configs:
+Additionally, `pb export` generates YAML from existing database flag values and legacy per-entity overrides, useful as a migration bridge when moving to YAML configs:
 
 ```bash
-pbflags-sync export \
+pb export \
   --database=$PBFLAGS_DATABASE \
   --entity-dimension=user_id \
   --output=features/
@@ -113,14 +116,14 @@ pbflags-sync export \
 
 ## Project config file
 
-`pbflags-sync` discovers a `.pbflags.yaml` file by walking up from the working directory (similar to `buf.yaml`). Currently supported fields:
+The `pb` CLI discovers a `.pbflags.yaml` file by walking up from the working directory (similar to `buf.yaml`). Currently supported fields:
 
 ```yaml
 # .pbflags.yaml
 features_path: features   # default --features directory for sync/validate/show
 ```
 
-When `features_path` is set, `--features` can be omitted from `pbflags-sync`, `validate`, and `show` subcommands.
+When `features_path` is set, `--features` can be omitted from `pb sync`, `pb validate`, and `pb show` commands.
 
 ## Repository structure
 
@@ -130,10 +133,11 @@ pbflags/
 ├── proto/example/          # Example feature flag definitions
 ├── gen/                    # Generated Go protobuf code
 ├── cmd/
+│   ├── pbflags/            # Unified CLI (pb): sync, validate, lint, flag, launch, auth, etc.
 │   ├── pbflags-admin/      # Control plane (admin API + UI + local evaluator)
 │   ├── pbflags-evaluator/  # Read-only flag resolution service
-│   ├── pbflags-sync/       # Schema migration + definition sync
-│   ├── pbflags-lint/       # Pre-commit breaking change detector
+│   ├── pbflags-sync/       # Schema migration + definition sync (legacy, use pb sync)
+│   ├── pbflags-lint/       # Breaking change detector (legacy, use pb lint)
 │   └── protoc-gen-pbflags/ # Code generation plugin (Go, Java)
 ├── internal/
 │   ├── evaluator/          # Evaluation engine, caching, health tracking

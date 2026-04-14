@@ -113,7 +113,7 @@ A flag's dimension is part of its contract with consumers — changing it change
 | Dimension → Global | **No** | Existing conditions reference the old dimension's context fields and would fail CEL evaluation or silently mismatch. |
 | Dimension A → Dimension B | **No** | Existing conditions were written against Dimension A's context fields (e.g., `user_id`). After the change, they reference fields that no longer apply. |
 
-The lint tool (`pbflags-lint`) enforces these rules at pre-commit or release time.
+The lint tool (`pb lint`) enforces these rules at pre-commit or release time.
 
 ### Migrating a flag to a different dimension
 
@@ -123,20 +123,20 @@ When you need to change a flag's dimension, define a new flag instead of modifyi
 2. **Regenerate code.** Both flags are available simultaneously.
 3. **Define conditions** on the new flag with CEL expressions targeting the new dimension.
 4. **Update application code** to read the new flag. Deploy.
-5. **Archive the old flag.** Remove the field from the proto (or mark it `reserved`). Run `pbflags-sync` to archive it.
+5. **Archive the old flag.** Remove the field from the proto (or mark it `reserved`). Run `pb sync` to archive it.
 
 This avoids any window of incorrect evaluation — both flags coexist during the transition, each with conditions written for the correct dimension.
 
 ## Lint tool
 
-`pbflags-lint` detects breaking changes in your proto definitions before they reach production. It compares the working tree against a base git ref and reports violations.
+`pb lint` detects breaking changes in your proto definitions before they reach production. It compares the working tree against a base git ref and reports violations.
 
 ```bash
 # Pre-commit: compare working tree vs HEAD
-pbflags-lint proto/
+pb lint proto/
 
 # CI: compare against main branch
-pbflags-lint --base origin/main proto/
+pb lint --base origin/main proto/
 ```
 
 Exit codes: `0` = clean, `1` = breaking changes found, `2` = tool error.
@@ -159,7 +159,7 @@ pre-commit:
   commands:
     pbflags:
       glob: "proto/**/*.proto"
-      run: pbflags-lint proto/
+      run: pb lint proto/
 ```
 
 ```yaml
