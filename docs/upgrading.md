@@ -23,9 +23,121 @@ This order matters because `pbflags-admin` and `pbflags-evaluator` do not run mi
 
 ## Version-specific upgrade guides
 
+- [Launches and evaluation scopes (v0.17.0)](#launches-and-evaluation-scopes-v0170) — gradual rollouts, per-condition overrides, scope-based codegen
 - [Conditions and config-driven flags (v0.16.0)](#conditions-and-config-driven-flags-v0160) — migrating from overrides to YAML conditions
 - [Evaluation context dimensions (v0.15.0)](#evaluation-context-dimensions-v0150) — replacing layers with context dimensions
 - [User-defined layers](archive/upgrade-guide-user-defined-layers.md) — historical guide for pre-v0.15 layer migrations (archived)
+
+---
+
+## Launches and evaluation scopes (v0.17.0)
+
+This release adds gradual rollouts (launches) with per-condition value overrides,
+evaluation scopes with typed codegen, and dimension classification enums. The
+launch feature is pre-release — no production launches exist against the old
+schema, so the migration is a clean break.
+
+### What changed
+
+**Proto definitions:**
+
+- `DimensionOptions.hashable` (bool, field 2) is replaced by `DimensionDistribution`
+  (enum, field 2). Wire-compatible: old `hashable: true` decodes as
+  `DIMENSION_DISTRIBUTION_UNIFORM` (enum value 1).
+- `DimensionOptions.bounded` (bool, field 3) is removed (reserved). Enum and bool
+  dimensions are inherently categorical. Use `distribution: CATEGORICAL` for
+  string/int64 dimensions with bounded cardinality.
+- `DimensionOptions.presence` (enum, field 4) is new. `REQUIRED` means always
+  present; `OPTIONAL` means may be absent.
+- `FeatureOptions.scopes` (repeated string, field 4) is new. Lists which
+  evaluation scopes a feature is available in.
+- `ScopeOptions` message and `(pbflags.scope)` file-level option are new.
+  Scopes define named execution contexts with dimension sets.
+- `CompiledLaunch` is simplified: `flag_id`, `population_cel`, `value_json` removed.
+  New fields: `scope_feature_id`, `affected_features`, `description`.
+- `CompiledFeature.launches` (field 6) is reserved. Launches are now at
+  `CompiledBundle.launches` (field 3).
+
+**Database (migration 008):**
+
+- `launches` table reshaped: `flag_id`, `population_cel`, `value` columns dropped.
+  `feature_id` renamed to `scope_feature_id` (nullable for cross-feature launches).
+  New columns: `affected_features` (TEXT[]), `description` (TEXT), `killed_at`
+  (TIMESTAMPTZ, nullable). Status values: BAKED → SOAKING.
+- **Precondition**: no ACTIVE or BAKED launches may exist. The migration checks
+  and raises an exception if any are found.
+- Launch-to-flag binding is now inline in the `flags.conditions` JSONB via
+  `launch_id` and `launch_value` fields on `StoredCondition`.
+
+**YAML config format:**
+
+The `launches:` section changes from per-flag binding to dimension-only:
+
+```yaml
+# Before (v0.16)
+launches:
+  my_rollout:
+    flag: email_enabled
+    dimension: user_id
+    population: "ctx.plan == PlanLevel.PRO"
+    value: true
+    ramp_percentage: 25
+
+# After (v0.17)
+launches:
+  my_rollout:
+    dimension: user_id
+    ramp_percentage: 25
+    description: "Pro email rollout"
+
+flags:
+  email_enabled:
+    conditions:
+      - when: "ctx.plan == PlanLevel.PRO"
+        value: false
+        launch:
+          id: my_rollout
+          value: true
+      - otherwise: false
+```
+
+The `flag`, `population`, and `value` fields are removed from launch definitions.
+Population targeting moves to the condition's `when` clause. The launch override
+value moves inline to the condition via `launch: {id, value}`.
+
+**Generated code:**
+
+- New per-scope `*Features` types in the `dims` package (e.g., `AnonFeatures`,
+  `UserFeatures`). Constructors require scope dimensions as typed parameters.
+- Duck-typed `Has<Feature>` interfaces per feature for handler decoupling.
+- Context storage helpers: `ContextWith<Scope>Features` / `<Scope>FeaturesFrom`.
+- Existing per-feature packages (`notificationsflags`, etc.) are unchanged.
+
+**Lint rules (new):**
+
+- `scope_removed` — removing a scope deletes its generated `*Features` type.
+- `scope_dimension_changed` — changing a scope's dimension set changes the
+  constructor signature.
+- `feature_scope_removed` — removing a feature from a scope deletes the accessor.
+
+### Migration checklist
+
+1. **Update proto dimensions**: replace `hashable: true` with
+   `distribution: DIMENSION_DISTRIBUTION_UNIFORM`. Add `presence:` annotations
+   (`REQUIRED` or `OPTIONAL`).
+2. **Define scopes**: add `option (pbflags.scope) = { name: "...", dimensions: [...] }`
+   at file level. Add `scopes: [...]` to each feature's `(pbflags.feature)` option.
+3. **Regenerate code**: `buf generate` (or `make generate`).
+4. **Update YAML configs**: move launch-to-flag binding from the `launches:` section
+   to inline `launch:` keys on individual conditions. Remove `flag`, `population`,
+   and `value` from launch definitions.
+5. **Deploy `pbflags-sync`**: migration 008 runs automatically. Ensure no ACTIVE
+   or BAKED launches exist first.
+6. **Update application code** (optional): adopt scope-based access via the new
+   `dims.New<Scope>Features(eval, ...)` constructors. Existing per-feature
+   `notificationsflags.New(eval)` calls continue to work.
+7. **Verify** the admin UI shows launch overrides in the conditions table and
+   launch kill/unkill controls on the flag detail page.
 
 ---
 

@@ -168,8 +168,45 @@ Each flag can have:
 - A `conditions` list — evaluated in order; the first matching `when` CEL expression wins
 - An `otherwise` clause — used when no `when` matches (without one, the flag falls through to the compiled default)
 - A static `value` — shorthand for a single-entry condition chain with no CEL expression
+- A `launch` key on conditions or static values — per-condition override under a gradual rollout
 
 CEL expressions reference evaluation context dimensions via `ctx.<field_name>` (e.g., `ctx.is_internal`, `ctx.plan == PlanLevel.ENTERPRISE`).
+
+### Gradual rollouts (launches)
+
+Define launches in the `launches:` section of a feature config. Each launch specifies a hash dimension and an initial ramp percentage. Bind launches to flags via `launch:` keys on individual conditions or static values:
+
+```yaml
+feature: notifications
+
+launches:
+  digest_rollout:
+    dimension: user_id
+    ramp_percentage: 25
+    description: "Roll out hourly digest for Pro users"
+
+flags:
+  digest_frequency:
+    conditions:
+      - when: "ctx.plan == PlanLevel.PRO"
+        value: "daily"
+        launch:
+          id: digest_rollout
+          value: "hourly"    # Pro users in the 25% ramp get "hourly"
+      - otherwise: "weekly"
+
+  email_enabled:
+    value: false
+    launch:
+      id: digest_rollout
+      value: true            # entities in the ramp get true
+```
+
+Rules:
+- Each condition may have at most **one** launch override.
+- Launch dimensions must have `distribution: UNIFORM` in the proto definition.
+- Feature-scoped launches (in a feature config) can only be referenced from that feature. Cross-feature launches go in a top-level `launches/` directory.
+- `ramp_percentage` is only applied on first sync. Subsequent ramp changes are made via the admin UI or CLI.
 
 ### Validate configs in CI
 

@@ -560,16 +560,18 @@ flags:
 	})
 }
 
-func TestParseLaunchRampPercentage(t *testing.T) {
-	t.Run("valid ramp_percentage", func(t *testing.T) {
+func TestParseLaunchDefinition(t *testing.T) {
+	t.Run("valid launch definition", func(t *testing.T) {
 		yaml := `
 feature: notifications
 launches:
   rollout_1:
-    flag: email_enabled
     dimension: user_id
-    value: true
     ramp_percentage: 50
+    description: "Pro email rollout"
+flags:
+  email_enabled:
+    value: true
 `
 		cfg, _, err := Parse([]byte(yaml), flagTypes)
 		if err != nil {
@@ -579,18 +581,25 @@ launches:
 		if !ok {
 			t.Fatal("expected launch rollout_1")
 		}
+		if launch.Dimension != "user_id" {
+			t.Errorf("Dimension = %q, want user_id", launch.Dimension)
+		}
 		if launch.RampPercentage != 50 {
 			t.Errorf("RampPercentage = %d, want 50", launch.RampPercentage)
 		}
+		if launch.Description != "Pro email rollout" {
+			t.Errorf("Description = %q, want 'Pro email rollout'", launch.Description)
+		}
 	})
 
-	t.Run("omitted defaults to 0", func(t *testing.T) {
+	t.Run("omitted ramp defaults to 0", func(t *testing.T) {
 		yaml := `
 feature: notifications
 launches:
   rollout_1:
-    flag: email_enabled
     dimension: user_id
+flags:
+  email_enabled:
     value: true
 `
 		cfg, _, err := Parse([]byte(yaml), flagTypes)
@@ -602,15 +611,16 @@ launches:
 		}
 	})
 
-	t.Run("out of range", func(t *testing.T) {
+	t.Run("ramp out of range", func(t *testing.T) {
 		yaml := `
 feature: notifications
 launches:
   rollout_1:
-    flag: email_enabled
     dimension: user_id
-    value: true
     ramp_percentage: 150
+flags:
+  email_enabled:
+    value: true
 `
 		_, _, err := Parse([]byte(yaml), flagTypes)
 		if err == nil {
@@ -621,22 +631,139 @@ launches:
 		}
 	})
 
-	t.Run("negative", func(t *testing.T) {
+	t.Run("missing dimension", func(t *testing.T) {
 		yaml := `
 feature: notifications
 launches:
   rollout_1:
-    flag: email_enabled
-    dimension: user_id
+    ramp_percentage: 10
+flags:
+  email_enabled:
     value: true
-    ramp_percentage: -1
 `
 		_, _, err := Parse([]byte(yaml), flagTypes)
 		if err == nil {
-			t.Fatal("expected error for negative ramp_percentage")
+			t.Fatal("expected error for missing dimension")
 		}
-		if !strings.Contains(err.Error(), "ramp_percentage must be 0-100") {
-			t.Errorf("error = %q, want substring about ramp_percentage range", err.Error())
+		if !strings.Contains(err.Error(), "missing required field: dimension") {
+			t.Errorf("error = %q, want dimension error", err.Error())
+		}
+	})
+}
+
+func TestParseConditionLaunchOverride(t *testing.T) {
+	t.Run("condition with launch override", func(t *testing.T) {
+		yaml := `
+feature: notifications
+launches:
+  pro_rollout:
+    dimension: user_id
+    ramp_percentage: 25
+flags:
+  digest_frequency:
+    conditions:
+      - when: "ctx.plan == PlanLevel.PRO"
+        value: "daily"
+        launch:
+          id: pro_rollout
+          value: "hourly"
+      - otherwise: "weekly"
+`
+		cfg, _, err := Parse([]byte(yaml), flagTypes)
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		conds := cfg.Flags["digest_frequency"].Conditions
+		if len(conds) != 2 {
+			t.Fatalf("expected 2 conditions, got %d", len(conds))
+		}
+		if conds[0].Launch == nil {
+			t.Fatal("expected launch override on condition 0")
+		}
+		if conds[0].Launch.ID != "pro_rollout" {
+			t.Errorf("Launch.ID = %q, want pro_rollout", conds[0].Launch.ID)
+		}
+		if conds[0].Launch.Value.GetStringValue() != "hourly" {
+			t.Errorf("Launch.Value = %q, want hourly", conds[0].Launch.Value.GetStringValue())
+		}
+		// otherwise should have no launch
+		if conds[1].Launch != nil {
+			t.Errorf("expected no launch on otherwise condition")
+		}
+	})
+
+	t.Run("launch override missing id", func(t *testing.T) {
+		yaml := `
+feature: notifications
+flags:
+  email_enabled:
+    conditions:
+      - when: "ctx.is_internal"
+        value: true
+        launch:
+          value: false
+      - otherwise: false
+`
+		_, _, err := Parse([]byte(yaml), flagTypes)
+		if err == nil {
+			t.Fatal("expected error for launch override missing id")
+		}
+		if !strings.Contains(err.Error(), "launch override missing id") {
+			t.Errorf("error = %q, want launch override missing id", err.Error())
+		}
+	})
+}
+
+func TestParseStaticValueLaunchOverride(t *testing.T) {
+	t.Run("static value with launch override", func(t *testing.T) {
+		yaml := `
+feature: notifications
+launches:
+  email_rollout:
+    dimension: user_id
+    ramp_percentage: 10
+flags:
+  email_enabled:
+    value: false
+    launch:
+      id: email_rollout
+      value: true
+`
+		cfg, _, err := Parse([]byte(yaml), flagTypes)
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		entry := cfg.Flags["email_enabled"]
+		if entry.Value == nil || entry.Value.GetBoolValue() != false {
+			t.Errorf("static value should be false")
+		}
+		if entry.Launch == nil {
+			t.Fatal("expected launch override on static value")
+		}
+		if entry.Launch.ID != "email_rollout" {
+			t.Errorf("Launch.ID = %q, want email_rollout", entry.Launch.ID)
+		}
+		if entry.Launch.Value.GetBoolValue() != true {
+			t.Errorf("Launch.Value = %v, want true", entry.Launch.Value.GetBoolValue())
+		}
+	})
+
+	t.Run("static value launch override type mismatch", func(t *testing.T) {
+		yaml := `
+feature: notifications
+flags:
+  email_enabled:
+    value: false
+    launch:
+      id: some_launch
+      value: "not_a_bool"
+`
+		_, _, err := Parse([]byte(yaml), flagTypes)
+		if err == nil {
+			t.Fatal("expected error for type mismatch in launch override")
+		}
+		if !strings.Contains(err.Error(), "expected bool") {
+			t.Errorf("error = %q, want type mismatch error", err.Error())
 		}
 	})
 }

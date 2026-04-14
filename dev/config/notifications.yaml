@@ -11,6 +11,11 @@ flags:
       # Enterprise tier always gets email
       - when: "ctx.plan == PlanLevel.ENTERPRISE"
         value: true
+      - when: "ctx.plan == PlanLevel.PRO"
+        value: false
+        launch:
+          id: email_enabled_pro_rollout
+          value: true
       - otherwise: false
 
   digest_frequency:
@@ -19,6 +24,9 @@ flags:
         value: "hourly"
       - when: "ctx.plan == PlanLevel.PRO"
         value: "daily"
+        launch:
+          id: hourly_digest_rollout
+          value: "hourly"
       - otherwise: "weekly"
 
   max_retries:
@@ -44,16 +52,13 @@ flags:
       - 30
       - 120
 
-# Percentage-based rollouts.
+# Feature-scoped launches — dimension and ramp only.
 launches:
   email_enabled_pro_rollout:
-    flag: email_enabled
     dimension: user_id
-    population: "ctx.plan == PlanLevel.PRO"
-    value: true
     ramp_percentage: 25
+    description: "Roll out email for Pro users"
 
   hourly_digest_rollout:
-    flag: digest_frequency
     dimension: user_id
-    value: "hourly"
+    description: "Roll out hourly digest for Pro users"

@@ -524,3 +524,128 @@ func TestAdversarial_ConcurrentMutations(t *testing.T) {
 	}
 	assert.True(t, validStates[resp.Flag.State])
 }
+
+// createTestLaunch inserts a launch directly into the DB for testing.
+func createTestLaunch(t *testing.T, pool *pgxpool.Pool, launchID, scopeFeatureID, dimension string, rampPct int) {
+	t.Helper()
+	ctx := context.Background()
+	var scopePtr *string
+	if scopeFeatureID != "" {
+		scopePtr = &scopeFeatureID
+	}
+	_, err := pool.Exec(ctx, `
+		INSERT INTO feature_flags.launches
+			(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, status)
+		VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
+		launchID, scopePtr, dimension, rampPct, []string{scopeFeatureID})
+	require.NoError(t, err, "create test launch %s", launchID)
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM feature_flags.launches WHERE launch_id = $1`, launchID)
+	})
+}
+
+func TestGetLaunch(t *testing.T) {
+	t.Parallel()
+	store, pool := setupTestStore(t)
+	ctx := context.Background()
+	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{{FlagType: "BOOL"}})
+
+	createTestLaunch(t, pool, "test-launch-get-"+tf.FeatureID, tf.FeatureID, "user_id", 25)
+
+	launch, err := store.GetLaunch(ctx, "test-launch-get-"+tf.FeatureID)
+	require.NoError(t, err)
+	require.NotNil(t, launch)
+	assert.Equal(t, "user_id", launch.Dimension)
+	assert.Equal(t, 25, launch.RampPct)
+	assert.Equal(t, "ACTIVE", launch.Status)
+	assert.Nil(t, launch.KilledAt)
+
+	// Non-existent launch returns nil.
+	missing, err := store.GetLaunch(ctx, "does-not-exist")
+	require.NoError(t, err)
+	assert.Nil(t, missing)
+}
+
+func TestListLaunches(t *testing.T) {
+	t.Parallel()
+	store, pool := setupTestStore(t)
+	ctx := context.Background()
+	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{{FlagType: "BOOL"}})
+
+	createTestLaunch(t, pool, "test-list-"+tf.FeatureID, tf.FeatureID, "user_id", 50)
+
+	launches, err := store.ListLaunches(ctx, tf.FeatureID)
+	require.NoError(t, err)
+	assert.Len(t, launches, 1)
+	assert.Equal(t, "test-list-"+tf.FeatureID, launches[0].LaunchID)
+}
+
+func TestListLaunchesAffecting(t *testing.T) {
+	t.Parallel()
+	store, pool := setupTestStore(t)
+	ctx := context.Background()
+	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{{FlagType: "BOOL"}})
+
+	createTestLaunch(t, pool, "test-affect-"+tf.FeatureID, tf.FeatureID, "user_id", 10)
+
+	launches, err := store.ListLaunchesAffecting(ctx, tf.FeatureID)
+	require.NoError(t, err)
+	assert.Len(t, launches, 1)
+}
+
+func TestKillUnkillLaunch(t *testing.T) {
+	t.Parallel()
+	store, pool := setupTestStore(t)
+	ctx := context.Background()
+	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{{FlagType: "BOOL"}})
+	launchID := "test-kill-" + tf.FeatureID
+
+	createTestLaunch(t, pool, launchID, tf.FeatureID, "user_id", 100)
+
+	// Kill it.
+	err := store.KillLaunch(ctx, launchID, "test")
+	require.NoError(t, err)
+
+	launch, err := store.GetLaunch(ctx, launchID)
+	require.NoError(t, err)
+	assert.NotNil(t, launch.KilledAt)
+
+	// Kill again should error.
+	err = store.KillLaunch(ctx, launchID, "test")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "already killed")
+
+	// Unkill it.
+	err = store.UnkillLaunch(ctx, launchID, "test")
+	require.NoError(t, err)
+
+	launch, err = store.GetLaunch(ctx, launchID)
+	require.NoError(t, err)
+	assert.Nil(t, launch.KilledAt)
+
+	// Unkill again should error.
+	err = store.UnkillLaunch(ctx, launchID, "test")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not killed")
+}
+
+func TestUpdateLaunchRamp(t *testing.T) {
+	t.Parallel()
+	store, pool := setupTestStore(t)
+	ctx := context.Background()
+	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{{FlagType: "BOOL"}})
+	launchID := "test-ramp-" + tf.FeatureID
+
+	createTestLaunch(t, pool, launchID, tf.FeatureID, "user_id", 0)
+
+	err := store.UpdateLaunchRamp(ctx, launchID, 50, "test")
+	require.NoError(t, err)
+
+	launch, err := store.GetLaunch(ctx, launchID)
+	require.NoError(t, err)
+	assert.Equal(t, 50, launch.RampPct)
+
+	// Out of range.
+	err = store.UpdateLaunchRamp(ctx, launchID, 150, "test")
+	assert.Error(t, err)
+}
