@@ -215,12 +215,33 @@ func compareFiles(t *testing.T, golden, actual string) {
 	goldenStr := strings.TrimSpace(string(goldenData))
 	actualStr := strings.TrimSpace(string(actualData))
 
+	// For Go files, normalize through goimports so that import grouping
+	// differences (caused by lefthook reformatting goldens on commit)
+	// don't produce false mismatches.
+	if strings.HasSuffix(golden, ".go") {
+		goldenStr = goimportsNormalize(t, goldenStr)
+		actualStr = goimportsNormalize(t, actualStr)
+	}
+
 	if goldenStr != actualStr {
 		// Show a diff for debugging.
 		diff, _ := exec.Command("diff", "-u", golden, actual).CombinedOutput()
 		t.Fatalf("golden file mismatch for %s.\nRun with -update to regenerate.\n\n%s",
 			filepath.Base(golden), string(diff))
 	}
+}
+
+// goimportsNormalize runs goimports on Go source to canonicalize import grouping.
+// Falls back to the original string if goimports is unavailable.
+func goimportsNormalize(t *testing.T, src string) string {
+	t.Helper()
+	cmd := exec.Command("go", "tool", "goimports")
+	cmd.Stdin = strings.NewReader(src)
+	out, err := cmd.Output()
+	if err != nil {
+		return src // goimports not available, compare as-is
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func copyFile(t *testing.T, src, dst string) {
