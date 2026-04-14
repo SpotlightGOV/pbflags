@@ -37,13 +37,25 @@ const usage = `pbflags — feature flag CLI
 Usage:
   pbflags <command> [flags]
 
-Commands:
+Config commands:
   sync       Sync definitions and conditions to the database
   validate   Validate YAML config files against proto descriptors
   show       Show resolved config for a specific flag
   export     Export DB state as YAML config files
   compile    Compile YAML configs into a binary bundle
   load       Load a compiled bundle into the database
+
+Admin commands:
+  list       List features and flags from the admin API
+  get        Show flag detail from the admin API
+  kill       Kill a flag (emergency disable)
+  unkill     Restore a killed flag
+  audit      View audit log
+
+Auth commands:
+  auth login   Save API credentials
+  auth status  Show current identity
+  auth logout  Remove stored credentials
 
 Run "pbflags <command> -h" for command-specific help.
 `
@@ -73,6 +85,18 @@ func main() {
 		runCompile(args[1:])
 	case "load":
 		runLoad(args[1:])
+	case "list":
+		runList(args[1:])
+	case "get":
+		runGet(args[1:])
+	case "kill":
+		runKill(args[1:])
+	case "unkill":
+		runUnkill(args[1:])
+	case "audit":
+		runAudit(args[1:])
+	case "auth":
+		runAuth(args[1:])
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:
