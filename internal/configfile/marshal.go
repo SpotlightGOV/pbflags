@@ -50,11 +50,7 @@ func marshalConfig(cfg *Config) *rawConfig {
 }
 
 func marshalLaunchEntry(l LaunchEntry) rawLaunchEntry {
-	return rawLaunchEntry{
-		Dimension:      l.Dimension,
-		RampPercentage: l.RampPercentage,
-		Description:    l.Description,
-	}
+	return rawLaunchEntry(l)
 }
 
 func marshalFlagEntry(f FlagEntry) rawFlagEntry {
