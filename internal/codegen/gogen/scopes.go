@@ -50,24 +50,24 @@ func generateScopesPackage(
 	p()
 	p("package dims")
 	p()
-	p("import (")
-	p(`	"context"`)
-	p()
-	p(`	"`, pbflagsImport, `"`)
 
-	// Import feature packages.
-	featureImports := map[string]string{} // featureID → import alias
+	// We use g.QualifiedGoIdent for imports so we don't need to emit an
+	// import block manually — protogen handles it. But we do need to force
+	// the "context" import since it's a stdlib package used by all scopes.
+	contextIdent := protogen.GoIdent{GoName: "Context", GoImportPath: "context"}
+	pbflagsIdent := func(name string) protogen.GoIdent {
+		return protogen.GoIdent{GoName: name, GoImportPath: pbflagsImport}
+	}
+
+	// Force feature package imports and build alias map.
+	featureImports := map[string]protogen.GoImportPath{} // featureID → import path
 	for _, f := range features {
 		if len(f.scopes) == 0 {
 			continue
 		}
 		pkgName := strings.ToLower(f.id) + "flags"
-		alias := pkgName
-		featureImports[f.id] = alias
-		p(fmt.Sprintf("	%s %q", alias, packagePrefix+"/"+pkgName))
+		featureImports[f.id] = protogen.GoImportPath(packagePrefix + "/" + pkgName)
 	}
-	p(")")
-	p()
 
 	// Generate duck-typed interfaces per feature.
 	for _, f := range features {
@@ -75,10 +75,10 @@ func generateScopesPackage(
 			continue
 		}
 		pascal := toPascalCase(f.id)
-		alias := featureImports[f.id]
+		featureIdent := protogen.GoIdent{GoName: pascal + "Flags", GoImportPath: featureImports[f.id]}
 		p("// Has", pascal, " is a duck-typed interface for scopes that provide ", f.id, " flags.")
 		p("type Has", pascal, " interface {")
-		p("	", pascal, "() ", alias, ".", pascal, "Flags")
+		p("	", pascal, "() ", g.QualifiedGoIdent(featureIdent))
 		p("}")
 		p()
 	}
@@ -108,23 +108,44 @@ func generateScopesPackage(
 			continue
 		}
 
-		// Constructor parameters: evaluator + scope dimensions.
+		// Build constructor parameters and struct fields with correct types.
+		type dimField struct {
+			goFieldName string
+			goType      string // rendered Go type (may be qualified)
+			dim         contextutil.DimensionDef
+		}
+		var fields []dimField
 		var params []string
-		var fieldDefs []string
-		params = append(params, "eval pbflags.Evaluator")
+		params = append(params, fmt.Sprintf("eval %s", g.QualifiedGoIdent(pbflagsIdent("Evaluator"))))
+
 		for _, d := range scopeDims {
 			goName := lowerFirst(toPascalCase(d.Name))
-			goType := dimGoType(d.Kind)
+			var goType string
+			switch d.Kind {
+			case contextutil.DimensionEnum:
+				goType = g.QualifiedGoIdent(d.ProtoField.Enum.GoIdent)
+			case contextutil.DimensionBool:
+				goType = "bool"
+			case contextutil.DimensionInt64:
+				goType = "int64"
+			default:
+				goType = "string"
+			}
+			fields = append(fields, dimField{goFieldName: goName, goType: goType, dim: d})
 			params = append(params, goName+" "+goType)
-			fieldDefs = append(fieldDefs, fmt.Sprintf("%s %s", goName, goType))
 		}
 
-		// Struct definition.
+		// Struct definition — includes cached feature clients (lazy-initialized).
 		p("// ", structName, " provides feature flag access for the ", scope.Name, " evaluation scope.")
 		p("type ", structName, " struct {")
-		p("	eval pbflags.Evaluator")
-		for _, fd := range fieldDefs {
-			p("	", fd)
+		p("	eval ", g.QualifiedGoIdent(pbflagsIdent("Evaluator")))
+		for _, f := range fields {
+			p("	", f.goFieldName, " ", f.goType)
+		}
+		// Cached feature clients (populated on first access).
+		for _, feat := range scopeFeatures {
+			featureIdent := protogen.GoIdent{GoName: toPascalCase(feat.id) + "Flags", GoImportPath: featureImports[feat.id]}
+			p("	cached", toPascalCase(feat.id), " ", g.QualifiedGoIdent(featureIdent))
 		}
 		p("}")
 		p()
@@ -134,63 +155,50 @@ func generateScopesPackage(
 		p("func New", structName, "(", strings.Join(params, ", "), ") *", structName, " {")
 		p("	return &", structName, "{")
 		p("		eval: eval,")
-		for _, d := range scopeDims {
-			goName := lowerFirst(toPascalCase(d.Name))
-			p("		", goName, ": ", goName, ",")
+		for _, f := range fields {
+			p("		", f.goFieldName, ": ", f.goFieldName, ",")
 		}
 		p("	}")
 		p("}")
 		p()
 
-		// ContextWith helper to store in context.Context.
-		p("// key type for context storage.")
+		// ContextWith / From helpers.
 		p("type ", lowerFirst(structName), "Key struct{}")
 		p()
-		p("// ContextWith", structName, " stores the features in a context.Context.")
-		p("func ContextWith", structName, "(ctx context.Context, f *", structName, ") context.Context {")
+		p("// ContextWith", structName, " stores the features in a ", g.QualifiedGoIdent(contextIdent), ".")
+		p("func ContextWith", structName, "(ctx ", g.QualifiedGoIdent(contextIdent), ", f *", structName, ") ", g.QualifiedGoIdent(contextIdent), " {")
 		p("	return context.WithValue(ctx, ", lowerFirst(structName), "Key{}, f)")
 		p("}")
 		p()
-		p("// ", structName, "From retrieves the features from a context.Context.")
-		p("func ", structName, "From(ctx context.Context) *", structName, " {")
+		p("// ", structName, "From retrieves the features from a ", g.QualifiedGoIdent(contextIdent), ".")
+		p("func ", structName, "From(ctx ", g.QualifiedGoIdent(contextIdent), ") *", structName, " {")
 		p("	v, _ := ctx.Value(", lowerFirst(structName), "Key{}).(*", structName, ")")
 		p("	return v")
 		p("}")
 		p()
 
-		// Feature accessor methods.
-		for _, f := range scopeFeatures {
-			pascal := toPascalCase(f.id)
-			alias := featureImports[f.id]
+		// Feature accessor methods (cached — created on first call).
+		for _, feat := range scopeFeatures {
+			pascal := toPascalCase(feat.id)
+			featureIdent := protogen.GoIdent{GoName: pascal + "Flags", GoImportPath: featureImports[feat.id]}
+			cachedField := "cached" + pascal
 
-			// Build the evaluator with dimensions.
-			p("// ", pascal, " returns a ", f.id, " flags client scoped to this evaluation context.")
-			p("func (f *", structName, ") ", pascal, "() ", alias, ".", pascal, "Flags {")
-			p("	eval := f.eval")
-			for _, d := range scopeDims {
-				goName := lowerFirst(toPascalCase(d.Name))
-				dimFunc := toPascalCase(d.Name)
-				p("	eval = eval.With(", dimFunc, "(f.", goName, "))")
+			p("// ", pascal, " returns a ", feat.id, " flags client scoped to this evaluation context.")
+			p("func (f *", structName, ") ", pascal, "() ", g.QualifiedGoIdent(featureIdent), " {")
+			p("	if f.", cachedField, " == nil {")
+			p("		eval := f.eval")
+			for _, df := range fields {
+				dimFunc := toPascalCase(df.dim.Name)
+				p("		eval = eval.With(", dimFunc, "(f.", df.goFieldName, "))")
 			}
-			p("	return ", alias, ".New(eval)")
+			newIdent := protogen.GoIdent{GoName: "New", GoImportPath: featureImports[feat.id]}
+			p("		f.", cachedField, " = ", g.QualifiedGoIdent(newIdent), "(eval)")
+			p("	}")
+			p("	return f.", cachedField)
 			p("}")
 			p()
 		}
 	}
 
 	return nil
-}
-
-// dimGoType returns the Go type for a dimension kind (for constructor parameters).
-func dimGoType(kind contextutil.DimensionKind) string {
-	switch kind {
-	case contextutil.DimensionString:
-		return "string"
-	case contextutil.DimensionBool:
-		return "bool"
-	case contextutil.DimensionInt64:
-		return "int64"
-	default:
-		return "string"
-	}
 }

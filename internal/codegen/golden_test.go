@@ -96,6 +96,7 @@ func TestGoldenGo(t *testing.T) {
 		gf("notifications_flags.go"),
 		gf("flagmeta/flagmeta.go"),
 		gf("dims/dims.go"),
+		gf("dims/scopes.go"),
 	}
 
 	if *update {
@@ -128,6 +129,8 @@ func TestGoldenJava(t *testing.T) {
 		gf("NotificationsFlagsImpl.java"),
 		gf("TestNotificationsFlags.java"),
 		gf("PbflagsFlagDescriptorProvider.java"),
+		gf("AnonFeatures.java"),
+		gf("UserFeatures.java"),
 	}
 
 	if *update {
@@ -161,6 +164,8 @@ func TestGoldenJavaDagger(t *testing.T) {
 		gf("TestNotificationsFlags.java"),
 		gf("FlagRegistryModule.java"),
 		gf("ScopedEvaluatorModule.java"),
+		gf("AnonFeatures.java"),
+		gf("UserFeatures.java"),
 		gf("PbflagsFlagDescriptorProvider.java"),
 	}
 

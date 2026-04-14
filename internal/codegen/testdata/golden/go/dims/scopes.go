@@ -5,7 +5,7 @@ package dims
 import (
 	context "context"
 
-	notificationsflags "github.com/SpotlightGOV/pbflags/gen/pbflags/notificationsflags"
+	notificationsflags "github.com/SpotlightGOV/pbflags/gen/flags/notificationsflags"
 	pbflags "github.com/SpotlightGOV/pbflags/pbflags"
 )
 
