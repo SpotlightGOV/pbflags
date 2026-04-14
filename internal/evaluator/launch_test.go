@@ -3,7 +3,6 @@ package evaluator
 import (
 	"testing"
 
-	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,24 +43,16 @@ func TestHashBucketDistribution(t *testing.T) {
 	require.InDelta(t, 0.25, ratio, 0.05, "expected ~25%% in ramp, got %.2f%%", ratio*100)
 }
 
-func TestEvaluateLaunches_NoContext(t *testing.T) {
+func TestHashBucket_EmptyDimValue(t *testing.T) {
 	t.Parallel()
-	launches := []CachedLaunch{{
-		LaunchID:  "launch-1",
-		Dimension: "user_id",
-		RampPct:   100,
-		Value:     &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: true}},
-	}}
 
-	val, id := EvaluateLaunches(launches, nil)
-	require.Nil(t, val)
-	require.Empty(t, id)
-}
+	// Empty string dimension value should produce a deterministic bucket.
+	b1 := HashBucket("launch-1", "")
+	b2 := HashBucket("launch-1", "")
+	require.Equal(t, b1, b2, "HashBucket with empty dim should be deterministic")
+	require.GreaterOrEqual(t, b1, 0)
+	require.Less(t, b1, 100)
 
-func TestEvaluateLaunches_NoLaunches(t *testing.T) {
-	t.Parallel()
-	// With empty launches, should return nil.
-	val, id := EvaluateLaunches(nil, nil)
-	require.Nil(t, val)
-	require.Empty(t, id)
+	// At 100% ramp, bucket < 100 always holds.
+	require.Less(t, b1, 100)
 }

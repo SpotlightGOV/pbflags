@@ -153,16 +153,7 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 		return val, src
 	}
 
-	// 3. Launches — percentage-based rollouts.
-	if state != nil && len(state.Launches) > 0 && evalCtx != nil {
-		launchVal, launchID := EvaluateLaunches(state.Launches, evalCtx)
-		if launchVal != nil {
-			span.SetAttributes(attribute.String("launch_id", launchID))
-			return launchVal, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_LAUNCH
-		}
-	}
-
-	// 4. Conditions — check cache, then evaluate CEL chain.
+	// 3. Conditions (with inline launch overrides) — check cache, then evaluate CEL chain.
 	if state != nil && len(state.Conditions) > 0 && e.condEval != nil && evalCtx != nil {
 		span.SetAttributes(attribute.Bool("has_conditions", true))
 
@@ -184,7 +175,7 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 			e.metrics.CacheMissesTotal.WithLabelValues("conditions").Inc()
 		}
 
-		result := e.condEval.EvaluateConditions(flagID, state.Conditions, evalCtx)
+		result := e.condEval.EvaluateConditions(flagID, state.Conditions, evalCtx, state.Launches...)
 		span.SetAttributes(attribute.Int("conditions_evaluated", result.ConditionsChecked))
 
 		if result.Value != nil {

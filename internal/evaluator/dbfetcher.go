@@ -90,55 +90,52 @@ func (f *DBFetcher) FetchFlagState(ctx context.Context, flagID string) (*CachedF
 		cs.DimMeta = ParseDimMeta(dimMetaJSON)
 	}
 
-	// Load active launches for this flag.
-	launches, err := f.fetchLaunches(ctx, flagID)
-	if err != nil {
-		f.logger.Warn("failed to load launches", "flag_id", flagID, "error", err)
-	} else {
-		cs.Launches = launches
+	// Extract launch IDs from conditions and batch-fetch active launches.
+	if len(cs.Conditions) > 0 {
+		launches, err := f.fetchLaunchesForConditions(ctx, cs.Conditions)
+		if err != nil {
+			f.logger.Warn("failed to load launches", "flag_id", flagID, "error", err)
+		} else {
+			cs.Launches = launches
+		}
 	}
 	return cs, nil
 }
 
-// fetchLaunches loads active/baked launches for a flag from the launches table.
-func (f *DBFetcher) fetchLaunches(ctx context.Context, flagID string) ([]CachedLaunch, error) {
+// fetchLaunchesForConditions extracts distinct launch IDs referenced by
+// conditions and batch-fetches active/soaking, unkilled launches.
+func (f *DBFetcher) fetchLaunchesForConditions(ctx context.Context, conditions []CachedCondition) ([]CachedLaunch, error) {
+	// Collect distinct launch IDs.
+	seen := map[string]bool{}
+	var ids []string
+	for _, cond := range conditions {
+		if cond.LaunchID != "" && !seen[cond.LaunchID] {
+			seen[cond.LaunchID] = true
+			ids = append(ids, cond.LaunchID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
 	rows, err := f.pool.Query(ctx, `
-		SELECT launch_id, dimension, population_cel, value, ramp_percentage
+		SELECT launch_id, dimension, ramp_percentage
 		FROM feature_flags.launches
-		WHERE flag_id = $1 AND status IN ('ACTIVE', 'BAKED')
-		ORDER BY created_at ASC`, flagID)
+		WHERE launch_id = ANY($1)
+		  AND status IN ('ACTIVE', 'SOAKING')
+		  AND killed_at IS NULL
+		ORDER BY created_at ASC`, ids)
 	if err != nil {
-		return nil, fmt.Errorf("query launches for %s: %w", flagID, err)
+		return nil, fmt.Errorf("batch-fetch launches: %w", err)
 	}
 	defer rows.Close()
 
 	var launches []CachedLaunch
 	for rows.Next() {
-		var launchID, dimension string
-		var populationCEL *string
-		var valueJSON []byte
-		var rampPct int
-
-		if err := rows.Scan(&launchID, &dimension, &populationCEL, &valueJSON, &rampPct); err != nil {
+		var cl CachedLaunch
+		if err := rows.Scan(&cl.LaunchID, &cl.Dimension, &cl.RampPct); err != nil {
 			return nil, err
 		}
-		cl := CachedLaunch{
-			LaunchID:  launchID,
-			Dimension: dimension,
-			RampPct:   rampPct,
-		}
-
-		// Parse value from JSONB.
-		cl.Value = parseFlagValueJSON(valueJSON)
-
-		// Compile population CEL if present.
-		if populationCEL != nil && *populationCEL != "" && f.condEval != nil {
-			prog := f.condEval.CompileExpression(*populationCEL)
-			if prog != nil {
-				cl.Population = prog
-			}
-		}
-
 		launches = append(launches, cl)
 	}
 	return launches, rows.Err()

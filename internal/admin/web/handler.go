@@ -305,7 +305,8 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	launches, err := h.store.GetLaunchesForFlag(r.Context(), flagID)
+	featureID := strings.Split(flagID, "/")[0]
+	launches, err := h.store.ListLaunchesAffecting(r.Context(), featureID)
 	if err != nil {
 		h.serverError(w, "get launches", err)
 		return
@@ -315,7 +316,7 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 		"Flag", flag,
 		"Audit", entries,
 		"FlagID", flagID,
-		"Feature", strings.Split(flagID, "/")[0],
+		"Feature", featureID,
 		"Conditions", extra.Conditions,
 		"ConditionsError", extra.ConditionsError,
 		"SyncSHA", extra.SyncSHA,

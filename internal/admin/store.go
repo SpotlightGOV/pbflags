@@ -31,9 +31,11 @@ func NewStore(pool *pgxpool.Pool, logger *slog.Logger) *Store {
 
 // FlagCondition represents a single condition in a flag's condition chain.
 type FlagCondition struct {
-	CEL     string // CEL expression; empty string means "otherwise" (default fallback)
-	Value   string // formatted display value
-	Comment string // annotation from YAML comment
+	CEL         string // CEL expression; empty string means "otherwise" (default fallback)
+	Value       string // formatted display value
+	Comment     string // annotation from YAML comment
+	LaunchID    string // launch override ID (empty if none)
+	LaunchValue string // formatted launch override value
 }
 
 // FlagExtra holds non-proto data loaded alongside a FlagDetail.
@@ -311,6 +313,10 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 				if e.CEL != nil {
 					fc.CEL = *e.CEL
 				}
+				if e.LaunchID != "" {
+					fc.LaunchID = e.LaunchID
+					fc.LaunchValue = flagfmt.DisplayConditionValue(e.LaunchValue)
+				}
 				extra.Conditions = append(extra.Conditions, fc)
 			}
 		}
@@ -441,24 +447,70 @@ func parseFlagType(s string) pbflagsv1.FlagType {
 	}
 }
 
-// Launch represents a percentage-based rollout for a flag.
+// Launch represents a launch (gradual rollout) in the new schema.
 type Launch struct {
-	LaunchID      string
-	FeatureID     string
-	FlagID        string
-	Dimension     string
-	PopulationCEL *string
-	RampPct       int
-	Status        string
+	LaunchID         string
+	ScopeFeatureID   *string // nil for cross-feature launches
+	Dimension        string
+	RampPct          int
+	Status           string
+	KilledAt         *time.Time
+	AffectedFeatures []string
+	Description      *string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
-// GetLaunchesForFlag returns all launches associated with a flag.
-func (s *Store) GetLaunchesForFlag(ctx context.Context, flagID string) ([]Launch, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT launch_id, feature_id, flag_id, dimension, population_cel, ramp_percentage, status
+// GetLaunch returns a single launch by ID.
+func (s *Store) GetLaunch(ctx context.Context, launchID string) (*Launch, error) {
+	var l Launch
+	err := s.pool.QueryRow(ctx, `
+		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, status,
+		       killed_at, affected_features, description, created_at, updated_at
 		FROM feature_flags.launches
-		WHERE flag_id = $1
-		ORDER BY created_at ASC`, flagID)
+		WHERE launch_id = $1`, launchID).Scan(
+		&l.LaunchID, &l.ScopeFeatureID, &l.Dimension, &l.RampPct, &l.Status,
+		&l.KilledAt, &l.AffectedFeatures, &l.Description, &l.CreatedAt, &l.UpdatedAt)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query launch %s: %w", launchID, err)
+	}
+	return &l, nil
+}
+
+// ListLaunches returns launches scoped to a feature (defined in the feature config).
+func (s *Store) ListLaunches(ctx context.Context, featureID string) ([]Launch, error) {
+	return s.queryLaunches(ctx, `
+		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, status,
+		       killed_at, affected_features, description, created_at, updated_at
+		FROM feature_flags.launches
+		WHERE scope_feature_id = $1
+		ORDER BY created_at ASC`, featureID)
+}
+
+// ListLaunchesAffecting returns all launches that affect a feature (including cross-feature).
+func (s *Store) ListLaunchesAffecting(ctx context.Context, featureID string) ([]Launch, error) {
+	return s.queryLaunches(ctx, `
+		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, status,
+		       killed_at, affected_features, description, created_at, updated_at
+		FROM feature_flags.launches
+		WHERE $1 = ANY(affected_features)
+		ORDER BY created_at ASC`, featureID)
+}
+
+// ListAllLaunches returns all launches.
+func (s *Store) ListAllLaunches(ctx context.Context) ([]Launch, error) {
+	return s.queryLaunches(ctx, `
+		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, status,
+		       killed_at, affected_features, description, created_at, updated_at
+		FROM feature_flags.launches
+		ORDER BY created_at ASC`)
+}
+
+func (s *Store) queryLaunches(ctx context.Context, query string, args ...any) ([]Launch, error) {
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query launches: %w", err)
 	}
@@ -467,12 +519,96 @@ func (s *Store) GetLaunchesForFlag(ctx context.Context, flagID string) ([]Launch
 	var launches []Launch
 	for rows.Next() {
 		var l Launch
-		if err := rows.Scan(&l.LaunchID, &l.FeatureID, &l.FlagID, &l.Dimension, &l.PopulationCEL, &l.RampPct, &l.Status); err != nil {
+		if err := rows.Scan(
+			&l.LaunchID, &l.ScopeFeatureID, &l.Dimension, &l.RampPct, &l.Status,
+			&l.KilledAt, &l.AffectedFeatures, &l.Description, &l.CreatedAt, &l.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		launches = append(launches, l)
 	}
 	return launches, rows.Err()
+}
+
+// KillLaunch sets killed_at on a launch (reversible emergency disable).
+func (s *Store) KillLaunch(ctx context.Context, launchID string, actor string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var killedAt *time.Time
+	err = tx.QueryRow(ctx, `SELECT killed_at FROM feature_flags.launches WHERE launch_id = $1`, launchID).Scan(&killedAt)
+	if err == pgx.ErrNoRows {
+		return fmt.Errorf("launch %s not found", launchID)
+	}
+	if err != nil {
+		return fmt.Errorf("read launch: %w", err)
+	}
+	if killedAt != nil {
+		return fmt.Errorf("launch %s is already killed", launchID)
+	}
+
+	if _, err = tx.Exec(ctx, `
+		UPDATE feature_flags.launches SET killed_at = now(), updated_at = now() WHERE launch_id = $1`,
+		launchID,
+	); err != nil {
+		return fmt.Errorf("kill launch: %w", err)
+	}
+
+	// Audit log (use launch_id as the flag_id field for launch audit entries).
+	oldBytes, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: "alive"}})
+	newBytes, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: "killed"}})
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO feature_flags.flag_audit_log (flag_id, action, old_value, new_value, actor)
+		VALUES ($1, 'KILL_LAUNCH', $2, $3, $4)`,
+		launchID, oldBytes, newBytes, actor,
+	); err != nil {
+		return fmt.Errorf("insert audit log: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
+// UnkillLaunch clears killed_at on a launch (resume where it left off).
+func (s *Store) UnkillLaunch(ctx context.Context, launchID string, actor string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var killedAt *time.Time
+	err = tx.QueryRow(ctx, `SELECT killed_at FROM feature_flags.launches WHERE launch_id = $1`, launchID).Scan(&killedAt)
+	if err == pgx.ErrNoRows {
+		return fmt.Errorf("launch %s not found", launchID)
+	}
+	if err != nil {
+		return fmt.Errorf("read launch: %w", err)
+	}
+	if killedAt == nil {
+		return fmt.Errorf("launch %s is not killed", launchID)
+	}
+
+	if _, err = tx.Exec(ctx, `
+		UPDATE feature_flags.launches SET killed_at = NULL, updated_at = now() WHERE launch_id = $1`,
+		launchID,
+	); err != nil {
+		return fmt.Errorf("unkill launch: %w", err)
+	}
+
+	oldBytes, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: "killed"}})
+	newBytes, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: "alive"}})
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO feature_flags.flag_audit_log (flag_id, action, old_value, new_value, actor)
+		VALUES ($1, 'UNKILL_LAUNCH', $2, $3, $4)`,
+		launchID, oldBytes, newBytes, actor,
+	); err != nil {
+		return fmt.Errorf("insert audit log: %w", err)
+	}
+
+	return tx.Commit(ctx)
 }
 
 // UpdateLaunchRamp changes the ramp percentage for a launch and records an audit log entry.
@@ -486,10 +622,8 @@ func (s *Store) UpdateLaunchRamp(ctx context.Context, launchID string, pct int, 
 	}
 	defer tx.Rollback(ctx)
 
-	// Read old ramp.
 	var oldPct int
-	var flagID string
-	err = tx.QueryRow(ctx, `SELECT ramp_percentage, flag_id FROM feature_flags.launches WHERE launch_id = $1`, launchID).Scan(&oldPct, &flagID)
+	err = tx.QueryRow(ctx, `SELECT ramp_percentage FROM feature_flags.launches WHERE launch_id = $1`, launchID).Scan(&oldPct)
 	if err == pgx.ErrNoRows {
 		return fmt.Errorf("launch %s not found", launchID)
 	}
@@ -504,13 +638,12 @@ func (s *Store) UpdateLaunchRamp(ctx context.Context, launchID string, pct int, 
 		return fmt.Errorf("update ramp: %w", err)
 	}
 
-	// Audit log.
 	oldBytes, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: fmt.Sprintf("%d%%", oldPct)}})
 	newBytes, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: fmt.Sprintf("%d%%", pct)}})
 	if _, err = tx.Exec(ctx, `
 		INSERT INTO feature_flags.flag_audit_log (flag_id, action, old_value, new_value, actor)
 		VALUES ($1, 'UPDATE_LAUNCH_RAMP', $2, $3, $4)`,
-		flagID, oldBytes, newBytes, actor,
+		launchID, oldBytes, newBytes, actor,
 	); err != nil {
 		return fmt.Errorf("insert audit log: %w", err)
 	}
@@ -527,8 +660,7 @@ func (s *Store) UpdateLaunchStatus(ctx context.Context, launchID string, status 
 	defer tx.Rollback(ctx)
 
 	var oldStatus string
-	var flagID string
-	err = tx.QueryRow(ctx, `SELECT status, flag_id FROM feature_flags.launches WHERE launch_id = $1`, launchID).Scan(&oldStatus, &flagID)
+	err = tx.QueryRow(ctx, `SELECT status FROM feature_flags.launches WHERE launch_id = $1`, launchID).Scan(&oldStatus)
 	if err == pgx.ErrNoRows {
 		return fmt.Errorf("launch %s not found", launchID)
 	}
@@ -543,13 +675,12 @@ func (s *Store) UpdateLaunchStatus(ctx context.Context, launchID string, status 
 		return fmt.Errorf("update status: %w", err)
 	}
 
-	// Audit log.
 	oldBytes, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: oldStatus}})
 	newBytes, _ := proto.Marshal(&pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: status}})
 	if _, err = tx.Exec(ctx, `
 		INSERT INTO feature_flags.flag_audit_log (flag_id, action, old_value, new_value, actor)
 		VALUES ($1, 'UPDATE_LAUNCH_STATUS', $2, $3, $4)`,
-		flagID, oldBytes, newBytes, actor,
+		launchID, oldBytes, newBytes, actor,
 	); err != nil {
 		return fmt.Errorf("insert audit log: %w", err)
 	}
