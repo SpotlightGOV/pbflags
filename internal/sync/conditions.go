@@ -213,45 +213,26 @@ func processConfigFile(
 	// Sync launches.
 	if len(cfg.Launches) > 0 {
 		for launchID, launch := range cfg.Launches {
-			info, ok := featureFlags[launch.Flag]
-			if !ok {
-				return featureID, 0, nil, fmt.Errorf("launch %q: flag %q not in feature", launchID, launch.Flag)
-			}
-			valueBytes, marshalErr := protojson.Marshal(launch.Value)
-			if marshalErr != nil {
-				return featureID, 0, nil, fmt.Errorf("launch %q: marshal value: %w", launchID, marshalErr)
-			}
-
-			// Validate dimension is marked hashable in proto.
+			// Validate dimension is marked hashable (UNIFORM distribution) in proto.
 			if !hashableDims[launch.Dimension] {
-				return featureID, 0, nil, fmt.Errorf("launch %q: dimension %q is not marked hashable in proto", launchID, launch.Dimension)
-			}
-
-			// Validate population CEL if present.
-			if launch.Population != "" {
-				if _, compileErr := compiler.Compile(launch.Population); compileErr != nil {
-					return featureID, 0, nil, fmt.Errorf("launch %q: compile population CEL %q: %w", launchID, launch.Population, compileErr)
-				}
+				return featureID, 0, nil, fmt.Errorf("launch %q: dimension %q is not marked UNIFORM in proto", launchID, launch.Dimension)
 			}
 
 			// Upsert launch — insert if new, update structure fields if changed.
 			// ramp_percentage is included in INSERT (initial ramp from config) but
 			// NOT in ON CONFLICT UPDATE — operator-set ramp is preserved on existing launches.
 			// status is never set by sync (operator-controlled).
-			var popCEL *string
-			if launch.Population != "" {
-				popCEL = &launch.Population
-			}
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO feature_flags.launches
-					(launch_id, feature_id, flag_id, dimension, population_cel, value, ramp_percentage)
-				VALUES ($1, $2, $3, $4, $5, $6, $7)
+					(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
+				VALUES ($1, $2, $3, $4, $5, $6)
 				ON CONFLICT (launch_id) DO UPDATE SET
 					dimension = EXCLUDED.dimension,
-					population_cel = EXCLUDED.population_cel,
-					value = EXCLUDED.value,
+					affected_features = EXCLUDED.affected_features,
+					description = EXCLUDED.description,
 					updated_at = now()`,
-				launchID, featureID, info.FlagID, launch.Dimension, popCEL, valueBytes, launch.RampPercentage,
+				launchID, featureID, launch.Dimension, launch.RampPercentage,
+				[]string{featureID}, launch.Description,
 			); err != nil {
 				return featureID, 0, nil, fmt.Errorf("upsert launch %q: %w", launchID, err)
 			}
@@ -275,7 +256,17 @@ func compileFlag(
 		if marshalErr != nil {
 			return nil, nil, nil, fmt.Errorf("marshal static value: %w", marshalErr)
 		}
-		conds := []flagfmt.StoredCondition{{CEL: nil, Value: fvBytes}}
+		sc := flagfmt.StoredCondition{CEL: nil, Value: fvBytes}
+		// Static value launch override.
+		if entry.Launch != nil {
+			lvBytes, lvErr := protojson.Marshal(entry.Launch.Value)
+			if lvErr != nil {
+				return nil, nil, nil, fmt.Errorf("marshal launch override value: %w", lvErr)
+			}
+			sc.LaunchID = entry.Launch.ID
+			sc.LaunchValue = lvBytes
+		}
+		conds := []flagfmt.StoredCondition{sc}
 		condJSON, jsonErr := json.Marshal(conds)
 		if jsonErr != nil {
 			return nil, nil, nil, fmt.Errorf("marshal static conditions: %w", jsonErr)
@@ -293,8 +284,9 @@ func compileFlag(
 			return nil, nil, nil, fmt.Errorf("condition %d: marshal value: %w", i, marshalErr)
 		}
 
+		sc := flagfmt.StoredCondition{Value: fvBytes, Comment: cond.Comment}
+
 		if cond.When == "" {
-			conditions = append(conditions, flagfmt.StoredCondition{CEL: nil, Value: fvBytes, Comment: cond.Comment})
 			asts = append(asts, nil)
 		} else {
 			compiled, compileErr := compiler.Compile(cond.When)
@@ -302,9 +294,21 @@ func compileFlag(
 				return nil, nil, nil, fmt.Errorf("condition %d: %w", i, compileErr)
 			}
 			celStr := cond.When
-			conditions = append(conditions, flagfmt.StoredCondition{CEL: &celStr, Value: fvBytes, Comment: cond.Comment})
+			sc.CEL = &celStr
 			asts = append(asts, compiled.AST)
 		}
+
+		// Per-condition launch override.
+		if cond.Launch != nil {
+			lvBytes, lvErr := protojson.Marshal(cond.Launch.Value)
+			if lvErr != nil {
+				return nil, nil, nil, fmt.Errorf("condition %d: marshal launch value: %w", i, lvErr)
+			}
+			sc.LaunchID = cond.Launch.ID
+			sc.LaunchValue = lvBytes
+		}
+
+		conditions = append(conditions, sc)
 		values = append(values, cond.Value)
 	}
 

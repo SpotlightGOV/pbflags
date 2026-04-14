@@ -232,9 +232,11 @@ func recordNonLiteralDims(children []celast.NavigableExpr, refs *[]condDimRef) {
 	}
 }
 
-// HashableDimsFromDescriptor returns the set of dimension names marked
-// hashable: true in an EvaluationContext message descriptor. Uses the
+// HashableDimsFromDescriptor returns the set of dimension names with
+// distribution: UNIFORM in an EvaluationContext message descriptor. Uses the
 // (pbflags.dimension) extension field number 51004.
+// Wire-compatible: old hashable: true (varint 1 on field 2) decodes as
+// DIMENSION_DISTRIBUTION_UNIFORM (enum value 1).
 func HashableDimsFromDescriptor(md protoreflect.MessageDescriptor) map[string]bool {
 	hashable := map[string]bool{}
 	fields := md.Fields()
@@ -249,7 +251,8 @@ func HashableDimsFromDescriptor(md protoreflect.MessageDescriptor) map[string]bo
 			if fd.Number() == 51004 && fd.IsExtension() {
 				dimMsg := v.Message()
 				dimMsg.Range(func(dfd protoreflect.FieldDescriptor, dv protoreflect.Value) bool {
-					if dfd.Name() == "hashable" && dv.Bool() {
+					// distribution is field 2 (enum). UNIFORM = 1.
+					if dfd.Name() == "distribution" && dv.Enum() == 1 {
 						hashable[string(f.Name())] = true
 					}
 					return true

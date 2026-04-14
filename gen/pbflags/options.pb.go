@@ -24,6 +24,117 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// DimensionDistribution classifies a dimension's value distribution for
+// cache key strategy and launch eligibility.
+//
+// Wire-compatible with the old hashable bool (field 2): true (varint 1)
+// decodes as DIMENSION_DISTRIBUTION_UNIFORM (enum value 1).
+type DimensionDistribution int32
+
+const (
+	DimensionDistribution_DIMENSION_DISTRIBUTION_UNSPECIFIED DimensionDistribution = 0
+	// High cardinality, stable values. Suitable for percentage-based hashing
+	// (launches, experiments). E.g., user_id, session_id.
+	DimensionDistribution_DIMENSION_DISTRIBUTION_UNIFORM DimensionDistribution = 1
+	// Low/bounded cardinality. Enum-like. Not suitable for hashing.
+	// E.g., plan_level, region. Enum and bool proto fields are inherently
+	// categorical — inferred from the proto type, no annotation needed.
+	DimensionDistribution_DIMENSION_DISTRIBUTION_CATEGORICAL DimensionDistribution = 2
+)
+
+// Enum value maps for DimensionDistribution.
+var (
+	DimensionDistribution_name = map[int32]string{
+		0: "DIMENSION_DISTRIBUTION_UNSPECIFIED",
+		1: "DIMENSION_DISTRIBUTION_UNIFORM",
+		2: "DIMENSION_DISTRIBUTION_CATEGORICAL",
+	}
+	DimensionDistribution_value = map[string]int32{
+		"DIMENSION_DISTRIBUTION_UNSPECIFIED": 0,
+		"DIMENSION_DISTRIBUTION_UNIFORM":     1,
+		"DIMENSION_DISTRIBUTION_CATEGORICAL": 2,
+	}
+)
+
+func (x DimensionDistribution) Enum() *DimensionDistribution {
+	p := new(DimensionDistribution)
+	*p = x
+	return p
+}
+
+func (x DimensionDistribution) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DimensionDistribution) Descriptor() protoreflect.EnumDescriptor {
+	return file_pbflags_options_proto_enumTypes[0].Descriptor()
+}
+
+func (DimensionDistribution) Type() protoreflect.EnumType {
+	return &file_pbflags_options_proto_enumTypes[0]
+}
+
+func (x DimensionDistribution) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DimensionDistribution.Descriptor instead.
+func (DimensionDistribution) EnumDescriptor() ([]byte, []int) {
+	return file_pbflags_options_proto_rawDescGZIP(), []int{0}
+}
+
+// DimensionPresence classifies whether a dimension is always set.
+type DimensionPresence int32
+
+const (
+	DimensionPresence_DIMENSION_PRESENCE_UNSPECIFIED DimensionPresence = 0
+	// Always present. Consumer must set it.
+	DimensionPresence_DIMENSION_PRESENCE_REQUIRED DimensionPresence = 1
+	// May be absent (e.g., user_id when logged out).
+	DimensionPresence_DIMENSION_PRESENCE_OPTIONAL DimensionPresence = 2
+)
+
+// Enum value maps for DimensionPresence.
+var (
+	DimensionPresence_name = map[int32]string{
+		0: "DIMENSION_PRESENCE_UNSPECIFIED",
+		1: "DIMENSION_PRESENCE_REQUIRED",
+		2: "DIMENSION_PRESENCE_OPTIONAL",
+	}
+	DimensionPresence_value = map[string]int32{
+		"DIMENSION_PRESENCE_UNSPECIFIED": 0,
+		"DIMENSION_PRESENCE_REQUIRED":    1,
+		"DIMENSION_PRESENCE_OPTIONAL":    2,
+	}
+)
+
+func (x DimensionPresence) Enum() *DimensionPresence {
+	p := new(DimensionPresence)
+	*p = x
+	return p
+}
+
+func (x DimensionPresence) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DimensionPresence) Descriptor() protoreflect.EnumDescriptor {
+	return file_pbflags_options_proto_enumTypes[1].Descriptor()
+}
+
+func (DimensionPresence) Type() protoreflect.EnumType {
+	return &file_pbflags_options_proto_enumTypes[1]
+}
+
+func (x DimensionPresence) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DimensionPresence.Descriptor instead.
+func (DimensionPresence) EnumDescriptor() ([]byte, []int) {
+	return file_pbflags_options_proto_rawDescGZIP(), []int{1}
+}
+
 // Applied to a message to mark it as a feature.
 type FeatureOptions struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -33,7 +144,11 @@ type FeatureOptions struct {
 	Id          string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Description string `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
 	// Owner team for the feature (for UI grouping / contact).
-	Owner         string `protobuf:"bytes,3,opt,name=owner,proto3" json:"owner,omitempty"`
+	Owner string `protobuf:"bytes,3,opt,name=owner,proto3" json:"owner,omitempty"`
+	// Evaluation scopes this feature is available in. Each scope name must
+	// match a (pbflags.scope) defined at file level. The codegen produces
+	// feature accessor methods only on scope types listed here.
+	Scopes        []string `protobuf:"bytes,4,rep,name=scopes,proto3" json:"scopes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -89,6 +204,71 @@ func (x *FeatureOptions) GetOwner() string {
 	return ""
 }
 
+func (x *FeatureOptions) GetScopes() []string {
+	if x != nil {
+		return x.Scopes
+	}
+	return nil
+}
+
+// Scope definition. Applied as a file-level option (repeatable).
+// Each scope defines a named execution context with a set of dimensions
+// beyond the globally required ones.
+type ScopeOptions struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Unique name for this scope (e.g., "anon", "user", "tenant").
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// Additional dimensions this scope provides beyond globally required ones.
+	// Globally required dimensions (presence: REQUIRED) are implicit in every scope.
+	Dimensions    []string `protobuf:"bytes,2,rep,name=dimensions,proto3" json:"dimensions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ScopeOptions) Reset() {
+	*x = ScopeOptions{}
+	mi := &file_pbflags_options_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScopeOptions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScopeOptions) ProtoMessage() {}
+
+func (x *ScopeOptions) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_options_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScopeOptions.ProtoReflect.Descriptor instead.
+func (*ScopeOptions) Descriptor() ([]byte, []int) {
+	return file_pbflags_options_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ScopeOptions) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ScopeOptions) GetDimensions() []string {
+	if x != nil {
+		return x.Dimensions
+	}
+	return nil
+}
+
 // Applied to a field to mark it as a flag.
 type FlagOptions struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
@@ -104,7 +284,7 @@ type FlagOptions struct {
 
 func (x *FlagOptions) Reset() {
 	*x = FlagOptions{}
-	mi := &file_pbflags_options_proto_msgTypes[1]
+	mi := &file_pbflags_options_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -116,7 +296,7 @@ func (x *FlagOptions) String() string {
 func (*FlagOptions) ProtoMessage() {}
 
 func (x *FlagOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_options_proto_msgTypes[1]
+	mi := &file_pbflags_options_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -129,7 +309,7 @@ func (x *FlagOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlagOptions.ProtoReflect.Descriptor instead.
 func (*FlagOptions) Descriptor() ([]byte, []int) {
-	return file_pbflags_options_proto_rawDescGZIP(), []int{1}
+	return file_pbflags_options_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *FlagOptions) GetDescription() string {
@@ -165,7 +345,7 @@ type FlagDefaultBoolList struct {
 
 func (x *FlagDefaultBoolList) Reset() {
 	*x = FlagDefaultBoolList{}
-	mi := &file_pbflags_options_proto_msgTypes[2]
+	mi := &file_pbflags_options_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -177,7 +357,7 @@ func (x *FlagDefaultBoolList) String() string {
 func (*FlagDefaultBoolList) ProtoMessage() {}
 
 func (x *FlagDefaultBoolList) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_options_proto_msgTypes[2]
+	mi := &file_pbflags_options_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -190,7 +370,7 @@ func (x *FlagDefaultBoolList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlagDefaultBoolList.ProtoReflect.Descriptor instead.
 func (*FlagDefaultBoolList) Descriptor() ([]byte, []int) {
-	return file_pbflags_options_proto_rawDescGZIP(), []int{2}
+	return file_pbflags_options_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *FlagDefaultBoolList) GetValues() []bool {
@@ -209,7 +389,7 @@ type FlagDefaultStringList struct {
 
 func (x *FlagDefaultStringList) Reset() {
 	*x = FlagDefaultStringList{}
-	mi := &file_pbflags_options_proto_msgTypes[3]
+	mi := &file_pbflags_options_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -221,7 +401,7 @@ func (x *FlagDefaultStringList) String() string {
 func (*FlagDefaultStringList) ProtoMessage() {}
 
 func (x *FlagDefaultStringList) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_options_proto_msgTypes[3]
+	mi := &file_pbflags_options_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -234,7 +414,7 @@ func (x *FlagDefaultStringList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlagDefaultStringList.ProtoReflect.Descriptor instead.
 func (*FlagDefaultStringList) Descriptor() ([]byte, []int) {
-	return file_pbflags_options_proto_rawDescGZIP(), []int{3}
+	return file_pbflags_options_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *FlagDefaultStringList) GetValues() []string {
@@ -253,7 +433,7 @@ type FlagDefaultInt64List struct {
 
 func (x *FlagDefaultInt64List) Reset() {
 	*x = FlagDefaultInt64List{}
-	mi := &file_pbflags_options_proto_msgTypes[4]
+	mi := &file_pbflags_options_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -265,7 +445,7 @@ func (x *FlagDefaultInt64List) String() string {
 func (*FlagDefaultInt64List) ProtoMessage() {}
 
 func (x *FlagDefaultInt64List) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_options_proto_msgTypes[4]
+	mi := &file_pbflags_options_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -278,7 +458,7 @@ func (x *FlagDefaultInt64List) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlagDefaultInt64List.ProtoReflect.Descriptor instead.
 func (*FlagDefaultInt64List) Descriptor() ([]byte, []int) {
-	return file_pbflags_options_proto_rawDescGZIP(), []int{4}
+	return file_pbflags_options_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *FlagDefaultInt64List) GetValues() []int64 {
@@ -297,7 +477,7 @@ type FlagDefaultDoubleList struct {
 
 func (x *FlagDefaultDoubleList) Reset() {
 	*x = FlagDefaultDoubleList{}
-	mi := &file_pbflags_options_proto_msgTypes[5]
+	mi := &file_pbflags_options_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -309,7 +489,7 @@ func (x *FlagDefaultDoubleList) String() string {
 func (*FlagDefaultDoubleList) ProtoMessage() {}
 
 func (x *FlagDefaultDoubleList) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_options_proto_msgTypes[5]
+	mi := &file_pbflags_options_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -322,7 +502,7 @@ func (x *FlagDefaultDoubleList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlagDefaultDoubleList.ProtoReflect.Descriptor instead.
 func (*FlagDefaultDoubleList) Descriptor() ([]byte, []int) {
-	return file_pbflags_options_proto_rawDescGZIP(), []int{5}
+	return file_pbflags_options_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *FlagDefaultDoubleList) GetValues() []float64 {
@@ -354,7 +534,7 @@ type FlagDefault struct {
 
 func (x *FlagDefault) Reset() {
 	*x = FlagDefault{}
-	mi := &file_pbflags_options_proto_msgTypes[6]
+	mi := &file_pbflags_options_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -366,7 +546,7 @@ func (x *FlagDefault) String() string {
 func (*FlagDefault) ProtoMessage() {}
 
 func (x *FlagDefault) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_options_proto_msgTypes[6]
+	mi := &file_pbflags_options_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -379,7 +559,7 @@ func (x *FlagDefault) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlagDefault.ProtoReflect.Descriptor instead.
 func (*FlagDefault) Descriptor() ([]byte, []int) {
-	return file_pbflags_options_proto_rawDescGZIP(), []int{6}
+	return file_pbflags_options_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *FlagDefault) GetValue() isFlagDefault_Value {
@@ -529,7 +709,7 @@ type SupportedValues struct {
 
 func (x *SupportedValues) Reset() {
 	*x = SupportedValues{}
-	mi := &file_pbflags_options_proto_msgTypes[7]
+	mi := &file_pbflags_options_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -541,7 +721,7 @@ func (x *SupportedValues) String() string {
 func (*SupportedValues) ProtoMessage() {}
 
 func (x *SupportedValues) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_options_proto_msgTypes[7]
+	mi := &file_pbflags_options_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -554,7 +734,7 @@ func (x *SupportedValues) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SupportedValues.ProtoReflect.Descriptor instead.
 func (*SupportedValues) Descriptor() ([]byte, []int) {
-	return file_pbflags_options_proto_rawDescGZIP(), []int{7}
+	return file_pbflags_options_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SupportedValues) GetStringValues() []string {
@@ -589,7 +769,7 @@ type ContextOptions struct {
 
 func (x *ContextOptions) Reset() {
 	*x = ContextOptions{}
-	mi := &file_pbflags_options_proto_msgTypes[8]
+	mi := &file_pbflags_options_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -601,7 +781,7 @@ func (x *ContextOptions) String() string {
 func (*ContextOptions) ProtoMessage() {}
 
 func (x *ContextOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_options_proto_msgTypes[8]
+	mi := &file_pbflags_options_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -614,28 +794,27 @@ func (x *ContextOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContextOptions.ProtoReflect.Descriptor instead.
 func (*ContextOptions) Descriptor() ([]byte, []int) {
-	return file_pbflags_options_proto_rawDescGZIP(), []int{8}
+	return file_pbflags_options_proto_rawDescGZIP(), []int{9}
 }
 
 // Applied to a field within the context message to define a dimension.
 type DimensionOptions struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	Description string                 `protobuf:"bytes,1,opt,name=description,proto3" json:"description,omitempty"`
-	// Whether this dimension can be used for percentage-based hashing
-	// (launches, experiments). Typically true for stable identifiers
-	// like user_id, false for attributes like plan or device_type.
-	Hashable bool `protobuf:"varint,2,opt,name=hashable,proto3" json:"hashable,omitempty"`
-	// Explicitly declare a string or int64 dimension as having bounded
-	// cardinality. Enum and bool dimensions are inherently bounded.
-	// String and int64 dimensions are unbounded by default.
-	Bounded       bool `protobuf:"varint,3,opt,name=bounded,proto3" json:"bounded,omitempty"`
+	// Replaces the old hashable (bool, field 2) and bounded (bool, field 3).
+	// Wire-compatible: old hashable: true (varint 1 on field 2) decodes as
+	// DIMENSION_DISTRIBUTION_UNIFORM (enum value 1). Old bounded: true on
+	// field 3 is ignored (field 3 is no longer declared).
+	Distribution DimensionDistribution `protobuf:"varint,2,opt,name=distribution,proto3,enum=pbflags.DimensionDistribution" json:"distribution,omitempty"`
+	// Whether this dimension is always present in evaluation contexts.
+	Presence      DimensionPresence `protobuf:"varint,4,opt,name=presence,proto3,enum=pbflags.DimensionPresence" json:"presence,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DimensionOptions) Reset() {
 	*x = DimensionOptions{}
-	mi := &file_pbflags_options_proto_msgTypes[9]
+	mi := &file_pbflags_options_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -647,7 +826,7 @@ func (x *DimensionOptions) String() string {
 func (*DimensionOptions) ProtoMessage() {}
 
 func (x *DimensionOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_options_proto_msgTypes[9]
+	mi := &file_pbflags_options_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -660,7 +839,7 @@ func (x *DimensionOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DimensionOptions.ProtoReflect.Descriptor instead.
 func (*DimensionOptions) Descriptor() ([]byte, []int) {
-	return file_pbflags_options_proto_rawDescGZIP(), []int{9}
+	return file_pbflags_options_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DimensionOptions) GetDescription() string {
@@ -670,18 +849,18 @@ func (x *DimensionOptions) GetDescription() string {
 	return ""
 }
 
-func (x *DimensionOptions) GetHashable() bool {
+func (x *DimensionOptions) GetDistribution() DimensionDistribution {
 	if x != nil {
-		return x.Hashable
+		return x.Distribution
 	}
-	return false
+	return DimensionDistribution_DIMENSION_DISTRIBUTION_UNSPECIFIED
 }
 
-func (x *DimensionOptions) GetBounded() bool {
+func (x *DimensionOptions) GetPresence() DimensionPresence {
 	if x != nil {
-		return x.Bounded
+		return x.Presence
 	}
-	return false
+	return DimensionPresence_DIMENSION_PRESENCE_UNSPECIFIED
 }
 
 var file_pbflags_options_proto_extTypes = []protoimpl.ExtensionInfo{
@@ -717,6 +896,14 @@ var file_pbflags_options_proto_extTypes = []protoimpl.ExtensionInfo{
 		Tag:           "bytes,51004,opt,name=dimension",
 		Filename:      "pbflags/options.proto",
 	},
+	{
+		ExtendedType:  (*descriptorpb.FileOptions)(nil),
+		ExtensionType: ([]*ScopeOptions)(nil),
+		Field:         51005,
+		Name:          "pbflags.scope",
+		Tag:           "bytes,51005,rep,name=scope",
+		Filename:      "pbflags/options.proto",
+	},
 }
 
 // Extension fields to descriptorpb.MessageOptions.
@@ -735,15 +922,27 @@ var (
 	E_Dimension = &file_pbflags_options_proto_extTypes[3]
 )
 
+// Extension fields to descriptorpb.FileOptions.
+var (
+	// repeated pbflags.ScopeOptions scope = 51005;
+	E_Scope = &file_pbflags_options_proto_extTypes[4]
+)
+
 var File_pbflags_options_proto protoreflect.FileDescriptor
 
 const file_pbflags_options_proto_rawDesc = "" +
 	"\n" +
-	"\x15pbflags/options.proto\x12\apbflags\x1a google/protobuf/descriptor.proto\x1a\x1egoogle/protobuf/wrappers.proto\"X\n" +
+	"\x15pbflags/options.proto\x12\apbflags\x1a google/protobuf/descriptor.proto\x1a\x1egoogle/protobuf/wrappers.proto\"p\n" +
 	"\x0eFeatureOptions\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x14\n" +
-	"\x05owner\x18\x03 \x01(\tR\x05owner\"\xb0\x01\n" +
+	"\x05owner\x18\x03 \x01(\tR\x05owner\x12\x16\n" +
+	"\x06scopes\x18\x04 \x03(\tR\x06scopes\"B\n" +
+	"\fScopeOptions\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
+	"\n" +
+	"dimensions\x18\x02 \x03(\tR\n" +
+	"dimensions\"\xb0\x01\n" +
 	"\vFlagOptions\x12 \n" +
 	"\vdescription\x18\x01 \x01(\tR\vdescription\x12.\n" +
 	"\adefault\x18\x02 \x01(\v2\x14.pbflags.FlagDefaultR\adefault\x12C\n" +
@@ -772,15 +971,24 @@ const file_pbflags_options_proto_rawDesc = "" +
 	"\rstring_values\x18\x01 \x03(\tR\fstringValues\x12!\n" +
 	"\fint64_values\x18\x02 \x03(\x03R\vint64Values\x12#\n" +
 	"\rdouble_values\x18\x03 \x03(\x01R\fdoubleValues\"\x10\n" +
-	"\x0eContextOptions\"j\n" +
+	"\x0eContextOptions\"\xb6\x01\n" +
 	"\x10DimensionOptions\x12 \n" +
-	"\vdescription\x18\x01 \x01(\tR\vdescription\x12\x1a\n" +
-	"\bhashable\x18\x02 \x01(\bR\bhashable\x12\x18\n" +
-	"\abounded\x18\x03 \x01(\bR\abounded:W\n" +
+	"\vdescription\x18\x01 \x01(\tR\vdescription\x12B\n" +
+	"\fdistribution\x18\x02 \x01(\x0e2\x1e.pbflags.DimensionDistributionR\fdistribution\x126\n" +
+	"\bpresence\x18\x04 \x01(\x0e2\x1a.pbflags.DimensionPresenceR\bpresenceJ\x04\b\x03\x10\x04*\x8b\x01\n" +
+	"\x15DimensionDistribution\x12&\n" +
+	"\"DIMENSION_DISTRIBUTION_UNSPECIFIED\x10\x00\x12\"\n" +
+	"\x1eDIMENSION_DISTRIBUTION_UNIFORM\x10\x01\x12&\n" +
+	"\"DIMENSION_DISTRIBUTION_CATEGORICAL\x10\x02*y\n" +
+	"\x11DimensionPresence\x12\"\n" +
+	"\x1eDIMENSION_PRESENCE_UNSPECIFIED\x10\x00\x12\x1f\n" +
+	"\x1bDIMENSION_PRESENCE_REQUIRED\x10\x01\x12\x1f\n" +
+	"\x1bDIMENSION_PRESENCE_OPTIONAL\x10\x02:W\n" +
 	"\afeature\x12\x1f.google.protobuf.MessageOptions\x18\xb8\x8e\x03 \x01(\v2\x17.pbflags.FeatureOptionsR\afeature\x88\x01\x01:W\n" +
 	"\acontext\x12\x1f.google.protobuf.MessageOptions\x18\xbb\x8e\x03 \x01(\v2\x17.pbflags.ContextOptionsR\acontext\x88\x01\x01:L\n" +
 	"\x04flag\x12\x1d.google.protobuf.FieldOptions\x18\xb9\x8e\x03 \x01(\v2\x14.pbflags.FlagOptionsR\x04flag\x88\x01\x01:[\n" +
-	"\tdimension\x12\x1d.google.protobuf.FieldOptions\x18\xbc\x8e\x03 \x01(\v2\x19.pbflags.DimensionOptionsR\tdimension\x88\x01\x01BY\n" +
+	"\tdimension\x12\x1d.google.protobuf.FieldOptions\x18\xbc\x8e\x03 \x01(\v2\x19.pbflags.DimensionOptionsR\tdimension\x88\x01\x01:K\n" +
+	"\x05scope\x12\x1c.google.protobuf.FileOptions\x18\xbd\x8e\x03 \x03(\v2\x15.pbflags.ScopeOptionsR\x05scopeBY\n" +
 	"\x1eorg.spotlightgov.pbflags.protoP\x01Z5github.com/SpotlightGOV/pbflags/gen/pbflags;pbflagspbb\x06proto3"
 
 var (
@@ -795,49 +1003,58 @@ func file_pbflags_options_proto_rawDescGZIP() []byte {
 	return file_pbflags_options_proto_rawDescData
 }
 
-var file_pbflags_options_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_pbflags_options_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_pbflags_options_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_pbflags_options_proto_goTypes = []any{
-	(*FeatureOptions)(nil),              // 0: pbflags.FeatureOptions
-	(*FlagOptions)(nil),                 // 1: pbflags.FlagOptions
-	(*FlagDefaultBoolList)(nil),         // 2: pbflags.FlagDefaultBoolList
-	(*FlagDefaultStringList)(nil),       // 3: pbflags.FlagDefaultStringList
-	(*FlagDefaultInt64List)(nil),        // 4: pbflags.FlagDefaultInt64List
-	(*FlagDefaultDoubleList)(nil),       // 5: pbflags.FlagDefaultDoubleList
-	(*FlagDefault)(nil),                 // 6: pbflags.FlagDefault
-	(*SupportedValues)(nil),             // 7: pbflags.SupportedValues
-	(*ContextOptions)(nil),              // 8: pbflags.ContextOptions
-	(*DimensionOptions)(nil),            // 9: pbflags.DimensionOptions
-	(*wrapperspb.BoolValue)(nil),        // 10: google.protobuf.BoolValue
-	(*wrapperspb.StringValue)(nil),      // 11: google.protobuf.StringValue
-	(*wrapperspb.Int64Value)(nil),       // 12: google.protobuf.Int64Value
-	(*wrapperspb.DoubleValue)(nil),      // 13: google.protobuf.DoubleValue
-	(*descriptorpb.MessageOptions)(nil), // 14: google.protobuf.MessageOptions
-	(*descriptorpb.FieldOptions)(nil),   // 15: google.protobuf.FieldOptions
+	(DimensionDistribution)(0),          // 0: pbflags.DimensionDistribution
+	(DimensionPresence)(0),              // 1: pbflags.DimensionPresence
+	(*FeatureOptions)(nil),              // 2: pbflags.FeatureOptions
+	(*ScopeOptions)(nil),                // 3: pbflags.ScopeOptions
+	(*FlagOptions)(nil),                 // 4: pbflags.FlagOptions
+	(*FlagDefaultBoolList)(nil),         // 5: pbflags.FlagDefaultBoolList
+	(*FlagDefaultStringList)(nil),       // 6: pbflags.FlagDefaultStringList
+	(*FlagDefaultInt64List)(nil),        // 7: pbflags.FlagDefaultInt64List
+	(*FlagDefaultDoubleList)(nil),       // 8: pbflags.FlagDefaultDoubleList
+	(*FlagDefault)(nil),                 // 9: pbflags.FlagDefault
+	(*SupportedValues)(nil),             // 10: pbflags.SupportedValues
+	(*ContextOptions)(nil),              // 11: pbflags.ContextOptions
+	(*DimensionOptions)(nil),            // 12: pbflags.DimensionOptions
+	(*wrapperspb.BoolValue)(nil),        // 13: google.protobuf.BoolValue
+	(*wrapperspb.StringValue)(nil),      // 14: google.protobuf.StringValue
+	(*wrapperspb.Int64Value)(nil),       // 15: google.protobuf.Int64Value
+	(*wrapperspb.DoubleValue)(nil),      // 16: google.protobuf.DoubleValue
+	(*descriptorpb.MessageOptions)(nil), // 17: google.protobuf.MessageOptions
+	(*descriptorpb.FieldOptions)(nil),   // 18: google.protobuf.FieldOptions
+	(*descriptorpb.FileOptions)(nil),    // 19: google.protobuf.FileOptions
 }
 var file_pbflags_options_proto_depIdxs = []int32{
-	6,  // 0: pbflags.FlagOptions.default:type_name -> pbflags.FlagDefault
-	7,  // 1: pbflags.FlagOptions.supported_values:type_name -> pbflags.SupportedValues
-	10, // 2: pbflags.FlagDefault.bool_value:type_name -> google.protobuf.BoolValue
-	11, // 3: pbflags.FlagDefault.string_value:type_name -> google.protobuf.StringValue
-	12, // 4: pbflags.FlagDefault.int64_value:type_name -> google.protobuf.Int64Value
-	13, // 5: pbflags.FlagDefault.double_value:type_name -> google.protobuf.DoubleValue
-	2,  // 6: pbflags.FlagDefault.bool_list_value:type_name -> pbflags.FlagDefaultBoolList
-	3,  // 7: pbflags.FlagDefault.string_list_value:type_name -> pbflags.FlagDefaultStringList
-	4,  // 8: pbflags.FlagDefault.int64_list_value:type_name -> pbflags.FlagDefaultInt64List
-	5,  // 9: pbflags.FlagDefault.double_list_value:type_name -> pbflags.FlagDefaultDoubleList
-	14, // 10: pbflags.feature:extendee -> google.protobuf.MessageOptions
-	14, // 11: pbflags.context:extendee -> google.protobuf.MessageOptions
-	15, // 12: pbflags.flag:extendee -> google.protobuf.FieldOptions
-	15, // 13: pbflags.dimension:extendee -> google.protobuf.FieldOptions
-	0,  // 14: pbflags.feature:type_name -> pbflags.FeatureOptions
-	8,  // 15: pbflags.context:type_name -> pbflags.ContextOptions
-	1,  // 16: pbflags.flag:type_name -> pbflags.FlagOptions
-	9,  // 17: pbflags.dimension:type_name -> pbflags.DimensionOptions
-	18, // [18:18] is the sub-list for method output_type
-	18, // [18:18] is the sub-list for method input_type
-	14, // [14:18] is the sub-list for extension type_name
-	10, // [10:14] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	9,  // 0: pbflags.FlagOptions.default:type_name -> pbflags.FlagDefault
+	10, // 1: pbflags.FlagOptions.supported_values:type_name -> pbflags.SupportedValues
+	13, // 2: pbflags.FlagDefault.bool_value:type_name -> google.protobuf.BoolValue
+	14, // 3: pbflags.FlagDefault.string_value:type_name -> google.protobuf.StringValue
+	15, // 4: pbflags.FlagDefault.int64_value:type_name -> google.protobuf.Int64Value
+	16, // 5: pbflags.FlagDefault.double_value:type_name -> google.protobuf.DoubleValue
+	5,  // 6: pbflags.FlagDefault.bool_list_value:type_name -> pbflags.FlagDefaultBoolList
+	6,  // 7: pbflags.FlagDefault.string_list_value:type_name -> pbflags.FlagDefaultStringList
+	7,  // 8: pbflags.FlagDefault.int64_list_value:type_name -> pbflags.FlagDefaultInt64List
+	8,  // 9: pbflags.FlagDefault.double_list_value:type_name -> pbflags.FlagDefaultDoubleList
+	0,  // 10: pbflags.DimensionOptions.distribution:type_name -> pbflags.DimensionDistribution
+	1,  // 11: pbflags.DimensionOptions.presence:type_name -> pbflags.DimensionPresence
+	17, // 12: pbflags.feature:extendee -> google.protobuf.MessageOptions
+	17, // 13: pbflags.context:extendee -> google.protobuf.MessageOptions
+	18, // 14: pbflags.flag:extendee -> google.protobuf.FieldOptions
+	18, // 15: pbflags.dimension:extendee -> google.protobuf.FieldOptions
+	19, // 16: pbflags.scope:extendee -> google.protobuf.FileOptions
+	2,  // 17: pbflags.feature:type_name -> pbflags.FeatureOptions
+	11, // 18: pbflags.context:type_name -> pbflags.ContextOptions
+	4,  // 19: pbflags.flag:type_name -> pbflags.FlagOptions
+	12, // 20: pbflags.dimension:type_name -> pbflags.DimensionOptions
+	3,  // 21: pbflags.scope:type_name -> pbflags.ScopeOptions
+	22, // [22:22] is the sub-list for method output_type
+	22, // [22:22] is the sub-list for method input_type
+	17, // [17:22] is the sub-list for extension type_name
+	12, // [12:17] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_pbflags_options_proto_init() }
@@ -845,7 +1062,7 @@ func file_pbflags_options_proto_init() {
 	if File_pbflags_options_proto != nil {
 		return
 	}
-	file_pbflags_options_proto_msgTypes[6].OneofWrappers = []any{
+	file_pbflags_options_proto_msgTypes[7].OneofWrappers = []any{
 		(*FlagDefault_BoolValue)(nil),
 		(*FlagDefault_StringValue)(nil),
 		(*FlagDefault_Int64Value)(nil),
@@ -860,13 +1077,14 @@ func file_pbflags_options_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pbflags_options_proto_rawDesc), len(file_pbflags_options_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   10,
-			NumExtensions: 4,
+			NumEnums:      2,
+			NumMessages:   11,
+			NumExtensions: 5,
 			NumServices:   0,
 		},
 		GoTypes:           file_pbflags_options_proto_goTypes,
 		DependencyIndexes: file_pbflags_options_proto_depIdxs,
+		EnumInfos:         file_pbflags_options_proto_enumTypes,
 		MessageInfos:      file_pbflags_options_proto_msgTypes,
 		ExtensionInfos:    file_pbflags_options_proto_extTypes,
 	}.Build()

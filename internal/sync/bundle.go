@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
@@ -164,33 +163,16 @@ func Compile(descriptorData []byte, configDir string) ([]byte, error) {
 			cf.Flags = append(cf.Flags, cflag)
 		}
 
-		// Compile launches.
+		// Compile feature-scoped launches to bundle level.
 		if cfg != nil {
 			for launchID, launch := range cfg.Launches {
-				// Find the flag ID for this launch.
-				var flagID string
-				for _, d := range fd.flags {
-					if d.Name == launch.Flag {
-						flagID = d.FlagID
-						break
-					}
-				}
-				if flagID == "" {
-					return nil, fmt.Errorf("feature %s launch %s: flag %q not found", featureID, launchID, launch.Flag)
-				}
-
-				valueBytes, err := protojson.Marshal(launch.Value)
-				if err != nil {
-					return nil, fmt.Errorf("feature %s launch %s: marshal value: %w", featureID, launchID, err)
-				}
-
-				cf.Launches = append(cf.Launches, &pbflagsv1.CompiledLaunch{
-					LaunchId:       launchID,
-					FlagId:         flagID,
-					Dimension:      launch.Dimension,
-					PopulationCel:  launch.Population,
-					ValueJson:      valueBytes,
-					RampPercentage: int32(launch.RampPercentage),
+				bundle.Launches = append(bundle.Launches, &pbflagsv1.CompiledLaunch{
+					LaunchId:         launchID,
+					Dimension:        launch.Dimension,
+					RampPercentage:   int32(launch.RampPercentage),
+					ScopeFeatureId:   featureID,
+					AffectedFeatures: []string{featureID},
+					Description:      launch.Description,
 				})
 			}
 		}
@@ -274,25 +256,27 @@ func LoadBundle(ctx context.Context, conn *pgx.Conn, bundleData []byte, sha stri
 			}
 		}
 
-		// Upsert launches.
-		for _, launch := range cf.Launches {
-			var popCEL *string
-			if launch.PopulationCel != "" {
-				popCEL = &launch.PopulationCel
-			}
-			if _, err := tx.Exec(ctx, `
-				INSERT INTO feature_flags.launches
-					(launch_id, feature_id, flag_id, dimension, population_cel, value, ramp_percentage)
-				VALUES ($1, $2, $3, $4, $5, $6, $7)
-				ON CONFLICT (launch_id) DO UPDATE SET
-					dimension = EXCLUDED.dimension,
-					population_cel = EXCLUDED.population_cel,
-					value = EXCLUDED.value,
-					updated_at = now()`,
-				launch.LaunchId, cf.FeatureId, launch.FlagId, launch.Dimension, popCEL, launch.ValueJson, launch.RampPercentage,
-			); err != nil {
-				return LoadResult{}, fmt.Errorf("upsert launch %q: %w", launch.LaunchId, err)
-			}
+	}
+
+	// Upsert launches from bundle level.
+	for _, launch := range bundle.Launches {
+		var scopeFeatureID *string
+		if launch.ScopeFeatureId != "" {
+			scopeFeatureID = &launch.ScopeFeatureId
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO feature_flags.launches
+				(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (launch_id) DO UPDATE SET
+				dimension = EXCLUDED.dimension,
+				affected_features = EXCLUDED.affected_features,
+				description = EXCLUDED.description,
+				updated_at = now()`,
+			launch.LaunchId, scopeFeatureID, launch.Dimension, launch.RampPercentage,
+			launch.AffectedFeatures, launch.Description,
+		); err != nil {
+			return LoadResult{}, fmt.Errorf("upsert launch %q: %w", launch.LaunchId, err)
 		}
 	}
 

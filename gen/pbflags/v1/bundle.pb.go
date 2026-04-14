@@ -28,9 +28,12 @@ const (
 //
 // Produced by "pbflags compile", consumed by "pbflags load".
 type CompiledBundle struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Features      []*CompiledFeature     `protobuf:"bytes,1,rep,name=features,proto3" json:"features,omitempty"`
-	CelVersion    string                 `protobuf:"bytes,2,opt,name=cel_version,json=celVersion,proto3" json:"cel_version,omitempty"` // CEL library version used during compilation
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Features   []*CompiledFeature     `protobuf:"bytes,1,rep,name=features,proto3" json:"features,omitempty"`
+	CelVersion string                 `protobuf:"bytes,2,opt,name=cel_version,json=celVersion,proto3" json:"cel_version,omitempty"` // CEL library version used during compilation
+	// All defined launches from config (feature-scoped and cross-feature).
+	// Active/soaking/unkilled filtering happens at the evaluator.
+	Launches      []*CompiledLaunch `protobuf:"bytes,3,rep,name=launches,proto3" json:"launches,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -79,6 +82,13 @@ func (x *CompiledBundle) GetCelVersion() string {
 	return ""
 }
 
+func (x *CompiledBundle) GetLaunches() []*CompiledLaunch {
+	if x != nil {
+		return x.Launches
+	}
+	return nil
+}
+
 // CompiledFeature holds the compiled state for a single feature.
 type CompiledFeature struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -87,7 +97,6 @@ type CompiledFeature struct {
 	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	Owner         string                 `protobuf:"bytes,4,opt,name=owner,proto3" json:"owner,omitempty"`
 	Flags         []*CompiledFlag        `protobuf:"bytes,5,rep,name=flags,proto3" json:"flags,omitempty"`
-	Launches      []*CompiledLaunch      `protobuf:"bytes,6,rep,name=launches,proto3" json:"launches,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -153,13 +162,6 @@ func (x *CompiledFeature) GetOwner() string {
 func (x *CompiledFeature) GetFlags() []*CompiledFlag {
 	if x != nil {
 		return x.Flags
-	}
-	return nil
-}
-
-func (x *CompiledFeature) GetLaunches() []*CompiledLaunch {
-	if x != nil {
-		return x.Launches
 	}
 	return nil
 }
@@ -268,16 +270,20 @@ func (x *CompiledFlag) GetDimensionMetadataJson() []byte {
 }
 
 // CompiledLaunch holds a launch definition ready for DB upsert.
+// Launch-to-flag binding is expressed inline via launch overrides on
+// individual StoredConditions, not on the launch definition.
 type CompiledLaunch struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	LaunchId       string                 `protobuf:"bytes,1,opt,name=launch_id,json=launchId,proto3" json:"launch_id,omitempty"`
-	FlagId         string                 `protobuf:"bytes,2,opt,name=flag_id,json=flagId,proto3" json:"flag_id,omitempty"`
 	Dimension      string                 `protobuf:"bytes,3,opt,name=dimension,proto3" json:"dimension,omitempty"`
-	PopulationCel  string                 `protobuf:"bytes,4,opt,name=population_cel,json=populationCel,proto3" json:"population_cel,omitempty"`     // empty = all entities
-	ValueJson      []byte                 `protobuf:"bytes,5,opt,name=value_json,json=valueJson,proto3" json:"value_json,omitempty"`                 // protojson-encoded FlagValue
 	RampPercentage int32                  `protobuf:"varint,6,opt,name=ramp_percentage,json=rampPercentage,proto3" json:"ramp_percentage,omitempty"` // initial ramp (0-100); applied on insert only
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Where the launch is defined. Empty for cross-feature launches (launches/ dir).
+	ScopeFeatureId string `protobuf:"bytes,7,opt,name=scope_feature_id,json=scopeFeatureId,proto3" json:"scope_feature_id,omitempty"`
+	// All features that reference this launch. Populated by sync.
+	AffectedFeatures []string `protobuf:"bytes,8,rep,name=affected_features,json=affectedFeatures,proto3" json:"affected_features,omitempty"`
+	Description      string   `protobuf:"bytes,9,opt,name=description,proto3" json:"description,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *CompiledLaunch) Reset() {
@@ -317,32 +323,11 @@ func (x *CompiledLaunch) GetLaunchId() string {
 	return ""
 }
 
-func (x *CompiledLaunch) GetFlagId() string {
-	if x != nil {
-		return x.FlagId
-	}
-	return ""
-}
-
 func (x *CompiledLaunch) GetDimension() string {
 	if x != nil {
 		return x.Dimension
 	}
 	return ""
-}
-
-func (x *CompiledLaunch) GetPopulationCel() string {
-	if x != nil {
-		return x.PopulationCel
-	}
-	return ""
-}
-
-func (x *CompiledLaunch) GetValueJson() []byte {
-	if x != nil {
-		return x.ValueJson
-	}
-	return nil
 }
 
 func (x *CompiledLaunch) GetRampPercentage() int32 {
@@ -352,24 +337,45 @@ func (x *CompiledLaunch) GetRampPercentage() int32 {
 	return 0
 }
 
+func (x *CompiledLaunch) GetScopeFeatureId() string {
+	if x != nil {
+		return x.ScopeFeatureId
+	}
+	return ""
+}
+
+func (x *CompiledLaunch) GetAffectedFeatures() []string {
+	if x != nil {
+		return x.AffectedFeatures
+	}
+	return nil
+}
+
+func (x *CompiledLaunch) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
 var File_pbflags_v1_bundle_proto protoreflect.FileDescriptor
 
 const file_pbflags_v1_bundle_proto_rawDesc = "" +
 	"\n" +
 	"\x17pbflags/v1/bundle.proto\x12\n" +
-	"pbflags.v1\"j\n" +
+	"pbflags.v1\"\xa2\x01\n" +
 	"\x0eCompiledBundle\x127\n" +
 	"\bfeatures\x18\x01 \x03(\v2\x1b.pbflags.v1.CompiledFeatureR\bfeatures\x12\x1f\n" +
 	"\vcel_version\x18\x02 \x01(\tR\n" +
-	"celVersion\"\xf3\x01\n" +
+	"celVersion\x126\n" +
+	"\blaunches\x18\x03 \x03(\v2\x1a.pbflags.v1.CompiledLaunchR\blaunches\"\xc1\x01\n" +
 	"\x0fCompiledFeature\x12\x1d\n" +
 	"\n" +
 	"feature_id\x18\x01 \x01(\tR\tfeatureId\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x14\n" +
 	"\x05owner\x18\x04 \x01(\tR\x05owner\x12.\n" +
-	"\x05flags\x18\x05 \x03(\v2\x18.pbflags.v1.CompiledFlagR\x05flags\x126\n" +
-	"\blaunches\x18\x06 \x03(\v2\x1a.pbflags.v1.CompiledLaunchR\blaunches\"\xac\x02\n" +
+	"\x05flags\x18\x05 \x03(\v2\x18.pbflags.v1.CompiledFlagR\x05flagsJ\x04\b\x06\x10\a\"\xac\x02\n" +
 	"\fCompiledFlag\x12\x17\n" +
 	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12!\n" +
@@ -378,15 +384,14 @@ const file_pbflags_v1_bundle_proto_rawDesc = "" +
 	"\rdefault_value\x18\x05 \x01(\fR\fdefaultValue\x12)\n" +
 	"\x10supported_values\x18\x06 \x01(\fR\x0fsupportedValues\x12'\n" +
 	"\x0fconditions_json\x18\a \x01(\fR\x0econditionsJson\x126\n" +
-	"\x17dimension_metadata_json\x18\b \x01(\fR\x15dimensionMetadataJson\"\xd3\x01\n" +
+	"\x17dimension_metadata_json\x18\b \x01(\fR\x15dimensionMetadataJson\"\xff\x01\n" +
 	"\x0eCompiledLaunch\x12\x1b\n" +
-	"\tlaunch_id\x18\x01 \x01(\tR\blaunchId\x12\x17\n" +
-	"\aflag_id\x18\x02 \x01(\tR\x06flagId\x12\x1c\n" +
-	"\tdimension\x18\x03 \x01(\tR\tdimension\x12%\n" +
-	"\x0epopulation_cel\x18\x04 \x01(\tR\rpopulationCel\x12\x1d\n" +
-	"\n" +
-	"value_json\x18\x05 \x01(\fR\tvalueJson\x12'\n" +
-	"\x0framp_percentage\x18\x06 \x01(\x05R\x0erampPercentageB_\n" +
+	"\tlaunch_id\x18\x01 \x01(\tR\blaunchId\x12\x1c\n" +
+	"\tdimension\x18\x03 \x01(\tR\tdimension\x12'\n" +
+	"\x0framp_percentage\x18\x06 \x01(\x05R\x0erampPercentage\x12(\n" +
+	"\x10scope_feature_id\x18\a \x01(\tR\x0escopeFeatureId\x12+\n" +
+	"\x11affected_features\x18\b \x03(\tR\x10affectedFeatures\x12 \n" +
+	"\vdescription\x18\t \x01(\tR\vdescriptionJ\x04\b\x02\x10\x03J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06B_\n" +
 	"!org.spotlightgov.pbflags.v1.protoP\x01Z8github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1b\x06proto3"
 
 var (
@@ -410,8 +415,8 @@ var file_pbflags_v1_bundle_proto_goTypes = []any{
 }
 var file_pbflags_v1_bundle_proto_depIdxs = []int32{
 	1, // 0: pbflags.v1.CompiledBundle.features:type_name -> pbflags.v1.CompiledFeature
-	2, // 1: pbflags.v1.CompiledFeature.flags:type_name -> pbflags.v1.CompiledFlag
-	3, // 2: pbflags.v1.CompiledFeature.launches:type_name -> pbflags.v1.CompiledLaunch
+	3, // 1: pbflags.v1.CompiledBundle.launches:type_name -> pbflags.v1.CompiledLaunch
+	2, // 2: pbflags.v1.CompiledFeature.flags:type_name -> pbflags.v1.CompiledFlag
 	3, // [3:3] is the sub-list for method output_type
 	3, // [3:3] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name

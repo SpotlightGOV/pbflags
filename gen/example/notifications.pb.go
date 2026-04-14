@@ -135,7 +135,7 @@ type EvaluationContext struct {
 	// String dimensions — identifiers with unbounded cardinality.
 	UserId    string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	SessionId string `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	// Enum dimensions — bounded cardinality, compile-time safe constructors.
+	// Enum dimensions — bounded cardinality (inferred from enum type).
 	Plan       PlanLevel  `protobuf:"varint,3,opt,name=plan,proto3,enum=example.PlanLevel" json:"plan,omitempty"`
 	DeviceType DeviceType `protobuf:"varint,4,opt,name=device_type,json=deviceType,proto3,enum=example.DeviceType" json:"device_type,omitempty"`
 	// Bool dimension.
@@ -305,21 +305,21 @@ var File_example_notifications_proto protoreflect.FileDescriptor
 
 const file_example_notifications_proto_rawDesc = "" +
 	"\n" +
-	"\x1bexample/notifications.proto\x12\aexample\x1a\x15pbflags/options.proto\"\xf5\x02\n" +
-	"\x11EvaluationContext\x12>\n" +
-	"\auser_id\x18\x01 \x01(\tB%\xe2\xf3\x18!\n" +
-	"\x1dAuthenticated user identifier\x10\x01R\x06userId\x12N\n" +
+	"\x1bexample/notifications.proto\x12\aexample\x1a\x15pbflags/options.proto\"\xf1\x02\n" +
+	"\x11EvaluationContext\x12@\n" +
+	"\auser_id\x18\x01 \x01(\tB'\xe2\xf3\x18#\n" +
+	"\x1dAuthenticated user identifier\x10\x01 \x02R\x06userId\x12B\n" +
 	"\n" +
-	"session_id\x18\x02 \x01(\tB/\xe2\xf3\x18+\n" +
-	"'Browser session (unauthenticated users)\x10\x01R\tsessionId\x12?\n" +
-	"\x04plan\x18\x03 \x01(\x0e2\x12.example.PlanLevelB\x17\xe2\xf3\x18\x13\n" +
-	"\x11Subscription tierR\x04plan\x12O\n" +
-	"\vdevice_type\x18\x04 \x01(\x0e2\x13.example.DeviceTypeB\x19\xe2\xf3\x18\x15\n" +
-	"\x13Client device classR\n" +
-	"deviceType\x128\n" +
-	"\vis_internal\x18\x05 \x01(\bB\x17\xe2\xf3\x18\x13\n" +
-	"\x11Internal employeeR\n" +
-	"isInternal:\x04\xda\xf3\x18\x00\"\x97\x05\n" +
+	"session_id\x18\x02 \x01(\tB#\xe2\xf3\x18\x1f\n" +
+	"\x19Stable session identifier\x10\x01 \x01R\tsessionId\x12A\n" +
+	"\x04plan\x18\x03 \x01(\x0e2\x12.example.PlanLevelB\x19\xe2\xf3\x18\x15\n" +
+	"\x11Subscription tier \x02R\x04plan\x12Q\n" +
+	"\vdevice_type\x18\x04 \x01(\x0e2\x13.example.DeviceTypeB\x1b\xe2\xf3\x18\x17\n" +
+	"\x13Client device class \x02R\n" +
+	"deviceType\x12:\n" +
+	"\vis_internal\x18\x05 \x01(\bB\x19\xe2\xf3\x18\x15\n" +
+	"\x11Internal employee \x02R\n" +
+	"isInternal:\x04\xda\xf3\x18\x00\"\xa3\x05\n" +
 	"\rNotifications\x12K\n" +
 	"\remail_enabled\x18\x01 \x01(\bB&\xca\xf3\x18\"\n" +
 	"\x1aEnable email notifications\x12\x04\n" +
@@ -340,8 +340,8 @@ const file_example_notifications_proto_rawDesc = "" +
 	"\x0fops@example.comR\x12notificationEmails\x12R\n" +
 	"\fretry_delays\x18\x06 \x03(\x03B/\xca\xf3\x18+\n" +
 	" Retry delay intervals in seconds\x12\a:\x05\n" +
-	"\x03\x01\x05\x1eR\vretryDelays:K\xc2\xf3\x18G\n" +
-	"\rnotifications\x12'Controls notification delivery behavior\x1a\rplatform-team*k\n" +
+	"\x03\x01\x05\x1eR\vretryDelays:W\xc2\xf3\x18S\n" +
+	"\rnotifications\x12'Controls notification delivery behavior\x1a\rplatform-team\"\x04anon\"\x04user*k\n" +
 	"\tPlanLevel\x12\x1a\n" +
 	"\x16PLAN_LEVEL_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fPLAN_LEVEL_FREE\x10\x01\x12\x12\n" +
@@ -352,7 +352,9 @@ const file_example_notifications_proto_rawDesc = "" +
 	"\x17DEVICE_TYPE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13DEVICE_TYPE_DESKTOP\x10\x01\x12\x16\n" +
 	"\x12DEVICE_TYPE_MOBILE\x10\x02\x12\x16\n" +
-	"\x12DEVICE_TYPE_TABLET\x10\x03Ba\n" +
+	"\x12DEVICE_TYPE_TABLET\x10\x03B~\xea\xf3\x18\x06\n" +
+	"\x04anon\xea\xf3\x18\x0f\n" +
+	"\x04user\x12\auser_id\n" +
 	"&org.spotlightgov.pbflags.example.protoP\x01Z5github.com/SpotlightGOV/pbflags/gen/example;examplepbb\x06proto3"
 
 var (

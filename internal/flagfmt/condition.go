@@ -11,4 +11,8 @@ type StoredCondition struct {
 	CEL     *string         `json:"cel"`
 	Value   json.RawMessage `json:"value"`
 	Comment string          `json:"comment,omitempty"`
+	// Launch override: at most one per condition. When the entity is in the
+	// launch's ramp, LaunchValue is returned instead of Value.
+	LaunchID    string          `json:"launch_id,omitempty"`
+	LaunchValue json.RawMessage `json:"launch_value,omitempty"`
 }

@@ -18,6 +18,22 @@ message FeatureOptions {
   string description = 2;
   // Owner team for the feature (for UI grouping / contact).
   string owner = 3;
+
+  // Evaluation scopes this feature is available in. Each scope name must
+  // match a (pbflags.scope) defined at file level. The codegen produces
+  // feature accessor methods only on scope types listed here.
+  repeated string scopes = 4;
+}
+
+// Scope definition. Applied as a file-level option (repeatable).
+// Each scope defines a named execution context with a set of dimensions
+// beyond the globally required ones.
+message ScopeOptions {
+  // Unique name for this scope (e.g., "anon", "user", "tenant").
+  string name = 1;
+  // Additional dimensions this scope provides beyond globally required ones.
+  // Globally required dimensions (presence: REQUIRED) are implicit in every scope.
+  repeated string dimensions = 2;
 }
 
 // Applied to a field to mark it as a flag.
@@ -85,20 +101,47 @@ message SupportedValues {
 // Each field defines a context dimension (string, enum, bool, or int64).
 message ContextOptions {}
 
+// DimensionDistribution classifies a dimension's value distribution for
+// cache key strategy and launch eligibility.
+//
+// Wire-compatible with the old hashable bool (field 2): true (varint 1)
+// decodes as DIMENSION_DISTRIBUTION_UNIFORM (enum value 1).
+enum DimensionDistribution {
+  DIMENSION_DISTRIBUTION_UNSPECIFIED = 0;
+  // High cardinality, stable values. Suitable for percentage-based hashing
+  // (launches, experiments). E.g., user_id, session_id.
+  DIMENSION_DISTRIBUTION_UNIFORM = 1;
+  // Low/bounded cardinality. Enum-like. Not suitable for hashing.
+  // E.g., plan_level, region. Enum and bool proto fields are inherently
+  // categorical — inferred from the proto type, no annotation needed.
+  DIMENSION_DISTRIBUTION_CATEGORICAL = 2;
+}
+
+// DimensionPresence classifies whether a dimension is always set.
+enum DimensionPresence {
+  DIMENSION_PRESENCE_UNSPECIFIED = 0;
+  // Always present. Consumer must set it.
+  DIMENSION_PRESENCE_REQUIRED = 1;
+  // May be absent (e.g., user_id when logged out).
+  DIMENSION_PRESENCE_OPTIONAL = 2;
+}
+
 // Applied to a field within the context message to define a dimension.
 message DimensionOptions {
   string description = 1;
-  // Whether this dimension can be used for percentage-based hashing
-  // (launches, experiments). Typically true for stable identifiers
-  // like user_id, false for attributes like plan or device_type.
-  bool hashable = 2;
-  // Explicitly declare a string or int64 dimension as having bounded
-  // cardinality. Enum and bool dimensions are inherently bounded.
-  // String and int64 dimensions are unbounded by default.
-  bool bounded = 3;
+  // Replaces the old hashable (bool, field 2) and bounded (bool, field 3).
+  // Wire-compatible: old hashable: true (varint 1 on field 2) decodes as
+  // DIMENSION_DISTRIBUTION_UNIFORM (enum value 1). Old bounded: true on
+  // field 3 is ignored (field 3 is no longer declared).
+  DimensionDistribution distribution = 2;
+  // Fields 2 and 3 were previously hashable (bool) and bounded (bool).
+  // The distribution enum subsumes both. Field 3 is reserved.
+  reserved 3;
+  // Whether this dimension is always present in evaluation contexts.
+  DimensionPresence presence = 4;
 }
 
-// Extension field numbers 51000-51004 are reserved for pbflags.
+// Extension field numbers 51000-51005 are reserved for pbflags.
 // Protobuf does not support `reserved` inside extend blocks, so this
 // reservation is by convention only. Do not reuse these numbers:
 //   51000: feature (MessageOptions) — active
@@ -106,6 +149,7 @@ message DimensionOptions {
 //   51002: was layers (EnumOptions) — removed, do not reuse
 //   51003: context (MessageOptions) — active
 //   51004: dimension (FieldOptions) — active
+//   51005: scope (FileOptions) — active
 extend google.protobuf.MessageOptions {
   optional FeatureOptions feature = 51000;
   optional ContextOptions context = 51003;
@@ -114,4 +158,8 @@ extend google.protobuf.MessageOptions {
 extend google.protobuf.FieldOptions {
   optional FlagOptions flag = 51001;
   optional DimensionOptions dimension = 51004;
+}
+
+extend google.protobuf.FileOptions {
+  repeated ScopeOptions scope = 51005;
 }

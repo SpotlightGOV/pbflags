@@ -42,18 +42,30 @@ func (k DimensionKind) String() string {
 
 // DimensionDef describes a single dimension field in the EvaluationContext.
 type DimensionDef struct {
-	Name        string        // proto field name (e.g., "user_id")
-	Number      int32         // proto field number
-	Kind        DimensionKind // dimension type
-	Description string        // from DimensionOptions.description
-	Hashable    bool          // from DimensionOptions.hashable
-	Bounded     bool          // from DimensionOptions.bounded
+	Name         string        // proto field name (e.g., "user_id")
+	Number       int32         // proto field number
+	Kind         DimensionKind // dimension type
+	Description  string        // from DimensionOptions.description
+	Distribution int32         // DimensionDistribution enum value (0=unspecified, 1=uniform, 2=categorical)
+	Presence     int32         // DimensionPresence enum value (0=unspecified, 1=required, 2=optional)
 
 	// Enum-specific metadata (only populated when Kind == DimensionEnum).
 	EnumName   string          // fully qualified enum name
 	EnumValues []EnumValueDef  // enum values
 	ProtoField *protogen.Field // original protogen field for codegen access
 }
+
+// IsUniform returns true if the dimension has distribution UNIFORM (suitable for launch hashing).
+func (d *DimensionDef) IsUniform() bool { return d.Distribution == 1 }
+
+// IsCategorical returns true if the dimension has distribution CATEGORICAL or is inherently
+// categorical (enum/bool kind).
+func (d *DimensionDef) IsCategorical() bool {
+	return d.Distribution == 2 || d.Kind == DimensionEnum || d.Kind == DimensionBool
+}
+
+// IsRequired returns true if the dimension has presence REQUIRED.
+func (d *DimensionDef) IsRequired() bool { return d.Presence == 1 }
 
 // EnumValueDef describes a single enum value.
 type EnumValueDef struct {
@@ -212,7 +224,7 @@ func parseDimension(field *protogen.Field) (*DimensionDef, error) {
 	// Check for (pbflags.dimension) extension.
 	var hasDim bool
 	var description string
-	var hashable, bounded bool
+	var distribution, presence int32
 
 	rm.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
 		if fd.Number() == dimensionExtNum && fd.IsExtension() {
@@ -222,10 +234,10 @@ func parseDimension(field *protogen.Field) (*DimensionDef, error) {
 				switch dfd.Name() {
 				case "description":
 					description = dv.String()
-				case "hashable":
-					hashable = dv.Bool()
-				case "bounded":
-					bounded = dv.Bool()
+				case "distribution":
+					distribution = int32(dv.Enum())
+				case "presence":
+					presence = int32(dv.Enum())
 				}
 				return true
 			})
@@ -236,7 +248,7 @@ func parseDimension(field *protogen.Field) (*DimensionDef, error) {
 
 	if !hasDim {
 		// Try unknown fields.
-		hasDim, description, hashable, bounded = parseDimensionFromUnknown(rm.GetUnknown())
+		hasDim, description, distribution, presence = parseDimensionFromUnknown(rm.GetUnknown())
 	}
 
 	if !hasDim {
@@ -249,13 +261,13 @@ func parseDimension(field *protogen.Field) (*DimensionDef, error) {
 	}
 
 	dim := &DimensionDef{
-		Name:        string(field.Desc.Name()),
-		Number:      int32(field.Desc.Number()),
-		Kind:        kind,
-		Description: description,
-		Hashable:    hashable,
-		Bounded:     bounded,
-		ProtoField:  field,
+		Name:         string(field.Desc.Name()),
+		Number:       int32(field.Desc.Number()),
+		Kind:         kind,
+		Description:  description,
+		Distribution: distribution,
+		Presence:     presence,
+		ProtoField:   field,
 	}
 
 	if kind == DimensionEnum {
@@ -294,7 +306,7 @@ func fieldKindToDimensionKind(field *protogen.Field) (DimensionKind, error) {
 }
 
 // parseDimensionFromUnknown extracts DimensionOptions fields from unknown wire data.
-func parseDimensionFromUnknown(b []byte) (found bool, description string, hashable, bounded bool) {
+func parseDimensionFromUnknown(b []byte) (found bool, description string, distribution, presence int32) {
 	for len(b) > 0 {
 		num, typ, n := protowire.ConsumeTag(b)
 		if n < 0 {
@@ -308,7 +320,7 @@ func parseDimensionFromUnknown(b []byte) (found bool, description string, hashab
 			}
 			b = b[n:]
 			found = true
-			description, hashable, bounded = parseDimensionOptionsBytes(data)
+			description, distribution, presence = parseDimensionOptionsBytes(data)
 			continue
 		}
 		n = skipField(b, typ)
@@ -320,7 +332,7 @@ func parseDimensionFromUnknown(b []byte) (found bool, description string, hashab
 	return
 }
 
-func parseDimensionOptionsBytes(b []byte) (description string, hashable, bounded bool) {
+func parseDimensionOptionsBytes(b []byte) (description string, distribution, presence int32) {
 	for len(b) > 0 {
 		num, typ, n := protowire.ConsumeTag(b)
 		if n < 0 {
@@ -335,19 +347,19 @@ func parseDimensionOptionsBytes(b []byte) (description string, hashable, bounded
 			}
 			description = string(data)
 			b = b[n:]
-		case num == 2 && typ == protowire.VarintType: // hashable
+		case num == 2 && typ == protowire.VarintType: // distribution (was hashable bool)
 			v, n := protowire.ConsumeVarint(b)
 			if n < 0 {
 				return
 			}
-			hashable = v != 0
+			distribution = int32(v)
 			b = b[n:]
-		case num == 3 && typ == protowire.VarintType: // bounded
+		case num == 4 && typ == protowire.VarintType: // presence
 			v, n := protowire.ConsumeVarint(b)
 			if n < 0 {
 				return
 			}
-			bounded = v != 0
+			presence = int32(v)
 			b = b[n:]
 		default:
 			n = skipField(b, typ)

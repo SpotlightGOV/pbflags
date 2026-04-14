@@ -13,7 +13,7 @@ func UserID(v string) pbflags.Dimension {
 	return pbflags.StringDimension("user_id", v)
 }
 
-// SessionID sets the session_id dimension (Browser session (unauthenticated users)).
+// SessionID sets the session_id dimension (Stable session identifier).
 func SessionID(v string) pbflags.Dimension {
 	return pbflags.StringDimension("session_id", v)
 }

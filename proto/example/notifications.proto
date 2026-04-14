@@ -6,6 +6,12 @@ import "pbflags/options.proto";
 option go_package = "github.com/SpotlightGOV/pbflags/gen/example;examplepb";
 option java_multiple_files = true;
 option java_package = "org.spotlightgov.pbflags.example.proto";
+// Scope definitions — globally required dims (session_id) are implicit.
+option (pbflags.scope) = {name: "anon"};
+option (pbflags.scope) = {
+  name: "user"
+  dimensions: ["user_id"]
+};
 
 // Enum dimensions get typed constructors and sync-time value validation.
 enum PlanLevel {
@@ -30,21 +36,32 @@ message EvaluationContext {
   // String dimensions — identifiers with unbounded cardinality.
   string user_id = 1 [(pbflags.dimension) = {
     description: "Authenticated user identifier"
-    hashable: true
+    distribution: DIMENSION_DISTRIBUTION_UNIFORM
+    presence: DIMENSION_PRESENCE_OPTIONAL
   }];
 
   string session_id = 2 [(pbflags.dimension) = {
-    description: "Browser session (unauthenticated users)"
-    hashable: true
+    description: "Stable session identifier"
+    distribution: DIMENSION_DISTRIBUTION_UNIFORM
+    presence: DIMENSION_PRESENCE_REQUIRED
   }];
 
-  // Enum dimensions — bounded cardinality, compile-time safe constructors.
-  PlanLevel plan = 3 [(pbflags.dimension) = {description: "Subscription tier"}];
+  // Enum dimensions — bounded cardinality (inferred from enum type).
+  PlanLevel plan = 3 [(pbflags.dimension) = {
+    description: "Subscription tier"
+    presence: DIMENSION_PRESENCE_OPTIONAL
+  }];
 
-  DeviceType device_type = 4 [(pbflags.dimension) = {description: "Client device class"}];
+  DeviceType device_type = 4 [(pbflags.dimension) = {
+    description: "Client device class"
+    presence: DIMENSION_PRESENCE_OPTIONAL
+  }];
 
   // Bool dimension.
-  bool is_internal = 5 [(pbflags.dimension) = {description: "Internal employee"}];
+  bool is_internal = 5 [(pbflags.dimension) = {
+    description: "Internal employee"
+    presence: DIMENSION_PRESENCE_OPTIONAL
+  }];
 }
 
 // Notifications demonstrates how to define a feature with multiple flags.
@@ -54,6 +71,10 @@ message Notifications {
     id: "notifications"
     description: "Controls notification delivery behavior"
     owner: "platform-team"
+    scopes: [
+      "anon",
+      "user"
+    ]
   };
 
   // Enable email notifications.

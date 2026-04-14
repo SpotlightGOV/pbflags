@@ -78,16 +78,18 @@ func TestDiscoverContext(t *testing.T) {
 		byName[d.Name] = d
 	}
 
-	// user_id: string, hashable
+	// user_id: string, uniform, optional
 	uid := byName["user_id"]
 	assert.Equal(t, contextutil.DimensionString, uid.Kind)
-	assert.True(t, uid.Hashable)
+	assert.True(t, uid.IsUniform())
+	assert.False(t, uid.IsRequired())
 	assert.Equal(t, "Authenticated user identifier", uid.Description)
 
-	// session_id: string, hashable
+	// session_id: string, uniform, required
 	sid := byName["session_id"]
 	assert.Equal(t, contextutil.DimensionString, sid.Kind)
-	assert.True(t, sid.Hashable)
+	assert.True(t, sid.IsUniform())
+	assert.True(t, sid.IsRequired())
 
 	// plan: enum
 	plan := byName["plan"]

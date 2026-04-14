@@ -20,13 +20,13 @@ type Config struct {
 	Launches map[string]LaunchEntry // keyed by launch ID
 }
 
-// LaunchEntry defines a percentage-based rollout for a flag.
+// LaunchEntry defines a launch (gradual rollout) at the feature level.
+// The launch-to-flag binding is expressed inline on individual conditions
+// via LaunchOverride on Condition, not on the launch definition.
 type LaunchEntry struct {
-	Flag           string               // flag field name within the feature
-	Dimension      string               // hashable dimension to hash on
-	Population     string               // CEL expression restricting eligible population (empty = all)
-	Value          *pbflagsv1.FlagValue // value for entities in the ramp
-	RampPercentage int                  // initial ramp percentage (0-100); only applied on insert, not on update
+	Dimension      string // hashable dimension to hash on (must be UNIFORM)
+	RampPercentage int    // initial ramp percentage (0-100); only applied on insert, not on update
+	Description    string // optional human-readable description
 }
 
 // FlagEntry is a single flag's configuration — either a static value or
@@ -34,6 +34,7 @@ type LaunchEntry struct {
 type FlagEntry struct {
 	Value      *pbflagsv1.FlagValue // non-nil for static values
 	Conditions []Condition          // non-nil for condition chains
+	Launch     *FlagLaunchOverride  // optional launch override on static value
 }
 
 // Condition is one entry in a condition chain.
@@ -41,6 +42,19 @@ type Condition struct {
 	When    string               // CEL expression; empty means "otherwise" (default)
 	Value   *pbflagsv1.FlagValue // the value to return when the condition matches
 	Comment string               // annotation from YAML comment (head or inline)
+	Launch  *LaunchOverride      // optional launch override (at most one per condition)
+}
+
+// LaunchOverride is a per-condition value override under a launch.
+type LaunchOverride struct {
+	ID    string               // launch ID (must resolve to a defined launch)
+	Value *pbflagsv1.FlagValue // value to return when the entity is in the launch ramp
+}
+
+// FlagLaunchOverride is a launch override on a static flag value.
+type FlagLaunchOverride struct {
+	ID    string               // launch ID
+	Value *pbflagsv1.FlagValue // value for entities in the ramp
 }
 
 // YAML unmarshaling types.
@@ -51,16 +65,15 @@ type rawConfig struct {
 }
 
 type rawLaunchEntry struct {
-	Flag           string `yaml:"flag"`
 	Dimension      string `yaml:"dimension"`
-	Population     string `yaml:"population"`
-	Value          any    `yaml:"value"`
 	RampPercentage *int   `yaml:"ramp_percentage"`
+	Description    string `yaml:"description"`
 }
 
 type rawFlagEntry struct {
-	Value      any            `yaml:"value"`
-	Conditions []rawCondition `yaml:"conditions"`
+	Value      any                `yaml:"value"`
+	Conditions []rawCondition     `yaml:"conditions"`
+	Launch     *rawLaunchOverride `yaml:"launch"`
 	hasValue   bool
 }
 
@@ -83,13 +96,25 @@ func (r *rawFlagEntry) UnmarshalYAML(node *yaml.Node) error {
 			return err
 		}
 	}
+	if lNode, ok := m["launch"]; ok {
+		r.Launch = &rawLaunchOverride{}
+		if err := lNode.Decode(r.Launch); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
+type rawLaunchOverride struct {
+	ID    string `yaml:"id"`
+	Value any    `yaml:"value"`
+}
+
 type rawCondition struct {
-	When      string `yaml:"when"`
-	Value     any    `yaml:"value"`
-	Otherwise any    `yaml:"otherwise"`
+	When      string             `yaml:"when"`
+	Value     any                `yaml:"value"`
+	Otherwise any                `yaml:"otherwise"`
+	Launch    *rawLaunchOverride `yaml:"launch"`
 	hasValue  bool
 	hasOther  bool
 	comment   string
@@ -114,6 +139,12 @@ func (r *rawCondition) UnmarshalYAML(node *yaml.Node) error {
 	if oNode, ok := m["otherwise"]; ok {
 		r.hasOther = true
 		if err := oNode.Decode(&r.Otherwise); err != nil {
+			return err
+		}
+	}
+	if lNode, ok := m["launch"]; ok {
+		r.Launch = &rawLaunchOverride{}
+		if err := lNode.Decode(r.Launch); err != nil {
 			return err
 		}
 	}
@@ -180,7 +211,7 @@ func Parse(data []byte, flagTypes map[string]pbflagsv1.FlagType) (*Config, []str
 		}
 	}
 
-	// Parse launches.
+	// Parse launches (feature-scoped launch definitions).
 	if len(raw.Launches) > 0 {
 		cfg.Launches = make(map[string]LaunchEntry, len(raw.Launches))
 		for launchID, rawLaunch := range raw.Launches {
@@ -188,22 +219,8 @@ func Parse(data []byte, flagTypes map[string]pbflagsv1.FlagType) (*Config, []str
 				errs = append(errs, errors.New("launch: empty launch ID"))
 				continue
 			}
-			if rawLaunch.Flag == "" {
-				errs = append(errs, fmt.Errorf("launch %q: missing required field: flag", launchID))
-				continue
-			}
 			if rawLaunch.Dimension == "" {
 				errs = append(errs, fmt.Errorf("launch %q: missing required field: dimension", launchID))
-				continue
-			}
-			ft, ok := flagTypes[rawLaunch.Flag]
-			if !ok {
-				errs = append(errs, fmt.Errorf("launch %q: flag %q not defined in proto", launchID, rawLaunch.Flag))
-				continue
-			}
-			fv, err := convertValue(rawLaunch.Value, ft, fmt.Sprintf("launch %s", launchID))
-			if err != nil {
-				errs = append(errs, fmt.Errorf("launch %q: %w", launchID, err))
 				continue
 			}
 			var rampPct int
@@ -215,11 +232,9 @@ func Parse(data []byte, flagTypes map[string]pbflagsv1.FlagType) (*Config, []str
 				}
 			}
 			cfg.Launches[launchID] = LaunchEntry{
-				Flag:           rawLaunch.Flag,
 				Dimension:      rawLaunch.Dimension,
-				Population:     rawLaunch.Population,
-				Value:          fv,
 				RampPercentage: rampPct,
+				Description:    rawLaunch.Description,
 			}
 		}
 	}
@@ -248,7 +263,21 @@ func convertFlagEntry(name string, raw rawFlagEntry, ft pbflagsv1.FlagType) (Fla
 		if err != nil {
 			return FlagEntry{}, nil, err
 		}
-		return FlagEntry{Value: fv}, nil, nil
+		entry := FlagEntry{Value: fv}
+
+		// Static value launch override.
+		if raw.Launch != nil {
+			if raw.Launch.ID == "" {
+				return FlagEntry{}, nil, fmt.Errorf("flag %q: launch override missing id", name)
+			}
+			lv, err := convertValue(raw.Launch.Value, ft, name)
+			if err != nil {
+				return FlagEntry{}, nil, fmt.Errorf("flag %q: launch override: %w", name, err)
+			}
+			entry.Launch = &FlagLaunchOverride{ID: raw.Launch.ID, Value: lv}
+		}
+
+		return entry, nil, nil
 	}
 
 	// Condition chain.
@@ -285,7 +314,22 @@ func convertFlagEntry(name string, raw rawFlagEntry, ft pbflagsv1.FlagType) (Fla
 		if err != nil {
 			return FlagEntry{}, nil, err
 		}
-		conds = append(conds, Condition{When: rc.When, Value: fv, Comment: rc.comment})
+
+		cond := Condition{When: rc.When, Value: fv, Comment: rc.comment}
+
+		// Per-condition launch override.
+		if rc.Launch != nil {
+			if rc.Launch.ID == "" {
+				return FlagEntry{}, nil, fmt.Errorf("flag %q: condition %d launch override missing id", name, i)
+			}
+			lv, err := convertValue(rc.Launch.Value, ft, name)
+			if err != nil {
+				return FlagEntry{}, nil, fmt.Errorf("flag %q: condition %d launch override: %w", name, i, err)
+			}
+			cond.Launch = &LaunchOverride{ID: rc.Launch.ID, Value: lv}
+		}
+
+		conds = append(conds, cond)
 	}
 
 	if !hasOtherwise {

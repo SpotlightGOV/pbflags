@@ -13,7 +13,7 @@ public final class Dimensions {
     return Dimension.ofString("user_id", v);
   }
 
-  /** Sets the session_id dimension (Browser session (unauthenticated users)). */
+  /** Sets the session_id dimension (Stable session identifier). */
   public static Dimension sessionId(String v) {
     return Dimension.ofString("session_id", v);
   }

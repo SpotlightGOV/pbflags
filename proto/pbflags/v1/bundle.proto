@@ -14,6 +14,9 @@ option java_package = "org.spotlightgov.pbflags.v1.proto";
 message CompiledBundle {
   repeated CompiledFeature features = 1;
   string cel_version = 2; // CEL library version used during compilation
+  // All defined launches from config (feature-scoped and cross-feature).
+  // Active/soaking/unkilled filtering happens at the evaluator.
+  repeated CompiledLaunch launches = 3;
 }
 
 // CompiledFeature holds the compiled state for a single feature.
@@ -23,7 +26,9 @@ message CompiledFeature {
   string description = 3;
   string owner = 4;
   repeated CompiledFlag flags = 5;
-  repeated CompiledLaunch launches = 6;
+  // Field 6 was per-feature launches in the old model. Launches are now
+  // at the bundle level (CompiledBundle.launches field 3).
+  reserved 6;
 }
 
 // CompiledFlag holds a flag's compiled conditions and metadata.
@@ -42,11 +47,21 @@ message CompiledFlag {
 }
 
 // CompiledLaunch holds a launch definition ready for DB upsert.
+// Launch-to-flag binding is expressed inline via launch overrides on
+// individual StoredConditions, not on the launch definition.
 message CompiledLaunch {
   string launch_id = 1;
-  string flag_id = 2;
+  // Field 2 was flag_id — binding is now inline in conditions.
+  reserved 2;
   string dimension = 3;
-  string population_cel = 4; // empty = all entities
-  bytes value_json = 5; // protojson-encoded FlagValue
+  // Field 4 was population_cel — targeting handled by condition when clauses.
+  reserved 4;
+  // Field 5 was value_json — values are per-condition overrides now.
+  reserved 5;
   int32 ramp_percentage = 6; // initial ramp (0-100); applied on insert only
+  // Where the launch is defined. Empty for cross-feature launches (launches/ dir).
+  string scope_feature_id = 7;
+  // All features that reference this launch. Populated by sync.
+  repeated string affected_features = 8;
+  string description = 9;
 }
