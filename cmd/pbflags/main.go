@@ -38,12 +38,14 @@ Usage:
   pb <command> [flags]
 
 Config commands:
+  init       Initialize a new pbflags project
   sync       Sync definitions and conditions to the database
   validate   Validate YAML config files against proto descriptors
   show       Show resolved config for a specific flag
   export     Export DB state as YAML config files
   compile    Compile YAML configs into a binary bundle
   load       Load a compiled bundle into the database
+  lint       Detect breaking changes in proto definitions
 
 Admin commands:
   flag       Flag operations (list, get, kill, unkill)
@@ -71,6 +73,8 @@ func main() {
 	}
 
 	switch args[0] {
+	case "init":
+		runInit(args[1:])
 	case "sync":
 		runSync(args[1:])
 	case "validate":
@@ -83,6 +87,8 @@ func main() {
 		runCompile(args[1:])
 	case "load":
 		runLoad(args[1:])
+	case "lint":
+		runLint(args[1:])
 	case "flag":
 		runFlag(args[1:])
 	case "launch":
