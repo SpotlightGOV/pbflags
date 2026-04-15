@@ -26,6 +26,9 @@ help:
 	@echo "Test:"
 	@echo "  test            Run Go unit and integration tests"
 	@echo "  test-e2e        Run browser E2E tests via Playwright (HEADED=1 for visible browser)"
+	@echo "  test-harness    Run distribution and hardening tests (on-demand)"
+	@echo "  bench           Run benchmarks and save results to benchdata/"
+	@echo "  bench-compare   Compare latest benchmark against previous run (needs benchstat)"
 	@echo ""
 	@echo "Release:"
 	@echo "  release         Lint, test, test-e2e, then tag and push (VERSION=, MAJOR=1, or auto)"
@@ -56,6 +59,29 @@ test:
 # Set HEADED=1 for visible browser with slowdown.
 test-e2e:
 	go test -tags e2e -count=1 -p 1 -v ./internal/e2e/
+
+# Run distribution and hardening tests (gated behind "harness" build tag).
+test-harness:
+	go test -tags harness -count=1 -v ./internal/evaluator/
+
+# Run benchmarks and save results to benchdata/ with a timestamped filename.
+# Use COUNT=N to override iteration count (default 5 for benchstat stability).
+bench:
+	$(eval BENCH_FILE := benchdata/$(shell date +%Y%m%d-%H%M%S).txt)
+	go test -tags harness -run='^$$' -bench=. -benchmem -count=$(or $(COUNT),5) ./internal/evaluator/ | tee $(BENCH_FILE)
+	@echo ""
+	@echo "Benchmark results saved to $(BENCH_FILE)"
+
+# Compare the two most recent benchmark runs using benchstat.
+bench-compare:
+	$(eval LATEST := $(shell ls -t benchdata/*.txt 2>/dev/null | head -1))
+	$(eval PREVIOUS := $(shell ls -t benchdata/*.txt 2>/dev/null | head -2 | tail -1))
+	@if [ -z "$(LATEST)" ] || [ -z "$(PREVIOUS)" ] || [ "$(LATEST)" = "$(PREVIOUS)" ]; then \
+		echo "Need at least two benchmark runs in benchdata/. Run 'make bench' twice."; \
+		exit 1; \
+	fi
+	@echo "Comparing $(PREVIOUS) → $(LATEST)"
+	go tool benchstat $(PREVIOUS) $(LATEST)
 
 # Auto-format Go, proto, and Java source files.
 fmt:
