@@ -22,6 +22,7 @@ func parseDurationEnv(key string) (time.Duration, bool) {
 // Config is the shared evaluator/admin configuration.
 type Config struct {
 	Descriptors string
+	Bundle      string
 	Upstream    string
 	Listen      string
 	Admin       string
@@ -60,6 +61,9 @@ func LoadConfig() Config {
 
 	if v := os.Getenv("PBFLAGS_DESCRIPTORS"); v != "" {
 		cfg.Descriptors = v
+	}
+	if v := os.Getenv("PBFLAGS_BUNDLE"); v != "" {
+		cfg.Bundle = v
 	}
 	if v := os.Getenv("PBFLAGS_UPSTREAM"); v != "" {
 		cfg.Upstream = v

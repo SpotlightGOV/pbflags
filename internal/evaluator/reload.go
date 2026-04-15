@@ -2,6 +2,7 @@ package evaluator
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"sync"
@@ -10,47 +11,41 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// SyncAndReloadFunc is called by the DescriptorWatcher in monolithic mode.
-// It receives the parsed definitions and syncs them to the DB. If it returns
-// an error, the sync is considered failed.
-type SyncAndReloadFunc func(ctx context.Context, defs []FlagDef) error
-
-// DescriptorWatcher monitors the descriptors file for changes and syncs
-// definitions to the DB in standalone mode.
-type DescriptorWatcher struct {
-	path            string
-	logger          *slog.Logger
-	pollInterval    time.Duration
-	sighupCh        <-chan os.Signal
-	syncAndReloadFn SyncAndReloadFunc // If set, sync to DB on file change.
+// FileWatcher monitors a single file for changes using fsnotify with
+// polling fallback. When the file changes, it calls the onChange callback.
+// If onChange returns an error the watcher retains the previous mtime so
+// the next poll cycle retries.
+type FileWatcher struct {
+	path         string
+	logger       *slog.Logger
+	pollInterval time.Duration
+	sighupCh     <-chan os.Signal
+	onChange     func(ctx context.Context, trigger string) error
 
 	mu      sync.Mutex
 	lastMod time.Time
 }
 
-// NewDescriptorWatcher creates a descriptor file watcher.
-func NewDescriptorWatcher(
+// NewFileWatcher creates a generic file watcher. onChange is called whenever
+// the watched file is modified (via fsnotify, mtime poll, or SIGHUP).
+func NewFileWatcher(
 	path string,
 	pollInterval time.Duration,
 	sighupCh <-chan os.Signal,
 	logger *slog.Logger,
-) *DescriptorWatcher {
-	return &DescriptorWatcher{
+	onChange func(ctx context.Context, trigger string) error,
+) *FileWatcher {
+	return &FileWatcher{
 		path:         path,
 		pollInterval: pollInterval,
 		sighupCh:     sighupCh,
 		logger:       logger,
+		onChange:     onChange,
 	}
 }
 
-// SetSyncAndReload sets the sync callback for monolithic mode. When set,
-// descriptor file changes trigger: parse → sync to DB.
-func (w *DescriptorWatcher) SetSyncAndReload(fn SyncAndReloadFunc) {
-	w.syncAndReloadFn = fn
-}
-
 // Run starts the watcher. Blocks until ctx is cancelled.
-func (w *DescriptorWatcher) Run(ctx context.Context) {
+func (w *FileWatcher) Run(ctx context.Context) {
 	if info, err := os.Stat(w.path); err == nil {
 		w.mu.Lock()
 		w.lastMod = info.ModTime()
@@ -71,7 +66,7 @@ func (w *DescriptorWatcher) Run(ctx context.Context) {
 		return
 	}
 
-	w.logger.Info("watching descriptors file", "path", w.path)
+	w.logger.Info("watching file", "path", w.path)
 
 	var pollCh <-chan time.Time
 	var pollTicker *time.Ticker
@@ -118,13 +113,13 @@ func (w *DescriptorWatcher) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			w.logger.Info("SIGHUP received, reloading descriptors")
+			w.logger.Info("SIGHUP received, reloading", "path", w.path)
 			w.tryReload("SIGHUP")
 		}
 	}
 }
 
-func (w *DescriptorWatcher) runPollOnly(ctx context.Context) {
+func (w *FileWatcher) runPollOnly(ctx context.Context) {
 	interval := w.pollInterval
 	if interval <= 0 {
 		interval = 30 * time.Second
@@ -142,13 +137,13 @@ func (w *DescriptorWatcher) runPollOnly(ctx context.Context) {
 			if !ok {
 				return
 			}
-			w.logger.Info("SIGHUP received, reloading descriptors")
+			w.logger.Info("SIGHUP received, reloading", "path", w.path)
 			w.tryReload("SIGHUP")
 		}
 	}
 }
 
-func (w *DescriptorWatcher) tryReloadIfChanged() {
+func (w *FileWatcher) tryReloadIfChanged() {
 	info, err := os.Stat(w.path)
 	if err != nil {
 		return
@@ -163,21 +158,10 @@ func (w *DescriptorWatcher) tryReloadIfChanged() {
 	}
 }
 
-func (w *DescriptorWatcher) tryReload(trigger string) {
-	defs, err := ParseDescriptorFile(w.path)
-	if err != nil {
-		w.logger.Error("descriptor reload failed, continuing with current state",
-			"trigger", trigger, "error", err)
+func (w *FileWatcher) tryReload(trigger string) {
+	if err := w.onChange(context.Background(), trigger); err != nil {
+		w.logger.Error("reload failed", "trigger", trigger, "path", w.path, "error", err)
 		return
-	}
-
-	// In monolithic mode: sync to DB.
-	if w.syncAndReloadFn != nil {
-		if err := w.syncAndReloadFn(context.Background(), defs); err != nil {
-			w.logger.Error("sync failed",
-				"trigger", trigger, "error", err)
-			return
-		}
 	}
 
 	if info, err := os.Stat(w.path); err == nil {
@@ -185,8 +169,73 @@ func (w *DescriptorWatcher) tryReload(trigger string) {
 		w.lastMod = info.ModTime()
 		w.mu.Unlock()
 	}
+}
 
-	w.logger.Info("descriptors reloaded",
+// ── DescriptorWatcher ──────────────────────────────────────────────────
+
+// SyncAndReloadFunc is called by the DescriptorWatcher in monolithic mode.
+// It receives the parsed definitions and syncs them to the DB. If it returns
+// an error, the sync is considered failed.
+type SyncAndReloadFunc func(ctx context.Context, defs []FlagDef) error
+
+// DescriptorWatcher monitors the descriptors file for changes and syncs
+// definitions to the DB in standalone mode.
+type DescriptorWatcher struct {
+	fw              *FileWatcher
+	path            string
+	logger          *slog.Logger
+	syncAndReloadFn SyncAndReloadFunc // If set, sync to DB on file change.
+}
+
+// NewDescriptorWatcher creates a descriptor file watcher.
+func NewDescriptorWatcher(
+	path string,
+	pollInterval time.Duration,
+	sighupCh <-chan os.Signal,
+	logger *slog.Logger,
+) *DescriptorWatcher {
+	dw := &DescriptorWatcher{
+		path:   path,
+		logger: logger,
+	}
+	dw.fw = NewFileWatcher(path, pollInterval, sighupCh, logger, dw.handleChange)
+	return dw
+}
+
+// SetSyncAndReload sets the sync callback for monolithic mode. When set,
+// descriptor file changes trigger: parse → sync to DB.
+func (dw *DescriptorWatcher) SetSyncAndReload(fn SyncAndReloadFunc) {
+	dw.syncAndReloadFn = fn
+}
+
+// Run starts the watcher. Blocks until ctx is cancelled.
+func (dw *DescriptorWatcher) Run(ctx context.Context) {
+	dw.fw.Run(ctx)
+}
+
+// tryReload parses the descriptor file and calls the sync callback.
+// Exported for testing via the unexported name in the same package.
+func (dw *DescriptorWatcher) tryReload(trigger string) {
+	if err := dw.handleChange(context.Background(), trigger); err != nil {
+		dw.logger.Error("descriptor reload failed, continuing with current state",
+			"trigger", trigger, "error", err)
+	}
+}
+
+func (dw *DescriptorWatcher) handleChange(_ context.Context, trigger string) error {
+	defs, err := ParseDescriptorFile(dw.path)
+	if err != nil {
+		return fmt.Errorf("parse descriptors: %w", err)
+	}
+
+	if dw.syncAndReloadFn != nil {
+		if err := dw.syncAndReloadFn(context.Background(), defs); err != nil {
+			return fmt.Errorf("sync: %w", err)
+		}
+	}
+
+	dw.logger.Info("descriptors reloaded",
 		"trigger", trigger,
 		"total_flags", len(defs))
+	return nil
 }

@@ -13,6 +13,11 @@
 //	pbflags-admin --standalone --descriptors=descriptors.pb \
 //	  --database=postgres://user:pass@localhost:5432/flags
 //
+// Standalone mode with a pre-compiled bundle (no proto/CEL tooling needed):
+//
+//	pbflags-admin --standalone --bundle=bundle.pb \
+//	  --database=postgres://user:pass@localhost:5432/flags
+//
 // Flags can also be supplied via picocli-style @file references:
 //
 //	pbflags-admin @config.flags
@@ -23,6 +28,7 @@
 //	PBFLAGS_ADMIN               Admin listen address (default: :9200)
 //	PBFLAGS_LISTEN              Evaluator listen address (default: :9201)
 //	PBFLAGS_DESCRIPTORS         Path to descriptors.pb (standalone only)
+//	PBFLAGS_BUNDLE              Path to compiled bundle.pb (standalone only; mutually exclusive with PBFLAGS_DESCRIPTORS)
 //	PBFLAGS_ENV_NAME            Environment label shown in admin UI
 //	PBFLAGS_ENV_COLOR           Accent color for admin UI environment banner
 //	PBFLAGS_CACHE_KILL_TTL      Kill set cache TTL (default: 30s)
@@ -80,6 +86,7 @@ func main() {
 	evaluatorListen := fs.String("evaluator-listen", "", "Evaluator listen address (default :9201, empty to disable)")
 	standalone := fs.Bool("standalone", false, "Run all roles in one process (admin + evaluator + sync + migrations)")
 	descriptors := fs.String("descriptors", "", "Path to descriptors.pb (requires --standalone)")
+	bundle := fs.String("bundle", "", "Path to compiled bundle.pb (requires --standalone; mutually exclusive with --descriptors)")
 	configDir := fs.String("features", "", "Directory of YAML flag config files (standalone; syncs conditions on startup)")
 	killTTL := fs.Duration("cache-kill-ttl", 0, "Kill set cache TTL (default 30s)")
 	flagTTL := fs.Duration("cache-flag-ttl", 0, "Global flag state cache TTL (default 10m)")
@@ -93,6 +100,7 @@ func main() {
 	setEnvIfFlag("PBFLAGS_ADMIN", *listen)
 	setEnvIfFlag("PBFLAGS_LISTEN", *evaluatorListen)
 	setEnvIfFlag("PBFLAGS_DESCRIPTORS", *descriptors)
+	setEnvIfFlag("PBFLAGS_BUNDLE", *bundle)
 	setEnvIfFlag("PBFLAGS_ENV_NAME", *envName)
 	setEnvIfFlag("PBFLAGS_ENV_COLOR", *envColor)
 	setDurationEnvIfFlag("PBFLAGS_CACHE_KILL_TTL", *killTTL)
@@ -130,8 +138,16 @@ func main() {
 		fmt.Fprintln(os.Stderr, "error: --descriptors requires --standalone")
 		os.Exit(1)
 	}
-	if *standalone && cfg.Descriptors == "" {
-		fmt.Fprintln(os.Stderr, "error: --descriptors is required with --standalone")
+	if !*standalone && cfg.Bundle != "" {
+		fmt.Fprintln(os.Stderr, "error: --bundle requires --standalone")
+		os.Exit(1)
+	}
+	if cfg.Descriptors != "" && cfg.Bundle != "" {
+		fmt.Fprintln(os.Stderr, "error: --descriptors and --bundle are mutually exclusive")
+		os.Exit(1)
+	}
+	if *standalone && cfg.Descriptors == "" && cfg.Bundle == "" {
+		fmt.Fprintln(os.Stderr, "error: --descriptors or --bundle is required with --standalone")
 		os.Exit(1)
 	}
 
@@ -226,8 +242,28 @@ func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, 
 
 	// ── Definitions ─────────────────────────────────────────────────
 
-	if standalone {
-		// Parse descriptors and sync to DB.
+	if standalone && cfg.Bundle != "" {
+		// Bundle mode: load pre-compiled bundle to DB.
+		bundleData, err := os.ReadFile(cfg.Bundle)
+		if err != nil {
+			return fmt.Errorf("read bundle: %w", err)
+		}
+		syncConn, err := pgx.Connect(ctx, cfg.Database)
+		if err != nil {
+			return fmt.Errorf("connect for sync: %w", err)
+		}
+		result, err := defsync.LoadBundle(ctx, syncConn, bundleData, "")
+		syncConn.Close(ctx)
+		if err != nil {
+			return fmt.Errorf("load bundle: %w", err)
+		}
+		logger.Info("bundle loaded",
+			"features", result.Features,
+			"flags_upserted", result.FlagsUpserted,
+			"flags_archived", result.FlagsArchived,
+			"conditions_updated", result.ConditionsUpdated)
+	} else if standalone {
+		// Descriptor mode: parse descriptors and sync to DB.
 		defs, err := evaluator.ParseDescriptorFile(cfg.Descriptors)
 		if err != nil {
 			return fmt.Errorf("parse descriptors: %w", err)
@@ -296,23 +332,65 @@ func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, 
 	if standalone {
 		sighupCh := make(chan os.Signal, 1)
 		signal.Notify(sighupCh, syscall.SIGHUP)
+		reloadLogger := logger.With("component", "reload")
 
-		watcher := evaluator.NewDescriptorWatcher(cfg.Descriptors,
-			30*time.Second, sighupCh,
-			logger.With("component", "reload"))
-		watcher.SetSyncAndReload(func(syncCtx context.Context, parsedDefs []evaluator.FlagDef) error {
-			syncConn, err := pgx.Connect(syncCtx, cfg.Database)
-			if err != nil {
-				return fmt.Errorf("connect for sync: %w", err)
-			}
-			defer syncConn.Close(syncCtx)
+		if cfg.Bundle != "" {
+			// Bundle mode: watch bundle file for changes → LoadBundle.
+			bundleWatcher := evaluator.NewFileWatcher(cfg.Bundle,
+				30*time.Second, sighupCh, reloadLogger,
+				func(_ context.Context, trigger string) error {
+					data, err := os.ReadFile(cfg.Bundle)
+					if err != nil {
+						return fmt.Errorf("read bundle: %w", err)
+					}
+					syncConn, err := pgx.Connect(ctx, cfg.Database)
+					if err != nil {
+						return fmt.Errorf("connect for sync: %w", err)
+					}
+					defer syncConn.Close(ctx)
 
-			if _, err := defsync.SyncDefinitions(syncCtx, syncConn, parsedDefs, logger); err != nil {
-				return fmt.Errorf("sync definitions: %w", err)
-			}
-			return nil
-		})
-		go watcher.Run(ctx)
+					result, err := defsync.LoadBundle(ctx, syncConn, data, "")
+					if err != nil {
+						return fmt.Errorf("load bundle: %w", err)
+					}
+					reloadLogger.Info("bundle reloaded",
+						"trigger", trigger,
+						"features", result.Features,
+						"flags_upserted", result.FlagsUpserted,
+						"flags_archived", result.FlagsArchived,
+						"conditions_updated", result.ConditionsUpdated)
+					return nil
+				})
+			go bundleWatcher.Run(ctx)
+		} else {
+			// Descriptor mode: watch descriptors file → SyncDefinitions + SyncConditions.
+			watcher := evaluator.NewDescriptorWatcher(cfg.Descriptors,
+				30*time.Second, sighupCh, reloadLogger)
+			watcher.SetSyncAndReload(func(syncCtx context.Context, parsedDefs []evaluator.FlagDef) error {
+				syncConn, err := pgx.Connect(syncCtx, cfg.Database)
+				if err != nil {
+					return fmt.Errorf("connect for sync: %w", err)
+				}
+				defer syncConn.Close(syncCtx)
+
+				if _, err := defsync.SyncDefinitions(syncCtx, syncConn, parsedDefs, logger); err != nil {
+					return fmt.Errorf("sync definitions: %w", err)
+				}
+
+				// Also re-sync conditions if a config directory is configured.
+				if configDir != "" {
+					descriptorData, err := os.ReadFile(cfg.Descriptors)
+					if err != nil {
+						return fmt.Errorf("read descriptors for conditions: %w", err)
+					}
+					if _, err := defsync.SyncConditions(syncCtx, syncConn, configDir, descriptorData, parsedDefs, logger, ""); err != nil {
+						return fmt.Errorf("sync conditions: %w", err)
+					}
+				}
+				return nil
+			})
+			go watcher.Run(ctx)
+		}
 	}
 
 	// ── Admin server ────────────────────────────────────────────────

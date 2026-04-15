@@ -2,6 +2,7 @@ package evaluator
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"sync/atomic"
@@ -107,6 +108,106 @@ func TestDescriptorWatcher_CancelsGracefully(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("watcher did not shut down within 2 seconds after context cancel")
 	}
+}
+
+func TestFileWatcher_PollDetectsChange(t *testing.T) {
+	t.Parallel()
+
+	tmpFile, err := os.CreateTemp(t.TempDir(), "watched-*.pb")
+	require.NoError(t, err)
+	tmpFile.Close()
+
+	sighup := make(chan os.Signal, 1)
+	var reloads atomic.Int32
+	w := NewFileWatcher(tmpFile.Name(), 30*time.Millisecond, sighup, slog.Default(),
+		func(_ context.Context, _ string) error {
+			reloads.Add(1)
+			return nil
+		})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		w.Run(ctx)
+		close(done)
+	}()
+
+	// Let initial mtime be recorded, then touch the file.
+	time.Sleep(60 * time.Millisecond)
+	require.NoError(t, os.WriteFile(tmpFile.Name(), []byte("updated"), 0o644))
+
+	// Wait for poll to detect the change.
+	require.Eventually(t, func() bool { return reloads.Load() > 0 },
+		2*time.Second, 20*time.Millisecond, "expected at least one reload")
+
+	cancel()
+	<-done
+}
+
+func TestFileWatcher_SIGHUPTriggersReload(t *testing.T) {
+	t.Parallel()
+
+	tmpFile, err := os.CreateTemp(t.TempDir(), "watched-*.pb")
+	require.NoError(t, err)
+	tmpFile.Close()
+
+	sighup := make(chan os.Signal, 1)
+	var reloads atomic.Int32
+	w := NewFileWatcher(tmpFile.Name(), 0, sighup, slog.Default(),
+		func(_ context.Context, _ string) error {
+			reloads.Add(1)
+			return nil
+		})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		w.Run(ctx)
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	sighup <- os.Interrupt
+
+	require.Eventually(t, func() bool { return reloads.Load() > 0 },
+		2*time.Second, 20*time.Millisecond, "expected SIGHUP to trigger reload")
+
+	cancel()
+	<-done
+}
+
+func TestFileWatcher_ErrorRetainsLastMod(t *testing.T) {
+	t.Parallel()
+
+	tmpFile, err := os.CreateTemp(t.TempDir(), "watched-*.pb")
+	require.NoError(t, err)
+	tmpFile.Close()
+
+	sighup := make(chan os.Signal, 1)
+	var calls atomic.Int32
+	w := NewFileWatcher(tmpFile.Name(), 30*time.Millisecond, sighup, slog.Default(),
+		func(_ context.Context, _ string) error {
+			calls.Add(1)
+			return fmt.Errorf("intentional error")
+		})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		w.Run(ctx)
+		close(done)
+	}()
+
+	// Touch the file.
+	time.Sleep(60 * time.Millisecond)
+	require.NoError(t, os.WriteFile(tmpFile.Name(), []byte("v1"), 0o644))
+
+	// Should retry on subsequent polls because lastMod wasn't updated.
+	require.Eventually(t, func() bool { return calls.Load() >= 2 },
+		2*time.Second, 20*time.Millisecond, "expected retry after error")
+
+	cancel()
+	<-done
 }
 
 func TestDescriptorWatcher_ClosedSIGHUPChannel(t *testing.T) {
