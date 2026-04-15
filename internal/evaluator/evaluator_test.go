@@ -52,7 +52,7 @@ func TestResolveGlobal_StaleCache(t *testing.T) {
 			State:  pbflagsv1.State_STATE_DEFAULT,
 		},
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 
 	val, src := eval.Evaluate(context.Background(), "test-flag", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "expected DEFAULT source")
@@ -78,7 +78,7 @@ func TestResolveGlobal_StaleCache_NextCallReturnsFresh(t *testing.T) {
 			State:  pbflagsv1.State_STATE_DEFAULT,
 		},
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 
 	// Cold start: blocks on fetch, returns DEFAULT.
 	val, src := eval.Evaluate(context.Background(), "test-flag", "")
@@ -112,7 +112,7 @@ func TestResolveGlobal_NoStaleCache_FallsToDefault(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagErr: errors.New("server unreachable"),
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 
 	val, src := eval.Evaluate(context.Background(), "test-flag", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "expected DEFAULT source with no stale cache")
@@ -129,7 +129,7 @@ func TestInlineKillCheck_ReturnsKilled(t *testing.T) {
 		},
 	}
 
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer(),
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(),
 		WithInlineKillCheck())
 
 	_, src := eval.Evaluate(context.Background(), "test-flag", "")

@@ -327,7 +327,7 @@ func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, 
 		evalOpts = append(evalOpts, evaluator.WithInlineKillCheck())
 	}
 
-	eval := evaluator.NewEvaluator(cache, dbFetcher, logger, metrics, tracer, evalOpts...)
+	eval := evaluator.NewEvaluator(cache, dbFetcher, logger, metrics, evalOpts...)
 
 	if standalone {
 		sighupCh := make(chan os.Signal, 1)

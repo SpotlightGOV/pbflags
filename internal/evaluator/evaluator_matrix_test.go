@@ -24,7 +24,7 @@ func TestEval_GlobalDefault_FlagExists(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT},
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -36,7 +36,7 @@ func TestEval_GlobalDefault_NilValue(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT, Value: nil},
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -48,7 +48,7 @@ func TestEval_GlobalDefault(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT, Value: nil},
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -60,7 +60,7 @@ func TestEval_GlobalKilled(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_KILLED, Value: boolVal(true)},
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -70,7 +70,7 @@ func TestEval_GlobalKilled(t *testing.T) {
 func TestEval_UnknownFlag_FetchReturnsNil(t *testing.T) {
 	cache := newTestCache(t)
 	fetcher := &stubFetcher{flagState: nil}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 
 	val, src := eval.Evaluate(context.Background(), "unknown/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -87,7 +87,7 @@ func TestEval_KillSet_GlobalKill(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT},
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED, src, "source")
@@ -101,7 +101,7 @@ func TestEval_ArchivedFlag(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT, Archived: true},
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -113,7 +113,7 @@ func TestEval_ArchivedFlag_NilValue(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT, Value: nil, Archived: true},
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -127,7 +127,7 @@ func TestEval_AllFetchesFail_ReturnsNil(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagErr: errors.New("unreachable"),
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 
 	val, src := eval.Evaluate(context.Background(), "f/1", "")
 	require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -144,7 +144,7 @@ func TestEval_OnDemandFetch_CachesFlagState(t *testing.T) {
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT},
 		counter:   &callCount,
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 
 	eval.Evaluate(context.Background(), "f/1", "")
 	waitCaches(cache)
@@ -191,7 +191,7 @@ func TestEval_NeverReturnsError(t *testing.T) {
 			if sc.killSet != nil {
 				cache.SetKillSet(sc.killSet)
 			}
-			eval := NewEvaluator(cache, sc.fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+			eval := NewEvaluator(cache, sc.fetcher, slog.Default(), NewNoopMetrics())
 			val, src := eval.Evaluate(context.Background(), sc.flagID, "")
 			_ = val
 			_ = src
@@ -211,7 +211,7 @@ func TestEval_AllFlagTypes_ReturnDefault(t *testing.T) {
 			fetcher := &stubFetcher{
 				flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT},
 			}
-			eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+			eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 
 			val, src := eval.Evaluate(context.Background(), "f/1", "")
 			require.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT, src, "source")
@@ -227,7 +227,7 @@ func TestEval_ConcurrentEvaluate(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT},
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 
 	errc := make(chan error, 100)
 	for i := 0; i < 100; i++ {

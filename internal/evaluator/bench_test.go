@@ -43,7 +43,7 @@ func benchCondEval(b *testing.B) *ConditionEvaluator {
 
 func benchEvaluator(b *testing.B, cache *CacheStore, fetcher Fetcher, opts ...EvaluatorOption) *Evaluator {
 	b.Helper()
-	return NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer(), opts...)
+	return NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), opts...)
 }
 
 func mustMarshalConditionsB(b *testing.B, conds []*pbflagsv1.CompiledCondition) []byte {

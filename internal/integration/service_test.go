@@ -67,7 +67,7 @@ func setupServiceEnv(t *testing.T) *serviceTestEnv {
 	require.NoError(t, err)
 
 	dbFetcher := evaluator.NewDBFetcher(pool, tracker, logger, noopM, noopT)
-	eval := evaluator.NewEvaluator(cache, dbFetcher, logger, noopM, noopT)
+	eval := evaluator.NewEvaluator(cache, dbFetcher, logger, noopM)
 
 	pollerCtx, pollerCancel := context.WithCancel(ctx)
 	poller := evaluator.NewKillPoller(dbFetcher, cache, tracker, 200*time.Millisecond, 2*time.Second, logger, noopM)

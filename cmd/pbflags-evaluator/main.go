@@ -193,7 +193,7 @@ func run(cfg evaluator.Config, logger *slog.Logger) error {
 		evalOpts = append(evalOpts, evaluator.WithInlineKillCheck())
 	}
 
-	eval := evaluator.NewEvaluator(cache, fetcher, logger, metrics, tracer, evalOpts...)
+	eval := evaluator.NewEvaluator(cache, fetcher, logger, metrics, evalOpts...)
 
 	// ── HTTP server ─────────────────────────────────────────────────
 

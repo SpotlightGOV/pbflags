@@ -199,7 +199,7 @@ func TestEvaluateWithContext_FullPrecedenceDistribution(t *testing.T) {
 		},
 	}
 
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer(),
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(),
 		WithConditionEvaluator(ce),
 		WithConditionCache(condCache),
 	)
@@ -327,7 +327,7 @@ func TestEvaluateWithContext_KillOverridesConditions(t *testing.T) {
 		},
 	}
 
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer(),
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(),
 		WithConditionEvaluator(ce),
 	)
 
@@ -407,7 +407,7 @@ func TestEvaluateWithContext_ConditionCacheEffectiveness(t *testing.T) {
 		},
 	}
 
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer(),
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(),
 		WithConditionEvaluator(ce),
 		WithConditionCache(condCache),
 	)
@@ -476,7 +476,7 @@ func TestEvaluateWithContext_ConditionCacheInvalidation(t *testing.T) {
 		},
 	}
 
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer(),
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(),
 		WithConditionEvaluator(ce),
 		WithConditionCache(condCache),
 	)

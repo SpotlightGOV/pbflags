@@ -16,7 +16,7 @@ func TestService_Evaluate(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT},
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 	tracker := NewHealthTracker(NewNoopMetrics())
 	svc := NewService(eval, tracker, cache, nil)
 
@@ -34,7 +34,7 @@ func TestService_BulkEvaluate_SpecificFlags(t *testing.T) {
 	fetcher := &stubFetcher{
 		flagState: &CachedFlagState{FlagID: "f/1", State: pbflagsv1.State_STATE_DEFAULT},
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 	tracker := NewHealthTracker(NewNoopMetrics())
 	svc := NewService(eval, tracker, cache, nil)
 
@@ -48,7 +48,7 @@ func TestService_BulkEvaluate_SpecificFlags(t *testing.T) {
 func TestService_BulkEvaluate_EmptyFlags(t *testing.T) {
 	cache := newTestCache(t)
 	fetcher := &stubFetcher{}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 	tracker := NewHealthTracker(NewNoopMetrics())
 	svc := NewService(eval, tracker, cache, nil)
 
@@ -61,7 +61,7 @@ func TestService_Health(t *testing.T) {
 	cache := newTestCache(t)
 	tracker := NewHealthTracker(NewNoopMetrics())
 	fetcher := &stubFetcher{}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), NewNoopMetrics())
 	svc := NewService(eval, tracker, cache, nil)
 
 	resp, err := svc.Health(context.Background(), connect.NewRequest(&pbflagsv1.HealthRequest{}))

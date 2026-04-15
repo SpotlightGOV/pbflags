@@ -44,7 +44,7 @@ func setupIntegration(t *testing.T) *testEnv {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	fetcher := NewDBFetcher(pool, tracker, logger, noopM, noopT)
 
-	eval := NewEvaluator(cache, fetcher, logger, noopM, noopT)
+	eval := NewEvaluator(cache, fetcher, logger, noopM)
 
 	t.Cleanup(func() {
 		cache.Close()
@@ -154,7 +154,7 @@ func TestDegradationLifecycle(t *testing.T) {
 	// Wrap the fetcher to simulate failures.
 	ff := &failableFetcher{real: env.fetcher}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	eval := NewEvaluator(env.cache, ff, logger, NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(env.cache, ff, logger, NewNoopMetrics())
 
 	// Healthy fetch to populate stale map.
 	val, src := eval.Evaluate(ctx, tf.FlagID(1), "")
@@ -200,7 +200,7 @@ func TestStaleCacheDuringOutage(t *testing.T) {
 
 	ff := &failableFetcher{real: env.fetcher}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	eval := NewEvaluator(env.cache, ff, logger, NewNoopMetrics(), noopTracer())
+	eval := NewEvaluator(env.cache, ff, logger, NewNoopMetrics())
 
 	// Populate stale map with a successful fetch.
 	val, src := eval.Evaluate(ctx, tf.FlagID(1), "")

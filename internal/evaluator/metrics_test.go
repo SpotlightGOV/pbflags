@@ -70,7 +70,7 @@ func TestEvaluate_IncrementsEvaluationCounter(t *testing.T) {
 			State:  pbflagsv1.State_STATE_DEFAULT,
 		},
 	}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), m, noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), m)
 
 	eval.Evaluate(context.Background(), "f/1", "")
 
@@ -79,20 +79,19 @@ func TestEvaluate_IncrementsEvaluationCounter(t *testing.T) {
 
 	for _, f := range families {
 		if f.GetName() == "pbflags_evaluations_total" {
-			require.NotEmpty(t, f.GetMetric(), "expected at least one metric sample")
-			metric := f.GetMetric()[0]
-			assert.Equal(t, float64(1), metric.GetCounter().GetValue(), "evaluation count")
-
-			labels := make(map[string]string)
-			for _, lp := range metric.GetLabel() {
-				labels[lp.GetName()] = lp.GetValue()
+			for _, metric := range f.GetMetric() {
+				labels := make(map[string]string)
+				for _, lp := range metric.GetLabel() {
+					labels[lp.GetName()] = lp.GetValue()
+				}
+				if labels["source"] == "default" && labels["status"] == "ok" {
+					assert.Equal(t, float64(1), metric.GetCounter().GetValue(), "evaluation count")
+					return
+				}
 			}
-			assert.Equal(t, "default", labels["source"])
-			assert.Equal(t, "ok", labels["status"])
-			return
 		}
 	}
-	t.Fatal("pbflags_evaluations_total not found in gathered metrics")
+	t.Fatal("pbflags_evaluations_total{source=default,status=ok} not found in gathered metrics")
 }
 
 func TestEvaluate_IncrementsCacheHitOnKillSet(t *testing.T) {
@@ -105,7 +104,7 @@ func TestEvaluate_IncrementsCacheHitOnKillSet(t *testing.T) {
 	})
 
 	fetcher := &stubFetcher{}
-	eval := NewEvaluator(cache, fetcher, slog.Default(), m, noopTracer())
+	eval := NewEvaluator(cache, fetcher, slog.Default(), m)
 
 	_, src := eval.Evaluate(context.Background(), "f/1", "")
 	assert.Equal(t, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED, src)

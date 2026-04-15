@@ -3,6 +3,7 @@ package evaluator
 import (
 	"context"
 	"os"
+	"strconv"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -18,6 +19,11 @@ import (
 // When OTEL_EXPORTER_OTLP_ENDPOINT is set, spans are exported via gRPC to
 // the configured collector. When unset, a noop provider is registered so all
 // tracing calls are zero-cost no-ops.
+//
+// Sampling is configured via PBFLAGS_OTEL_SAMPLE_RATIO (float, 0.0–1.0,
+// default 0.01 = 1%). The sampler is ParentBased: incoming requests that
+// are already sampled by an upstream are always traced; root spans created
+// by this service are sampled at the configured ratio.
 //
 // Returns a shutdown function that flushes buffered spans.
 func InitTracer(ctx context.Context, serviceName, version string) (shutdown func(context.Context) error, err error) {
@@ -41,9 +47,17 @@ func InitTracer(ctx context.Context, serviceName, version string) (shutdown func
 		return nil, err
 	}
 
+	ratio := 0.01 // default: 1% of root spans
+	if v := os.Getenv("PBFLAGS_OTEL_SAMPLE_RATIO"); v != "" {
+		if parsed, parseErr := strconv.ParseFloat(v, 64); parseErr == nil && parsed >= 0 && parsed <= 1 {
+			ratio = parsed
+		}
+	}
+
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),
 		sdktrace.WithResource(res),
+		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(ratio))),
 	)
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(

@@ -7,8 +7,6 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
@@ -21,6 +19,11 @@ type Fetcher interface {
 
 // Evaluator resolves flag values using the precedence chain:
 // kill set → conditions (CEL) → global state → stale cache → compiled default.
+//
+// Per-flag tracing is intentionally omitted — the otelconnect RPC interceptor
+// creates a parent span for each request, and per-evaluation spans add ~160ns
+// of overhead on the kill-set fast path (97% of the actual work cost). Use
+// Prometheus counters for per-flag observability instead.
 type Evaluator struct {
 	cache           *CacheStore
 	condCache       *ConditionCache // nil when condition caching is not configured
@@ -28,7 +31,6 @@ type Evaluator struct {
 	condEval        *ConditionEvaluator // nil when conditions are not configured
 	logger          *slog.Logger
 	metrics         *Metrics
-	tracer          trace.Tracer
 	inlineKillCheck bool          // when true, fetch flag state eagerly to check kills
 	fetchTimeout    time.Duration // timeout for background refresh fetches
 	flagGroup       singleflight.Group
@@ -70,13 +72,12 @@ func (e *Evaluator) setFlagState(state *CachedFlagState) {
 }
 
 // NewEvaluator creates an Evaluator.
-func NewEvaluator(cache *CacheStore, fetcher Fetcher, logger *slog.Logger, m *Metrics, tracer trace.Tracer, opts ...EvaluatorOption) *Evaluator {
+func NewEvaluator(cache *CacheStore, fetcher Fetcher, logger *slog.Logger, m *Metrics, opts ...EvaluatorOption) *Evaluator {
 	e := &Evaluator{
 		cache:        cache,
 		fetcher:      fetcher,
 		logger:       logger,
 		metrics:      m,
-		tracer:       tracer,
 		fetchTimeout: 500 * time.Millisecond,
 	}
 	for _, opt := range opts {
@@ -87,21 +88,11 @@ func NewEvaluator(cache *CacheStore, fetcher Fetcher, logger *slog.Logger, m *Me
 
 // Evaluate resolves a single flag for an optional entity.
 func (e *Evaluator) Evaluate(ctx context.Context, flagID, entityID string) (value *pbflagsv1.FlagValue, source pbflagsv1.EvaluationSource) {
-	ctx, span := e.tracer.Start(ctx, "Evaluator.Evaluate",
-		trace.WithAttributes(
-			attribute.String("flag_id", flagID),
-			attribute.String("entity_id", entityID),
-		))
-	defer func() {
-		span.SetAttributes(attribute.String("source", sourceLabel(source)))
-		span.End()
-		e.metrics.EvaluationsTotal.WithLabelValues(sourceLabel(source), "ok").Inc()
-	}()
-
 	// 1. Kill set check — highest priority (populated by poller).
 	ks := e.cache.GetKillSet()
 	if ks.IsKilled(flagID) {
-		e.metrics.CacheHitsTotal.WithLabelValues("kill_set").Inc()
+		e.metrics.cacheHitKillSet.Inc()
+		e.metrics.evalKilled.Inc()
 		return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED
 	}
 
@@ -113,6 +104,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, flagID, entityID string) (valu
 		if err == nil && fetched != nil {
 			e.setFlagState(fetched)
 			if fetched.State == pbflagsv1.State_STATE_KILLED {
+				e.metrics.evalKilled.Inc()
 				return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED
 			}
 			prefetched = fetched
@@ -121,26 +113,23 @@ func (e *Evaluator) Evaluate(ctx context.Context, flagID, entityID string) (valu
 
 	// 3. Global state — conditions and default handle the actual value.
 	if prefetched != nil {
-		return e.evalFlagState(prefetched)
+		val, src := e.evalFlagState(prefetched)
+		e.metrics.incEval(src)
+		return val, src
 	}
-	return e.resolveGlobal(ctx, flagID)
+	val, src := e.resolveGlobal(ctx, flagID)
+	e.metrics.incEval(src)
+	return val, src
 }
 
 // EvaluateWithContext resolves a flag using the v1 evaluation precedence:
 // kill set → conditions (CEL) → static config value → compiled default.
 // evalCtx is the deserialized EvaluationContext proto (may be nil).
 func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, evalCtx proto.Message) (value *pbflagsv1.FlagValue, source pbflagsv1.EvaluationSource) {
-	ctx, span := e.tracer.Start(ctx, "Evaluator.EvaluateWithContext",
-		trace.WithAttributes(attribute.String("flag_id", flagID)))
-	defer func() {
-		span.SetAttributes(attribute.String("source", sourceLabel(source)))
-		span.End()
-		e.metrics.EvaluationsTotal.WithLabelValues(sourceLabel(source), "ok").Inc()
-	}()
-
 	// 1. Kill set check.
 	if e.cache.GetKillSet().IsKilled(flagID) {
-		e.metrics.CacheHitsTotal.WithLabelValues("kill_set").Inc()
+		e.metrics.cacheHitKillSet.Inc()
+		e.metrics.evalKilled.Inc()
 		return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED
 	}
 
@@ -150,13 +139,12 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 	// If killed or archived, return as-is (no condition evaluation).
 	if src == pbflagsv1.EvaluationSource_EVALUATION_SOURCE_KILLED ||
 		src == pbflagsv1.EvaluationSource_EVALUATION_SOURCE_ARCHIVED {
+		e.metrics.incEval(src)
 		return val, src
 	}
 
 	// 3. Conditions (with inline launch overrides) — check cache, then evaluate CEL chain.
 	if state != nil && len(state.Conditions) > 0 && e.condEval != nil && evalCtx != nil {
-		span.SetAttributes(attribute.Bool("has_conditions", true))
-
 		var version uint64
 		if e.condCache != nil {
 			version = e.condCache.FlagVersion(flagID)
@@ -165,27 +153,28 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 
 		if e.condCache != nil {
 			if cached, noMatch, ok := e.condCache.Get(cacheKey); ok {
-				e.metrics.CacheHitsTotal.WithLabelValues("conditions").Inc()
-				span.SetAttributes(attribute.Bool("condition_cache_hit", true))
+				e.metrics.cacheHitConditions.Inc()
 				if noMatch {
+					e.metrics.incEval(src)
 					return val, src // no-match sentinel → fall through to static/default
 				}
+				e.metrics.evalCached.Inc()
 				return cached, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED
 			}
-			e.metrics.CacheMissesTotal.WithLabelValues("conditions").Inc()
+			e.metrics.cacheMissConditions.Inc()
 		}
 
 		result := e.condEval.EvaluateConditions(flagID, state.Conditions, evalCtx, state.Launches...)
-		span.SetAttributes(attribute.Int("conditions_evaluated", result.ConditionsChecked))
 
 		if result.Value != nil {
 			if e.condCache != nil {
 				e.condCache.Set(cacheKey, result.Value)
 			}
 			if result.LaunchHit {
-				span.SetAttributes(attribute.String("launch_id", result.LaunchID))
+				e.metrics.evalLaunch.Inc()
 				return result.Value, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_LAUNCH
 			}
+			e.metrics.evalCondition.Inc()
 			return result.Value, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CONDITION
 		}
 		// No condition matched — cache the no-match to avoid re-evaluation.
@@ -194,7 +183,8 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 		}
 	}
 
-	// 5. Return whatever resolveGlobal determined (static value or default).
+	// 4. Return whatever resolveGlobal determined (static value or default).
+	e.metrics.incEval(src)
 	return val, src
 }
 
@@ -214,13 +204,12 @@ func (e *Evaluator) resolveGlobalWithState(
 ) (*CachedFlagState, *pbflagsv1.FlagValue, pbflagsv1.EvaluationSource) {
 	state := e.cache.GetFlagState(flagID)
 	if state != nil {
-		e.metrics.CacheHitsTotal.WithLabelValues("flags").Inc()
-		trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("cache_hit", true))
+		e.metrics.cacheHitFlags.Inc()
 		val, src := e.evalFlagState(state)
 		return state, val, src
 	}
 
-	e.metrics.CacheMissesTotal.WithLabelValues("flags").Inc()
+	e.metrics.cacheMissFlags.Inc()
 
 	if stale := e.cache.GetStaleFlagState(flagID); stale != nil {
 		e.backgroundRefreshFlag(flagID)
@@ -276,13 +265,13 @@ func (e *Evaluator) backgroundRefreshFlag(flagID string) {
 			fetched, err := e.fetcher.FetchFlagState(ctx, flagID)
 			if err != nil {
 				e.logger.Debug("background flag refresh failed", "flag_id", flagID, "error", err)
-				e.metrics.BackgroundRefreshes.WithLabelValues("flags", "error").Inc()
+				e.metrics.bgRefreshErr.Inc()
 				return nil, err
 			}
 			if fetched != nil {
 				e.setFlagState(fetched)
 			}
-			e.metrics.BackgroundRefreshes.WithLabelValues("flags", "ok").Inc()
+			e.metrics.bgRefreshOK.Inc()
 			return nil, nil
 		})
 	}()
