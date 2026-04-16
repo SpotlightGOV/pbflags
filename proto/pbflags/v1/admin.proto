@@ -101,10 +101,10 @@ message ConditionOverrideDetail {
   // Absent = override of the static/compiled default (or "otherwise" row).
   optional int32 condition_index = 1;
   FlagValue override_value = 2;
-  // The original value before the override (for confirmation UX). Optional;
-  // not always populated.
+  // The compiled chain value (or static default) at this position before
+  // the override was applied. Populated by GetFlag for the confirmation UX.
   FlagValue original_value = 3;
-  string source = 4; // "cli" or "ui"
+  OverrideSource source = 4;
   string actor = 5;
   string reason = 6;
   google.protobuf.Timestamp created_at = 7;
@@ -234,9 +234,17 @@ message UnkillLaunchResponse {}
 
 // ── Sync lock messages ──────────────────────────────────────────────
 
+// OverrideSource identifies where an override / lock action was issued
+// from. Used for audit attribution.
+enum OverrideSource {
+  OVERRIDE_SOURCE_UNSPECIFIED = 0;
+  OVERRIDE_SOURCE_CLI = 1;
+  OVERRIDE_SOURCE_UI = 2;
+  OVERRIDE_SOURCE_AUTOMATION = 3;
+}
+
 message AcquireSyncLockRequest {
-  string actor = 1;
-  string reason = 2; // required
+  string reason = 1; // required
 }
 
 message AcquireSyncLockResponse {
@@ -245,7 +253,7 @@ message AcquireSyncLockResponse {
 }
 
 message ReleaseSyncLockRequest {
-  string actor = 1;
+  string reason = 1; // required — captured in the audit row
 }
 
 message ReleaseSyncLockResponse {}
@@ -268,31 +276,35 @@ message SetConditionOverrideRequest {
   // override the static/compiled default.
   optional int32 condition_index = 2;
   FlagValue value = 3;
-  string actor = 4;
-  string reason = 5; // required — incident ticket, explanation
-  string source = 6; // "cli" or "ui"; defaults to "cli" if empty
+  string reason = 4; // required — incident ticket, explanation
+  OverrideSource source = 5; // defaults to CLI if unspecified
 }
 
 message SetConditionOverrideResponse {
   // Non-empty when the flag is managed by config-as-code; the next sync
   // will clear this override.
   string warning = 1;
-  // The value at this condition before the override (for confirmation UX).
-  FlagValue previous_value = 2;
+  // The value at this position from the compiled chain (or static default)
+  // before the override was applied. Populated even on first-time overrides
+  // so the operator sees what value they replaced.
+  FlagValue original_value = 2;
+  // The value of the prior override row at this position, when this Set
+  // replaced an existing override. Nil on first-time overrides.
+  FlagValue previous_override_value = 3;
 }
 
 message ClearConditionOverrideRequest {
   string flag_id = 1;
   // Omit to clear the static-default override.
   optional int32 condition_index = 2;
-  string actor = 3;
+  string reason = 3; // required — captured in the audit row
 }
 
 message ClearConditionOverrideResponse {}
 
 message ClearAllConditionOverridesRequest {
   string flag_id = 1;
-  string actor = 2;
+  string reason = 2; // required — captured in the audit row
 }
 
 message ClearAllConditionOverridesResponse {
@@ -316,7 +328,7 @@ message ConditionOverrideListEntry {
   string flag_id = 1;
   optional int32 condition_index = 2;
   FlagValue override_value = 3;
-  string source = 4;
+  OverrideSource source = 4;
   string actor = 5;
   string reason = 6;
   google.protobuf.Timestamp created_at = 7;

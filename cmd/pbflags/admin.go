@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/internal/adminclient"
@@ -334,12 +336,144 @@ func fatal(err error) {
 	os.Exit(1)
 }
 
+// printJSON writes v to stdout as canonical JSON. Proto messages use
+// protojson (so enum values render as strings, oneofs and well-known
+// types serialize correctly) and everything else falls back to
+// encoding/json for parity with the prior helper.
 func printJSON(v any) {
+	if m, ok := v.(proto.Message); ok {
+		opts := protojson.MarshalOptions{
+			Multiline:       true,
+			Indent:          "  ",
+			UseProtoNames:   true,
+			EmitUnpopulated: false,
+		}
+		buf, err := opts.Marshal(m)
+		if err != nil {
+			fatal(err)
+		}
+		os.Stdout.Write(buf)
+		fmt.Fprintln(os.Stdout)
+		return
+	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
 		fatal(err)
 	}
+}
+
+// printJSONErr writes v to stderr as canonical JSON. Used on error
+// paths where the caller wants the failure to be machine-parseable
+// (e.g. `pb lock --json` against an already-locked sync). Mirrors the
+// proto/json dispatch in printJSON.
+func printJSONErr(v any) {
+	if m, ok := v.(proto.Message); ok {
+		opts := protojson.MarshalOptions{
+			Multiline:       true,
+			Indent:          "  ",
+			UseProtoNames:   true,
+			EmitUnpopulated: false,
+		}
+		buf, err := opts.Marshal(m)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "marshal: %v\n", err)
+			return
+		}
+		os.Stderr.Write(buf)
+		fmt.Fprintln(os.Stderr)
+		return
+	}
+	enc := json.NewEncoder(os.Stderr)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		fmt.Fprintf(os.Stderr, "marshal: %v\n", err)
+	}
+}
+
+// parsePositionalFlags wraps fs.Parse to allow flags interleaved with
+// positional arguments AND to treat negative-numeric tokens like "-5"
+// or "-1.0" as positional rather than unknown flags. Returns the
+// collected positional arguments in order.
+//
+// The need for this helper:
+//   - flag.Parse stops at the first non-flag arg, so callers normally
+//     have to put all flags before positionals — annoying for muscle
+//     memory of `pb cmd <id> --reason="..."`.
+//   - INT64 / DOUBLE / *_LIST flag values can legitimately be negative,
+//     and a bare "-5" otherwise tries to look up an undefined "-5" flag.
+//
+// Behaviour: walks args; for each token that begins with '-' followed
+// by a digit or '.', records it as positional; for "--" everything
+// after is positional; for any other dashed token, hands the next
+// chunk (up to the next positional) to fs.Parse.
+func parsePositionalFlags(fs *flag.FlagSet, args []string) []string {
+	var positional []string
+	flagBuf := make([]string, 0, len(args))
+	flush := func() {
+		if len(flagBuf) == 0 {
+			return
+		}
+		if err := fs.Parse(flagBuf); err != nil {
+			// fs is configured with ExitOnError so this is unreachable
+			// in practice, but guard anyway.
+			fatal(err)
+		}
+		// fs.Args() will be empty here because we already stripped
+		// positional tokens out before calling Parse.
+		flagBuf = flagBuf[:0]
+	}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			positional = append(positional, args[i+1:]...)
+			break
+		}
+		if len(a) >= 2 && a[0] == '-' && (a[1] == '.' || (a[1] >= '0' && a[1] <= '9')) {
+			positional = append(positional, a)
+			continue
+		}
+		if len(a) > 0 && a[0] == '-' {
+			flagBuf = append(flagBuf, a)
+			// If this flag is `-name value` form (no '='), peek ahead
+			// to attach the value. Bool flags don't take a value, but
+			// the standard library accepts `-bool true` as well, so
+			// being conservative is fine.
+			if !strings.Contains(a, "=") && i+1 < len(args) {
+				next := args[i+1]
+				// If the next token looks like another flag (and not a
+				// negative number), don't grab it as a value — let the
+				// loop handle it.
+				if len(next) >= 2 && next[0] == '-' && next[1] != '.' && !(next[1] >= '0' && next[1] <= '9') {
+					continue
+				}
+				// Bool flags are detected by attempting flagset lookup.
+				if isBoolFlag(fs, strings.TrimLeft(a, "-")) {
+					continue
+				}
+				flagBuf = append(flagBuf, next)
+				i++
+			}
+			continue
+		}
+		positional = append(positional, a)
+	}
+	flush()
+	return positional
+}
+
+// isBoolFlag reports whether the named flag on fs is a bool. Used by
+// parsePositionalFlags to decide whether the next token is a value or
+// the next flag/positional.
+func isBoolFlag(fs *flag.FlagSet, name string) bool {
+	f := fs.Lookup(name)
+	if f == nil {
+		return false
+	}
+	if bf, ok := f.Value.(interface{ IsBoolFlag() bool }); ok {
+		return bf.IsBoolFlag()
+	}
+	return false
 }
 
 func shortState(s pbflagsv1.State) string {

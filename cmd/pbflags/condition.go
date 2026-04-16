@@ -25,7 +25,7 @@ Subcommands:
                                 Set a value override on a specific condition
                                 (omit condition_index to override the static
                                 / compiled default).
-  clear <flag_id> [condition_index]
+  clear <flag_id> [condition_index] --reason="..."
                                 Clear an override (omit condition_index to
                                 clear ALL overrides on the flag).
   list <flag_id>                Show the condition chain + active overrides.`)
@@ -52,9 +52,8 @@ func runConditionOverride(args []string) {
 	admin := fs.String("admin", "", "Admin API URL (or PBFLAGS_ADMIN_URL)")
 	reason := fs.String("reason", "", "Reason for the override (required)")
 	jsonOut := fs.Bool("json", false, "Output as JSON")
-	fs.Parse(args)
 
-	pos := fs.Args()
+	pos := parsePositionalFlags(fs, args)
 	if len(pos) < 2 || len(pos) > 3 {
 		fmt.Fprintln(os.Stderr, `usage: pb condition override <flag_id> [condition_index] <value> --reason="..."`)
 		os.Exit(1)
@@ -108,7 +107,7 @@ func runConditionOverride(args []string) {
 		ConditionIndex: condIdx,
 		Value:          value,
 		Reason:         *reason,
-		Source:         "cli",
+		Source:         pbflagsv1.OverrideSource_OVERRIDE_SOURCE_CLI,
 	}
 	resp, err := client.SetConditionOverride(ctx, connect.NewRequest(req))
 	if err != nil {
@@ -117,8 +116,9 @@ func runConditionOverride(args []string) {
 
 	// Nudge: if config-managed and the sync lock isn't held, mention the
 	// safer workflow. Don't block — operators may legitimately want a
-	// short-lived override without locking the pipeline.
-	if fd.GetConfigManaged() {
+	// short-lived override without locking the pipeline. Skip in --json
+	// mode so machine consumers get clean output on stdout/stderr.
+	if !*jsonOut && fd.GetConfigManaged() {
 		lockResp, lockErr := client.GetSyncLock(ctx, connect.NewRequest(&pbflagsv1.GetSyncLockRequest{}))
 		held := lockErr == nil && lockResp.Msg.GetHeld()
 		if !held {
@@ -140,8 +140,14 @@ func runConditionOverride(args []string) {
 		target = fmt.Sprintf("condition[%d]", *condIdx)
 	}
 	fmt.Printf("Override set on %s %s: %s\n", flagID, target, shortValue(value))
-	if prev := resp.Msg.GetPreviousValue(); prev != nil {
-		fmt.Printf("  was: %s\n", shortValue(prev))
+	// OriginalValue is the chain/static value being shadowed; always
+	// populated by the server. PreviousOverrideValue is only set when
+	// this Set replaced an existing override row at the same position.
+	if orig := resp.Msg.GetOriginalValue(); orig != nil {
+		fmt.Printf("  was (chain): %s\n", shortValue(orig))
+	}
+	if prev := resp.Msg.GetPreviousOverrideValue(); prev != nil {
+		fmt.Printf("  replaces override: %s\n", shortValue(prev))
 	}
 	if w := resp.Msg.GetWarning(); w != "" {
 		fmt.Printf("  warning: %s\n", w)
@@ -153,12 +159,16 @@ func runConditionOverride(args []string) {
 func runConditionClear(args []string) {
 	fs := flag.NewFlagSet("pb condition clear", flag.ExitOnError)
 	admin := fs.String("admin", "", "Admin API URL (or PBFLAGS_ADMIN_URL)")
+	reason := fs.String("reason", "", "Reason for clearing the override (required)")
 	jsonOut := fs.Bool("json", false, "Output as JSON")
-	fs.Parse(args)
 
-	pos := fs.Args()
+	pos := parsePositionalFlags(fs, args)
 	if len(pos) < 1 || len(pos) > 2 {
-		fmt.Fprintln(os.Stderr, "usage: pb condition clear <flag_id> [condition_index]")
+		fmt.Fprintln(os.Stderr, `usage: pb condition clear <flag_id> [condition_index] --reason="..."`)
+		os.Exit(1)
+	}
+	if *reason == "" {
+		fmt.Fprintln(os.Stderr, "error: --reason is required")
 		os.Exit(1)
 	}
 	flagID := pos[0]
@@ -172,6 +182,7 @@ func runConditionClear(args []string) {
 	if len(pos) == 1 {
 		resp, err := client.ClearAllConditionOverrides(ctx, connect.NewRequest(&pbflagsv1.ClearAllConditionOverridesRequest{
 			FlagId: flagID,
+			Reason: *reason,
 		}))
 		if err != nil {
 			fatal(fmt.Errorf("clear all: %w", err))
@@ -194,6 +205,7 @@ func runConditionClear(args []string) {
 	resp, err := client.ClearConditionOverride(ctx, connect.NewRequest(&pbflagsv1.ClearConditionOverrideRequest{
 		FlagId:         flagID,
 		ConditionIndex: &i32,
+		Reason:         *reason,
 	}))
 	if err != nil {
 		fatal(fmt.Errorf("clear override: %w", err))
@@ -211,13 +223,13 @@ func runConditionList(args []string) {
 	fs := flag.NewFlagSet("pb condition list", flag.ExitOnError)
 	admin := fs.String("admin", "", "Admin API URL (or PBFLAGS_ADMIN_URL)")
 	jsonOut := fs.Bool("json", false, "Output as JSON")
-	fs.Parse(args)
 
-	if len(fs.Args()) != 1 {
+	pos := parsePositionalFlags(fs, args)
+	if len(pos) != 1 {
 		fmt.Fprintln(os.Stderr, "usage: pb condition list <flag_id>")
 		os.Exit(1)
 	}
-	flagID := fs.Args()[0]
+	flagID := pos[0]
 
 	client, err := adminclient.New(*admin)
 	if err != nil {
@@ -301,7 +313,16 @@ func runConditionList(args []string) {
 
 	if defaultOverride != nil {
 		fmt.Println()
-		fmt.Printf("Static-default override: %s  (%s, %s ago) — %s\n",
+		// Mirror the chain==0 branch: show the underlying default first
+		// so the operator can see what value the override is replacing.
+		// Prefer the server-populated original_value (chain default at
+		// override time) but fall back to the live default for safety.
+		orig := defaultOverride.GetOriginalValue()
+		if orig == nil {
+			orig = fd.GetDefaultValue()
+		}
+		fmt.Printf("Static default: %s\n", shortValue(orig))
+		fmt.Printf("           ⚠ OVERRIDE: %s  (%s, %s ago) — %s\n",
 			shortValue(defaultOverride.GetOverrideValue()),
 			defaultOverride.GetActor(),
 			time.Since(defaultOverride.GetCreatedAt().AsTime()).Truncate(time.Second),

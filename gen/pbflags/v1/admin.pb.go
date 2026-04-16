@@ -24,6 +24,60 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// OverrideSource identifies where an override / lock action was issued
+// from. Used for audit attribution.
+type OverrideSource int32
+
+const (
+	OverrideSource_OVERRIDE_SOURCE_UNSPECIFIED OverrideSource = 0
+	OverrideSource_OVERRIDE_SOURCE_CLI         OverrideSource = 1
+	OverrideSource_OVERRIDE_SOURCE_UI          OverrideSource = 2
+	OverrideSource_OVERRIDE_SOURCE_AUTOMATION  OverrideSource = 3
+)
+
+// Enum value maps for OverrideSource.
+var (
+	OverrideSource_name = map[int32]string{
+		0: "OVERRIDE_SOURCE_UNSPECIFIED",
+		1: "OVERRIDE_SOURCE_CLI",
+		2: "OVERRIDE_SOURCE_UI",
+		3: "OVERRIDE_SOURCE_AUTOMATION",
+	}
+	OverrideSource_value = map[string]int32{
+		"OVERRIDE_SOURCE_UNSPECIFIED": 0,
+		"OVERRIDE_SOURCE_CLI":         1,
+		"OVERRIDE_SOURCE_UI":          2,
+		"OVERRIDE_SOURCE_AUTOMATION":  3,
+	}
+)
+
+func (x OverrideSource) Enum() *OverrideSource {
+	p := new(OverrideSource)
+	*p = x
+	return p
+}
+
+func (x OverrideSource) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (OverrideSource) Descriptor() protoreflect.EnumDescriptor {
+	return file_pbflags_v1_admin_proto_enumTypes[0].Descriptor()
+}
+
+func (OverrideSource) Type() protoreflect.EnumType {
+	return &file_pbflags_v1_admin_proto_enumTypes[0]
+}
+
+func (x OverrideSource) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use OverrideSource.Descriptor instead.
+func (OverrideSource) EnumDescriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{0}
+}
+
 type ListFeaturesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -425,10 +479,10 @@ type ConditionOverrideDetail struct {
 	// Absent = override of the static/compiled default (or "otherwise" row).
 	ConditionIndex *int32     `protobuf:"varint,1,opt,name=condition_index,json=conditionIndex,proto3,oneof" json:"condition_index,omitempty"`
 	OverrideValue  *FlagValue `protobuf:"bytes,2,opt,name=override_value,json=overrideValue,proto3" json:"override_value,omitempty"`
-	// The original value before the override (for confirmation UX). Optional;
-	// not always populated.
+	// The compiled chain value (or static default) at this position before
+	// the override was applied. Populated by GetFlag for the confirmation UX.
 	OriginalValue *FlagValue             `protobuf:"bytes,3,opt,name=original_value,json=originalValue,proto3" json:"original_value,omitempty"`
-	Source        string                 `protobuf:"bytes,4,opt,name=source,proto3" json:"source,omitempty"` // "cli" or "ui"
+	Source        OverrideSource         `protobuf:"varint,4,opt,name=source,proto3,enum=pbflags.v1.OverrideSource" json:"source,omitempty"`
 	Actor         string                 `protobuf:"bytes,5,opt,name=actor,proto3" json:"actor,omitempty"`
 	Reason        string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
@@ -487,11 +541,11 @@ func (x *ConditionOverrideDetail) GetOriginalValue() *FlagValue {
 	return nil
 }
 
-func (x *ConditionOverrideDetail) GetSource() string {
+func (x *ConditionOverrideDetail) GetSource() OverrideSource {
 	if x != nil {
 		return x.Source
 	}
-	return ""
+	return OverrideSource_OVERRIDE_SOURCE_UNSPECIFIED
 }
 
 func (x *ConditionOverrideDetail) GetActor() string {
@@ -1818,8 +1872,7 @@ func (*UnkillLaunchResponse) Descriptor() ([]byte, []int) {
 
 type AcquireSyncLockRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Actor         string                 `protobuf:"bytes,1,opt,name=actor,proto3" json:"actor,omitempty"`
-	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"` // required
+	Reason        string                 `protobuf:"bytes,1,opt,name=reason,proto3" json:"reason,omitempty"` // required
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1852,13 +1905,6 @@ func (x *AcquireSyncLockRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use AcquireSyncLockRequest.ProtoReflect.Descriptor instead.
 func (*AcquireSyncLockRequest) Descriptor() ([]byte, []int) {
 	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{31}
-}
-
-func (x *AcquireSyncLockRequest) GetActor() string {
-	if x != nil {
-		return x.Actor
-	}
-	return ""
 }
 
 func (x *AcquireSyncLockRequest) GetReason() string {
@@ -1915,7 +1961,7 @@ func (x *AcquireSyncLockResponse) GetHeldSince() *timestamppb.Timestamp {
 
 type ReleaseSyncLockRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Actor         string                 `protobuf:"bytes,1,opt,name=actor,proto3" json:"actor,omitempty"`
+	Reason        string                 `protobuf:"bytes,1,opt,name=reason,proto3" json:"reason,omitempty"` // required — captured in the audit row
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1950,9 +1996,9 @@ func (*ReleaseSyncLockRequest) Descriptor() ([]byte, []int) {
 	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{33}
 }
 
-func (x *ReleaseSyncLockRequest) GetActor() string {
+func (x *ReleaseSyncLockRequest) GetReason() string {
 	if x != nil {
-		return x.Actor
+		return x.Reason
 	}
 	return ""
 }
@@ -2103,11 +2149,10 @@ type SetConditionOverrideRequest struct {
 	FlagId string                 `protobuf:"bytes,1,opt,name=flag_id,json=flagId,proto3" json:"flag_id,omitempty"`
 	// 0-based index into the condition chain. Omit (oneof absence) to
 	// override the static/compiled default.
-	ConditionIndex *int32     `protobuf:"varint,2,opt,name=condition_index,json=conditionIndex,proto3,oneof" json:"condition_index,omitempty"`
-	Value          *FlagValue `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
-	Actor          string     `protobuf:"bytes,4,opt,name=actor,proto3" json:"actor,omitempty"`
-	Reason         string     `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"` // required — incident ticket, explanation
-	Source         string     `protobuf:"bytes,6,opt,name=source,proto3" json:"source,omitempty"` // "cli" or "ui"; defaults to "cli" if empty
+	ConditionIndex *int32         `protobuf:"varint,2,opt,name=condition_index,json=conditionIndex,proto3,oneof" json:"condition_index,omitempty"`
+	Value          *FlagValue     `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	Reason         string         `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`                                 // required — incident ticket, explanation
+	Source         OverrideSource `protobuf:"varint,5,opt,name=source,proto3,enum=pbflags.v1.OverrideSource" json:"source,omitempty"` // defaults to CLI if unspecified
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -2163,13 +2208,6 @@ func (x *SetConditionOverrideRequest) GetValue() *FlagValue {
 	return nil
 }
 
-func (x *SetConditionOverrideRequest) GetActor() string {
-	if x != nil {
-		return x.Actor
-	}
-	return ""
-}
-
 func (x *SetConditionOverrideRequest) GetReason() string {
 	if x != nil {
 		return x.Reason
@@ -2177,11 +2215,11 @@ func (x *SetConditionOverrideRequest) GetReason() string {
 	return ""
 }
 
-func (x *SetConditionOverrideRequest) GetSource() string {
+func (x *SetConditionOverrideRequest) GetSource() OverrideSource {
 	if x != nil {
 		return x.Source
 	}
-	return ""
+	return OverrideSource_OVERRIDE_SOURCE_UNSPECIFIED
 }
 
 type SetConditionOverrideResponse struct {
@@ -2189,10 +2227,15 @@ type SetConditionOverrideResponse struct {
 	// Non-empty when the flag is managed by config-as-code; the next sync
 	// will clear this override.
 	Warning string `protobuf:"bytes,1,opt,name=warning,proto3" json:"warning,omitempty"`
-	// The value at this condition before the override (for confirmation UX).
-	PreviousValue *FlagValue `protobuf:"bytes,2,opt,name=previous_value,json=previousValue,proto3" json:"previous_value,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// The value at this position from the compiled chain (or static default)
+	// before the override was applied. Populated even on first-time overrides
+	// so the operator sees what value they replaced.
+	OriginalValue *FlagValue `protobuf:"bytes,2,opt,name=original_value,json=originalValue,proto3" json:"original_value,omitempty"`
+	// The value of the prior override row at this position, when this Set
+	// replaced an existing override. Nil on first-time overrides.
+	PreviousOverrideValue *FlagValue `protobuf:"bytes,3,opt,name=previous_override_value,json=previousOverrideValue,proto3" json:"previous_override_value,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *SetConditionOverrideResponse) Reset() {
@@ -2232,9 +2275,16 @@ func (x *SetConditionOverrideResponse) GetWarning() string {
 	return ""
 }
 
-func (x *SetConditionOverrideResponse) GetPreviousValue() *FlagValue {
+func (x *SetConditionOverrideResponse) GetOriginalValue() *FlagValue {
 	if x != nil {
-		return x.PreviousValue
+		return x.OriginalValue
+	}
+	return nil
+}
+
+func (x *SetConditionOverrideResponse) GetPreviousOverrideValue() *FlagValue {
+	if x != nil {
+		return x.PreviousOverrideValue
 	}
 	return nil
 }
@@ -2244,7 +2294,7 @@ type ClearConditionOverrideRequest struct {
 	FlagId string                 `protobuf:"bytes,1,opt,name=flag_id,json=flagId,proto3" json:"flag_id,omitempty"`
 	// Omit to clear the static-default override.
 	ConditionIndex *int32 `protobuf:"varint,2,opt,name=condition_index,json=conditionIndex,proto3,oneof" json:"condition_index,omitempty"`
-	Actor          string `protobuf:"bytes,3,opt,name=actor,proto3" json:"actor,omitempty"`
+	Reason         string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"` // required — captured in the audit row
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -2293,9 +2343,9 @@ func (x *ClearConditionOverrideRequest) GetConditionIndex() int32 {
 	return 0
 }
 
-func (x *ClearConditionOverrideRequest) GetActor() string {
+func (x *ClearConditionOverrideRequest) GetReason() string {
 	if x != nil {
-		return x.Actor
+		return x.Reason
 	}
 	return ""
 }
@@ -2339,7 +2389,7 @@ func (*ClearConditionOverrideResponse) Descriptor() ([]byte, []int) {
 type ClearAllConditionOverridesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	FlagId        string                 `protobuf:"bytes,1,opt,name=flag_id,json=flagId,proto3" json:"flag_id,omitempty"`
-	Actor         string                 `protobuf:"bytes,2,opt,name=actor,proto3" json:"actor,omitempty"`
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"` // required — captured in the audit row
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2381,9 +2431,9 @@ func (x *ClearAllConditionOverridesRequest) GetFlagId() string {
 	return ""
 }
 
-func (x *ClearAllConditionOverridesRequest) GetActor() string {
+func (x *ClearAllConditionOverridesRequest) GetReason() string {
 	if x != nil {
-		return x.Actor
+		return x.Reason
 	}
 	return ""
 }
@@ -2544,7 +2594,7 @@ type ConditionOverrideListEntry struct {
 	FlagId         string                 `protobuf:"bytes,1,opt,name=flag_id,json=flagId,proto3" json:"flag_id,omitempty"`
 	ConditionIndex *int32                 `protobuf:"varint,2,opt,name=condition_index,json=conditionIndex,proto3,oneof" json:"condition_index,omitempty"`
 	OverrideValue  *FlagValue             `protobuf:"bytes,3,opt,name=override_value,json=overrideValue,proto3" json:"override_value,omitempty"`
-	Source         string                 `protobuf:"bytes,4,opt,name=source,proto3" json:"source,omitempty"`
+	Source         OverrideSource         `protobuf:"varint,4,opt,name=source,proto3,enum=pbflags.v1.OverrideSource" json:"source,omitempty"`
 	Actor          string                 `protobuf:"bytes,5,opt,name=actor,proto3" json:"actor,omitempty"`
 	Reason         string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
 	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
@@ -2603,11 +2653,11 @@ func (x *ConditionOverrideListEntry) GetOverrideValue() *FlagValue {
 	return nil
 }
 
-func (x *ConditionOverrideListEntry) GetSource() string {
+func (x *ConditionOverrideListEntry) GetSource() OverrideSource {
 	if x != nil {
 		return x.Source
 	}
-	return ""
+	return OverrideSource_OVERRIDE_SOURCE_UNSPECIFIED
 }
 
 func (x *ConditionOverrideListEntry) GetActor() string {
@@ -2671,12 +2721,12 @@ const file_pbflags_v1_admin_proto_rawDesc = "" +
 	"\x05value\x18\x03 \x01(\v2\x15.pbflags.v1.FlagValueR\x05value\x12\x18\n" +
 	"\acomment\x18\x04 \x01(\tR\acomment\x12\x1b\n" +
 	"\tlaunch_id\x18\x05 \x01(\tR\blaunchId\x128\n" +
-	"\flaunch_value\x18\x06 \x01(\v2\x15.pbflags.v1.FlagValueR\vlaunchValue\"\xd8\x02\n" +
+	"\flaunch_value\x18\x06 \x01(\v2\x15.pbflags.v1.FlagValueR\vlaunchValue\"\xf4\x02\n" +
 	"\x17ConditionOverrideDetail\x12,\n" +
 	"\x0fcondition_index\x18\x01 \x01(\x05H\x00R\x0econditionIndex\x88\x01\x01\x12<\n" +
 	"\x0eoverride_value\x18\x02 \x01(\v2\x15.pbflags.v1.FlagValueR\roverrideValue\x12<\n" +
-	"\x0eoriginal_value\x18\x03 \x01(\v2\x15.pbflags.v1.FlagValueR\roriginalValue\x12\x16\n" +
-	"\x06source\x18\x04 \x01(\tR\x06source\x12\x14\n" +
+	"\x0eoriginal_value\x18\x03 \x01(\v2\x15.pbflags.v1.FlagValueR\roriginalValue\x122\n" +
+	"\x06source\x18\x04 \x01(\x0e2\x1a.pbflags.v1.OverrideSourceR\x06source\x12\x14\n" +
 	"\x05actor\x18\x05 \x01(\tR\x05actor\x12\x16\n" +
 	"\x06reason\x18\x06 \x01(\tR\x06reason\x129\n" +
 	"\n" +
@@ -2762,15 +2812,14 @@ const file_pbflags_v1_admin_proto_rawDesc = "" +
 	"\x12KillLaunchResponse\"2\n" +
 	"\x13UnkillLaunchRequest\x12\x1b\n" +
 	"\tlaunch_id\x18\x01 \x01(\tR\blaunchId\"\x16\n" +
-	"\x14UnkillLaunchResponse\"F\n" +
-	"\x16AcquireSyncLockRequest\x12\x14\n" +
-	"\x05actor\x18\x01 \x01(\tR\x05actor\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason\"T\n" +
+	"\x14UnkillLaunchResponse\"0\n" +
+	"\x16AcquireSyncLockRequest\x12\x16\n" +
+	"\x06reason\x18\x01 \x01(\tR\x06reason\"T\n" +
 	"\x17AcquireSyncLockResponse\x129\n" +
 	"\n" +
-	"held_since\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\theldSince\".\n" +
-	"\x16ReleaseSyncLockRequest\x12\x14\n" +
-	"\x05actor\x18\x01 \x01(\tR\x05actor\"\x19\n" +
+	"held_since\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\theldSince\"0\n" +
+	"\x16ReleaseSyncLockRequest\x12\x16\n" +
+	"\x06reason\x18\x01 \x01(\tR\x06reason\"\x19\n" +
 	"\x17ReleaseSyncLockResponse\"\x14\n" +
 	"\x12GetSyncLockRequest\"\x92\x01\n" +
 	"\x13GetSyncLockResponse\x12\x12\n" +
@@ -2778,27 +2827,27 @@ const file_pbflags_v1_admin_proto_rawDesc = "" +
 	"\x05actor\x18\x02 \x01(\tR\x05actor\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\x129\n" +
 	"\n" +
-	"held_since\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\theldSince\"\xeb\x01\n" +
+	"held_since\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\theldSince\"\xf1\x01\n" +
 	"\x1bSetConditionOverrideRequest\x12\x17\n" +
 	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12,\n" +
 	"\x0fcondition_index\x18\x02 \x01(\x05H\x00R\x0econditionIndex\x88\x01\x01\x12+\n" +
-	"\x05value\x18\x03 \x01(\v2\x15.pbflags.v1.FlagValueR\x05value\x12\x14\n" +
-	"\x05actor\x18\x04 \x01(\tR\x05actor\x12\x16\n" +
-	"\x06reason\x18\x05 \x01(\tR\x06reason\x12\x16\n" +
-	"\x06source\x18\x06 \x01(\tR\x06sourceB\x12\n" +
-	"\x10_condition_index\"v\n" +
+	"\x05value\x18\x03 \x01(\v2\x15.pbflags.v1.FlagValueR\x05value\x12\x16\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\x122\n" +
+	"\x06source\x18\x05 \x01(\x0e2\x1a.pbflags.v1.OverrideSourceR\x06sourceB\x12\n" +
+	"\x10_condition_index\"\xc5\x01\n" +
 	"\x1cSetConditionOverrideResponse\x12\x18\n" +
 	"\awarning\x18\x01 \x01(\tR\awarning\x12<\n" +
-	"\x0eprevious_value\x18\x02 \x01(\v2\x15.pbflags.v1.FlagValueR\rpreviousValue\"\x90\x01\n" +
+	"\x0eoriginal_value\x18\x02 \x01(\v2\x15.pbflags.v1.FlagValueR\roriginalValue\x12M\n" +
+	"\x17previous_override_value\x18\x03 \x01(\v2\x15.pbflags.v1.FlagValueR\x15previousOverrideValue\"\x92\x01\n" +
 	"\x1dClearConditionOverrideRequest\x12\x17\n" +
 	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12,\n" +
-	"\x0fcondition_index\x18\x02 \x01(\x05H\x00R\x0econditionIndex\x88\x01\x01\x12\x14\n" +
-	"\x05actor\x18\x03 \x01(\tR\x05actorB\x12\n" +
+	"\x0fcondition_index\x18\x02 \x01(\x05H\x00R\x0econditionIndex\x88\x01\x01\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reasonB\x12\n" +
 	"\x10_condition_index\" \n" +
-	"\x1eClearConditionOverrideResponse\"R\n" +
+	"\x1eClearConditionOverrideResponse\"T\n" +
 	"!ClearAllConditionOverridesRequest\x12\x17\n" +
-	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12\x14\n" +
-	"\x05actor\x18\x02 \x01(\tR\x05actor\"I\n" +
+	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"I\n" +
 	"\"ClearAllConditionOverridesResponse\x12#\n" +
 	"\rcleared_count\x18\x01 \x01(\x05R\fclearedCount\"v\n" +
 	"\x1dListConditionOverridesRequest\x12\x17\n" +
@@ -2806,17 +2855,22 @@ const file_pbflags_v1_admin_proto_rawDesc = "" +
 	"\x0fmin_age_seconds\x18\x02 \x01(\x03R\rminAgeSeconds\x12\x14\n" +
 	"\x05actor\x18\x03 \x01(\tR\x05actor\"b\n" +
 	"\x1eListConditionOverridesResponse\x12@\n" +
-	"\aentries\x18\x01 \x03(\v2&.pbflags.v1.ConditionOverrideListEntryR\aentries\"\xb6\x02\n" +
+	"\aentries\x18\x01 \x03(\v2&.pbflags.v1.ConditionOverrideListEntryR\aentries\"\xd2\x02\n" +
 	"\x1aConditionOverrideListEntry\x12\x17\n" +
 	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12,\n" +
 	"\x0fcondition_index\x18\x02 \x01(\x05H\x00R\x0econditionIndex\x88\x01\x01\x12<\n" +
-	"\x0eoverride_value\x18\x03 \x01(\v2\x15.pbflags.v1.FlagValueR\roverrideValue\x12\x16\n" +
-	"\x06source\x18\x04 \x01(\tR\x06source\x12\x14\n" +
+	"\x0eoverride_value\x18\x03 \x01(\v2\x15.pbflags.v1.FlagValueR\roverrideValue\x122\n" +
+	"\x06source\x18\x04 \x01(\x0e2\x1a.pbflags.v1.OverrideSourceR\x06source\x12\x14\n" +
 	"\x05actor\x18\x05 \x01(\tR\x05actor\x12\x16\n" +
 	"\x06reason\x18\x06 \x01(\tR\x06reason\x129\n" +
 	"\n" +
 	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAtB\x12\n" +
-	"\x10_condition_index2\xe9\r\n" +
+	"\x10_condition_index*\x82\x01\n" +
+	"\x0eOverrideSource\x12\x1f\n" +
+	"\x1bOVERRIDE_SOURCE_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13OVERRIDE_SOURCE_CLI\x10\x01\x12\x16\n" +
+	"\x12OVERRIDE_SOURCE_UI\x10\x02\x12\x1e\n" +
+	"\x1aOVERRIDE_SOURCE_AUTOMATION\x10\x032\xe9\r\n" +
 	"\x10FlagAdminService\x12Q\n" +
 	"\fListFeatures\x12\x1f.pbflags.v1.ListFeaturesRequest\x1a .pbflags.v1.ListFeaturesResponse\x12B\n" +
 	"\aGetFlag\x12\x1a.pbflags.v1.GetFlagRequest\x1a\x1b.pbflags.v1.GetFlagResponse\x12Z\n" +
@@ -2852,142 +2906,148 @@ func file_pbflags_v1_admin_proto_rawDescGZIP() []byte {
 	return file_pbflags_v1_admin_proto_rawDescData
 }
 
+var file_pbflags_v1_admin_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_pbflags_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 46)
 var file_pbflags_v1_admin_proto_goTypes = []any{
-	(*ListFeaturesRequest)(nil),                // 0: pbflags.v1.ListFeaturesRequest
-	(*ListFeaturesResponse)(nil),               // 1: pbflags.v1.ListFeaturesResponse
-	(*FeatureDetail)(nil),                      // 2: pbflags.v1.FeatureDetail
-	(*FlagDetail)(nil),                         // 3: pbflags.v1.FlagDetail
-	(*ConditionDetail)(nil),                    // 4: pbflags.v1.ConditionDetail
-	(*ConditionOverrideDetail)(nil),            // 5: pbflags.v1.ConditionOverrideDetail
-	(*FlagOverrideDetail)(nil),                 // 6: pbflags.v1.FlagOverrideDetail
-	(*GetFlagRequest)(nil),                     // 7: pbflags.v1.GetFlagRequest
-	(*GetFlagResponse)(nil),                    // 8: pbflags.v1.GetFlagResponse
-	(*UpdateFlagStateRequest)(nil),             // 9: pbflags.v1.UpdateFlagStateRequest
-	(*UpdateFlagStateResponse)(nil),            // 10: pbflags.v1.UpdateFlagStateResponse
-	(*SetFlagOverrideRequest)(nil),             // 11: pbflags.v1.SetFlagOverrideRequest
-	(*SetFlagOverrideResponse)(nil),            // 12: pbflags.v1.SetFlagOverrideResponse
-	(*RemoveFlagOverrideRequest)(nil),          // 13: pbflags.v1.RemoveFlagOverrideRequest
-	(*RemoveFlagOverrideResponse)(nil),         // 14: pbflags.v1.RemoveFlagOverrideResponse
-	(*GetAuditLogRequest)(nil),                 // 15: pbflags.v1.GetAuditLogRequest
-	(*GetAuditLogResponse)(nil),                // 16: pbflags.v1.GetAuditLogResponse
-	(*AuditLogEntry)(nil),                      // 17: pbflags.v1.AuditLogEntry
-	(*LaunchDetail)(nil),                       // 18: pbflags.v1.LaunchDetail
-	(*ListLaunchesRequest)(nil),                // 19: pbflags.v1.ListLaunchesRequest
-	(*ListLaunchesResponse)(nil),               // 20: pbflags.v1.ListLaunchesResponse
-	(*GetLaunchRequest)(nil),                   // 21: pbflags.v1.GetLaunchRequest
-	(*GetLaunchResponse)(nil),                  // 22: pbflags.v1.GetLaunchResponse
-	(*UpdateLaunchRampRequest)(nil),            // 23: pbflags.v1.UpdateLaunchRampRequest
-	(*UpdateLaunchRampResponse)(nil),           // 24: pbflags.v1.UpdateLaunchRampResponse
-	(*UpdateLaunchStatusRequest)(nil),          // 25: pbflags.v1.UpdateLaunchStatusRequest
-	(*UpdateLaunchStatusResponse)(nil),         // 26: pbflags.v1.UpdateLaunchStatusResponse
-	(*KillLaunchRequest)(nil),                  // 27: pbflags.v1.KillLaunchRequest
-	(*KillLaunchResponse)(nil),                 // 28: pbflags.v1.KillLaunchResponse
-	(*UnkillLaunchRequest)(nil),                // 29: pbflags.v1.UnkillLaunchRequest
-	(*UnkillLaunchResponse)(nil),               // 30: pbflags.v1.UnkillLaunchResponse
-	(*AcquireSyncLockRequest)(nil),             // 31: pbflags.v1.AcquireSyncLockRequest
-	(*AcquireSyncLockResponse)(nil),            // 32: pbflags.v1.AcquireSyncLockResponse
-	(*ReleaseSyncLockRequest)(nil),             // 33: pbflags.v1.ReleaseSyncLockRequest
-	(*ReleaseSyncLockResponse)(nil),            // 34: pbflags.v1.ReleaseSyncLockResponse
-	(*GetSyncLockRequest)(nil),                 // 35: pbflags.v1.GetSyncLockRequest
-	(*GetSyncLockResponse)(nil),                // 36: pbflags.v1.GetSyncLockResponse
-	(*SetConditionOverrideRequest)(nil),        // 37: pbflags.v1.SetConditionOverrideRequest
-	(*SetConditionOverrideResponse)(nil),       // 38: pbflags.v1.SetConditionOverrideResponse
-	(*ClearConditionOverrideRequest)(nil),      // 39: pbflags.v1.ClearConditionOverrideRequest
-	(*ClearConditionOverrideResponse)(nil),     // 40: pbflags.v1.ClearConditionOverrideResponse
-	(*ClearAllConditionOverridesRequest)(nil),  // 41: pbflags.v1.ClearAllConditionOverridesRequest
-	(*ClearAllConditionOverridesResponse)(nil), // 42: pbflags.v1.ClearAllConditionOverridesResponse
-	(*ListConditionOverridesRequest)(nil),      // 43: pbflags.v1.ListConditionOverridesRequest
-	(*ListConditionOverridesResponse)(nil),     // 44: pbflags.v1.ListConditionOverridesResponse
-	(*ConditionOverrideListEntry)(nil),         // 45: pbflags.v1.ConditionOverrideListEntry
-	(FlagType)(0),                              // 46: pbflags.v1.FlagType
-	(State)(0),                                 // 47: pbflags.v1.State
-	(*FlagValue)(nil),                          // 48: pbflags.v1.FlagValue
-	(*pbflags.SupportedValues)(nil),            // 49: pbflags.SupportedValues
-	(*timestamppb.Timestamp)(nil),              // 50: google.protobuf.Timestamp
+	(OverrideSource)(0),                        // 0: pbflags.v1.OverrideSource
+	(*ListFeaturesRequest)(nil),                // 1: pbflags.v1.ListFeaturesRequest
+	(*ListFeaturesResponse)(nil),               // 2: pbflags.v1.ListFeaturesResponse
+	(*FeatureDetail)(nil),                      // 3: pbflags.v1.FeatureDetail
+	(*FlagDetail)(nil),                         // 4: pbflags.v1.FlagDetail
+	(*ConditionDetail)(nil),                    // 5: pbflags.v1.ConditionDetail
+	(*ConditionOverrideDetail)(nil),            // 6: pbflags.v1.ConditionOverrideDetail
+	(*FlagOverrideDetail)(nil),                 // 7: pbflags.v1.FlagOverrideDetail
+	(*GetFlagRequest)(nil),                     // 8: pbflags.v1.GetFlagRequest
+	(*GetFlagResponse)(nil),                    // 9: pbflags.v1.GetFlagResponse
+	(*UpdateFlagStateRequest)(nil),             // 10: pbflags.v1.UpdateFlagStateRequest
+	(*UpdateFlagStateResponse)(nil),            // 11: pbflags.v1.UpdateFlagStateResponse
+	(*SetFlagOverrideRequest)(nil),             // 12: pbflags.v1.SetFlagOverrideRequest
+	(*SetFlagOverrideResponse)(nil),            // 13: pbflags.v1.SetFlagOverrideResponse
+	(*RemoveFlagOverrideRequest)(nil),          // 14: pbflags.v1.RemoveFlagOverrideRequest
+	(*RemoveFlagOverrideResponse)(nil),         // 15: pbflags.v1.RemoveFlagOverrideResponse
+	(*GetAuditLogRequest)(nil),                 // 16: pbflags.v1.GetAuditLogRequest
+	(*GetAuditLogResponse)(nil),                // 17: pbflags.v1.GetAuditLogResponse
+	(*AuditLogEntry)(nil),                      // 18: pbflags.v1.AuditLogEntry
+	(*LaunchDetail)(nil),                       // 19: pbflags.v1.LaunchDetail
+	(*ListLaunchesRequest)(nil),                // 20: pbflags.v1.ListLaunchesRequest
+	(*ListLaunchesResponse)(nil),               // 21: pbflags.v1.ListLaunchesResponse
+	(*GetLaunchRequest)(nil),                   // 22: pbflags.v1.GetLaunchRequest
+	(*GetLaunchResponse)(nil),                  // 23: pbflags.v1.GetLaunchResponse
+	(*UpdateLaunchRampRequest)(nil),            // 24: pbflags.v1.UpdateLaunchRampRequest
+	(*UpdateLaunchRampResponse)(nil),           // 25: pbflags.v1.UpdateLaunchRampResponse
+	(*UpdateLaunchStatusRequest)(nil),          // 26: pbflags.v1.UpdateLaunchStatusRequest
+	(*UpdateLaunchStatusResponse)(nil),         // 27: pbflags.v1.UpdateLaunchStatusResponse
+	(*KillLaunchRequest)(nil),                  // 28: pbflags.v1.KillLaunchRequest
+	(*KillLaunchResponse)(nil),                 // 29: pbflags.v1.KillLaunchResponse
+	(*UnkillLaunchRequest)(nil),                // 30: pbflags.v1.UnkillLaunchRequest
+	(*UnkillLaunchResponse)(nil),               // 31: pbflags.v1.UnkillLaunchResponse
+	(*AcquireSyncLockRequest)(nil),             // 32: pbflags.v1.AcquireSyncLockRequest
+	(*AcquireSyncLockResponse)(nil),            // 33: pbflags.v1.AcquireSyncLockResponse
+	(*ReleaseSyncLockRequest)(nil),             // 34: pbflags.v1.ReleaseSyncLockRequest
+	(*ReleaseSyncLockResponse)(nil),            // 35: pbflags.v1.ReleaseSyncLockResponse
+	(*GetSyncLockRequest)(nil),                 // 36: pbflags.v1.GetSyncLockRequest
+	(*GetSyncLockResponse)(nil),                // 37: pbflags.v1.GetSyncLockResponse
+	(*SetConditionOverrideRequest)(nil),        // 38: pbflags.v1.SetConditionOverrideRequest
+	(*SetConditionOverrideResponse)(nil),       // 39: pbflags.v1.SetConditionOverrideResponse
+	(*ClearConditionOverrideRequest)(nil),      // 40: pbflags.v1.ClearConditionOverrideRequest
+	(*ClearConditionOverrideResponse)(nil),     // 41: pbflags.v1.ClearConditionOverrideResponse
+	(*ClearAllConditionOverridesRequest)(nil),  // 42: pbflags.v1.ClearAllConditionOverridesRequest
+	(*ClearAllConditionOverridesResponse)(nil), // 43: pbflags.v1.ClearAllConditionOverridesResponse
+	(*ListConditionOverridesRequest)(nil),      // 44: pbflags.v1.ListConditionOverridesRequest
+	(*ListConditionOverridesResponse)(nil),     // 45: pbflags.v1.ListConditionOverridesResponse
+	(*ConditionOverrideListEntry)(nil),         // 46: pbflags.v1.ConditionOverrideListEntry
+	(FlagType)(0),                              // 47: pbflags.v1.FlagType
+	(State)(0),                                 // 48: pbflags.v1.State
+	(*FlagValue)(nil),                          // 49: pbflags.v1.FlagValue
+	(*pbflags.SupportedValues)(nil),            // 50: pbflags.SupportedValues
+	(*timestamppb.Timestamp)(nil),              // 51: google.protobuf.Timestamp
 }
 var file_pbflags_v1_admin_proto_depIdxs = []int32{
-	2,  // 0: pbflags.v1.ListFeaturesResponse.features:type_name -> pbflags.v1.FeatureDetail
-	3,  // 1: pbflags.v1.FeatureDetail.flags:type_name -> pbflags.v1.FlagDetail
-	46, // 2: pbflags.v1.FlagDetail.flag_type:type_name -> pbflags.v1.FlagType
-	47, // 3: pbflags.v1.FlagDetail.state:type_name -> pbflags.v1.State
-	48, // 4: pbflags.v1.FlagDetail.default_value:type_name -> pbflags.v1.FlagValue
-	48, // 5: pbflags.v1.FlagDetail.current_value:type_name -> pbflags.v1.FlagValue
-	6,  // 6: pbflags.v1.FlagDetail.overrides:type_name -> pbflags.v1.FlagOverrideDetail
-	49, // 7: pbflags.v1.FlagDetail.supported_values:type_name -> pbflags.SupportedValues
-	5,  // 8: pbflags.v1.FlagDetail.condition_overrides:type_name -> pbflags.v1.ConditionOverrideDetail
-	4,  // 9: pbflags.v1.FlagDetail.conditions:type_name -> pbflags.v1.ConditionDetail
-	48, // 10: pbflags.v1.ConditionDetail.value:type_name -> pbflags.v1.FlagValue
-	48, // 11: pbflags.v1.ConditionDetail.launch_value:type_name -> pbflags.v1.FlagValue
-	48, // 12: pbflags.v1.ConditionOverrideDetail.override_value:type_name -> pbflags.v1.FlagValue
-	48, // 13: pbflags.v1.ConditionOverrideDetail.original_value:type_name -> pbflags.v1.FlagValue
-	50, // 14: pbflags.v1.ConditionOverrideDetail.created_at:type_name -> google.protobuf.Timestamp
-	47, // 15: pbflags.v1.FlagOverrideDetail.state:type_name -> pbflags.v1.State
-	48, // 16: pbflags.v1.FlagOverrideDetail.value:type_name -> pbflags.v1.FlagValue
-	3,  // 17: pbflags.v1.GetFlagResponse.flag:type_name -> pbflags.v1.FlagDetail
-	47, // 18: pbflags.v1.UpdateFlagStateRequest.state:type_name -> pbflags.v1.State
-	48, // 19: pbflags.v1.UpdateFlagStateRequest.value:type_name -> pbflags.v1.FlagValue
-	47, // 20: pbflags.v1.SetFlagOverrideRequest.state:type_name -> pbflags.v1.State
-	48, // 21: pbflags.v1.SetFlagOverrideRequest.value:type_name -> pbflags.v1.FlagValue
-	17, // 22: pbflags.v1.GetAuditLogResponse.entries:type_name -> pbflags.v1.AuditLogEntry
-	48, // 23: pbflags.v1.AuditLogEntry.old_value:type_name -> pbflags.v1.FlagValue
-	48, // 24: pbflags.v1.AuditLogEntry.new_value:type_name -> pbflags.v1.FlagValue
-	50, // 25: pbflags.v1.AuditLogEntry.created_at:type_name -> google.protobuf.Timestamp
-	50, // 26: pbflags.v1.LaunchDetail.killed_at:type_name -> google.protobuf.Timestamp
-	50, // 27: pbflags.v1.LaunchDetail.created_at:type_name -> google.protobuf.Timestamp
-	50, // 28: pbflags.v1.LaunchDetail.updated_at:type_name -> google.protobuf.Timestamp
-	18, // 29: pbflags.v1.ListLaunchesResponse.launches:type_name -> pbflags.v1.LaunchDetail
-	18, // 30: pbflags.v1.GetLaunchResponse.launch:type_name -> pbflags.v1.LaunchDetail
-	50, // 31: pbflags.v1.AcquireSyncLockResponse.held_since:type_name -> google.protobuf.Timestamp
-	50, // 32: pbflags.v1.GetSyncLockResponse.held_since:type_name -> google.protobuf.Timestamp
-	48, // 33: pbflags.v1.SetConditionOverrideRequest.value:type_name -> pbflags.v1.FlagValue
-	48, // 34: pbflags.v1.SetConditionOverrideResponse.previous_value:type_name -> pbflags.v1.FlagValue
-	45, // 35: pbflags.v1.ListConditionOverridesResponse.entries:type_name -> pbflags.v1.ConditionOverrideListEntry
-	48, // 36: pbflags.v1.ConditionOverrideListEntry.override_value:type_name -> pbflags.v1.FlagValue
-	50, // 37: pbflags.v1.ConditionOverrideListEntry.created_at:type_name -> google.protobuf.Timestamp
-	0,  // 38: pbflags.v1.FlagAdminService.ListFeatures:input_type -> pbflags.v1.ListFeaturesRequest
-	7,  // 39: pbflags.v1.FlagAdminService.GetFlag:input_type -> pbflags.v1.GetFlagRequest
-	9,  // 40: pbflags.v1.FlagAdminService.UpdateFlagState:input_type -> pbflags.v1.UpdateFlagStateRequest
-	11, // 41: pbflags.v1.FlagAdminService.SetFlagOverride:input_type -> pbflags.v1.SetFlagOverrideRequest
-	13, // 42: pbflags.v1.FlagAdminService.RemoveFlagOverride:input_type -> pbflags.v1.RemoveFlagOverrideRequest
-	15, // 43: pbflags.v1.FlagAdminService.GetAuditLog:input_type -> pbflags.v1.GetAuditLogRequest
-	19, // 44: pbflags.v1.FlagAdminService.ListLaunches:input_type -> pbflags.v1.ListLaunchesRequest
-	21, // 45: pbflags.v1.FlagAdminService.GetLaunch:input_type -> pbflags.v1.GetLaunchRequest
-	23, // 46: pbflags.v1.FlagAdminService.UpdateLaunchRamp:input_type -> pbflags.v1.UpdateLaunchRampRequest
-	25, // 47: pbflags.v1.FlagAdminService.UpdateLaunchStatus:input_type -> pbflags.v1.UpdateLaunchStatusRequest
-	27, // 48: pbflags.v1.FlagAdminService.KillLaunch:input_type -> pbflags.v1.KillLaunchRequest
-	29, // 49: pbflags.v1.FlagAdminService.UnkillLaunch:input_type -> pbflags.v1.UnkillLaunchRequest
-	31, // 50: pbflags.v1.FlagAdminService.AcquireSyncLock:input_type -> pbflags.v1.AcquireSyncLockRequest
-	33, // 51: pbflags.v1.FlagAdminService.ReleaseSyncLock:input_type -> pbflags.v1.ReleaseSyncLockRequest
-	35, // 52: pbflags.v1.FlagAdminService.GetSyncLock:input_type -> pbflags.v1.GetSyncLockRequest
-	37, // 53: pbflags.v1.FlagAdminService.SetConditionOverride:input_type -> pbflags.v1.SetConditionOverrideRequest
-	39, // 54: pbflags.v1.FlagAdminService.ClearConditionOverride:input_type -> pbflags.v1.ClearConditionOverrideRequest
-	41, // 55: pbflags.v1.FlagAdminService.ClearAllConditionOverrides:input_type -> pbflags.v1.ClearAllConditionOverridesRequest
-	43, // 56: pbflags.v1.FlagAdminService.ListConditionOverrides:input_type -> pbflags.v1.ListConditionOverridesRequest
-	1,  // 57: pbflags.v1.FlagAdminService.ListFeatures:output_type -> pbflags.v1.ListFeaturesResponse
-	8,  // 58: pbflags.v1.FlagAdminService.GetFlag:output_type -> pbflags.v1.GetFlagResponse
-	10, // 59: pbflags.v1.FlagAdminService.UpdateFlagState:output_type -> pbflags.v1.UpdateFlagStateResponse
-	12, // 60: pbflags.v1.FlagAdminService.SetFlagOverride:output_type -> pbflags.v1.SetFlagOverrideResponse
-	14, // 61: pbflags.v1.FlagAdminService.RemoveFlagOverride:output_type -> pbflags.v1.RemoveFlagOverrideResponse
-	16, // 62: pbflags.v1.FlagAdminService.GetAuditLog:output_type -> pbflags.v1.GetAuditLogResponse
-	20, // 63: pbflags.v1.FlagAdminService.ListLaunches:output_type -> pbflags.v1.ListLaunchesResponse
-	22, // 64: pbflags.v1.FlagAdminService.GetLaunch:output_type -> pbflags.v1.GetLaunchResponse
-	24, // 65: pbflags.v1.FlagAdminService.UpdateLaunchRamp:output_type -> pbflags.v1.UpdateLaunchRampResponse
-	26, // 66: pbflags.v1.FlagAdminService.UpdateLaunchStatus:output_type -> pbflags.v1.UpdateLaunchStatusResponse
-	28, // 67: pbflags.v1.FlagAdminService.KillLaunch:output_type -> pbflags.v1.KillLaunchResponse
-	30, // 68: pbflags.v1.FlagAdminService.UnkillLaunch:output_type -> pbflags.v1.UnkillLaunchResponse
-	32, // 69: pbflags.v1.FlagAdminService.AcquireSyncLock:output_type -> pbflags.v1.AcquireSyncLockResponse
-	34, // 70: pbflags.v1.FlagAdminService.ReleaseSyncLock:output_type -> pbflags.v1.ReleaseSyncLockResponse
-	36, // 71: pbflags.v1.FlagAdminService.GetSyncLock:output_type -> pbflags.v1.GetSyncLockResponse
-	38, // 72: pbflags.v1.FlagAdminService.SetConditionOverride:output_type -> pbflags.v1.SetConditionOverrideResponse
-	40, // 73: pbflags.v1.FlagAdminService.ClearConditionOverride:output_type -> pbflags.v1.ClearConditionOverrideResponse
-	42, // 74: pbflags.v1.FlagAdminService.ClearAllConditionOverrides:output_type -> pbflags.v1.ClearAllConditionOverridesResponse
-	44, // 75: pbflags.v1.FlagAdminService.ListConditionOverrides:output_type -> pbflags.v1.ListConditionOverridesResponse
-	57, // [57:76] is the sub-list for method output_type
-	38, // [38:57] is the sub-list for method input_type
-	38, // [38:38] is the sub-list for extension type_name
-	38, // [38:38] is the sub-list for extension extendee
-	0,  // [0:38] is the sub-list for field type_name
+	3,  // 0: pbflags.v1.ListFeaturesResponse.features:type_name -> pbflags.v1.FeatureDetail
+	4,  // 1: pbflags.v1.FeatureDetail.flags:type_name -> pbflags.v1.FlagDetail
+	47, // 2: pbflags.v1.FlagDetail.flag_type:type_name -> pbflags.v1.FlagType
+	48, // 3: pbflags.v1.FlagDetail.state:type_name -> pbflags.v1.State
+	49, // 4: pbflags.v1.FlagDetail.default_value:type_name -> pbflags.v1.FlagValue
+	49, // 5: pbflags.v1.FlagDetail.current_value:type_name -> pbflags.v1.FlagValue
+	7,  // 6: pbflags.v1.FlagDetail.overrides:type_name -> pbflags.v1.FlagOverrideDetail
+	50, // 7: pbflags.v1.FlagDetail.supported_values:type_name -> pbflags.SupportedValues
+	6,  // 8: pbflags.v1.FlagDetail.condition_overrides:type_name -> pbflags.v1.ConditionOverrideDetail
+	5,  // 9: pbflags.v1.FlagDetail.conditions:type_name -> pbflags.v1.ConditionDetail
+	49, // 10: pbflags.v1.ConditionDetail.value:type_name -> pbflags.v1.FlagValue
+	49, // 11: pbflags.v1.ConditionDetail.launch_value:type_name -> pbflags.v1.FlagValue
+	49, // 12: pbflags.v1.ConditionOverrideDetail.override_value:type_name -> pbflags.v1.FlagValue
+	49, // 13: pbflags.v1.ConditionOverrideDetail.original_value:type_name -> pbflags.v1.FlagValue
+	0,  // 14: pbflags.v1.ConditionOverrideDetail.source:type_name -> pbflags.v1.OverrideSource
+	51, // 15: pbflags.v1.ConditionOverrideDetail.created_at:type_name -> google.protobuf.Timestamp
+	48, // 16: pbflags.v1.FlagOverrideDetail.state:type_name -> pbflags.v1.State
+	49, // 17: pbflags.v1.FlagOverrideDetail.value:type_name -> pbflags.v1.FlagValue
+	4,  // 18: pbflags.v1.GetFlagResponse.flag:type_name -> pbflags.v1.FlagDetail
+	48, // 19: pbflags.v1.UpdateFlagStateRequest.state:type_name -> pbflags.v1.State
+	49, // 20: pbflags.v1.UpdateFlagStateRequest.value:type_name -> pbflags.v1.FlagValue
+	48, // 21: pbflags.v1.SetFlagOverrideRequest.state:type_name -> pbflags.v1.State
+	49, // 22: pbflags.v1.SetFlagOverrideRequest.value:type_name -> pbflags.v1.FlagValue
+	18, // 23: pbflags.v1.GetAuditLogResponse.entries:type_name -> pbflags.v1.AuditLogEntry
+	49, // 24: pbflags.v1.AuditLogEntry.old_value:type_name -> pbflags.v1.FlagValue
+	49, // 25: pbflags.v1.AuditLogEntry.new_value:type_name -> pbflags.v1.FlagValue
+	51, // 26: pbflags.v1.AuditLogEntry.created_at:type_name -> google.protobuf.Timestamp
+	51, // 27: pbflags.v1.LaunchDetail.killed_at:type_name -> google.protobuf.Timestamp
+	51, // 28: pbflags.v1.LaunchDetail.created_at:type_name -> google.protobuf.Timestamp
+	51, // 29: pbflags.v1.LaunchDetail.updated_at:type_name -> google.protobuf.Timestamp
+	19, // 30: pbflags.v1.ListLaunchesResponse.launches:type_name -> pbflags.v1.LaunchDetail
+	19, // 31: pbflags.v1.GetLaunchResponse.launch:type_name -> pbflags.v1.LaunchDetail
+	51, // 32: pbflags.v1.AcquireSyncLockResponse.held_since:type_name -> google.protobuf.Timestamp
+	51, // 33: pbflags.v1.GetSyncLockResponse.held_since:type_name -> google.protobuf.Timestamp
+	49, // 34: pbflags.v1.SetConditionOverrideRequest.value:type_name -> pbflags.v1.FlagValue
+	0,  // 35: pbflags.v1.SetConditionOverrideRequest.source:type_name -> pbflags.v1.OverrideSource
+	49, // 36: pbflags.v1.SetConditionOverrideResponse.original_value:type_name -> pbflags.v1.FlagValue
+	49, // 37: pbflags.v1.SetConditionOverrideResponse.previous_override_value:type_name -> pbflags.v1.FlagValue
+	46, // 38: pbflags.v1.ListConditionOverridesResponse.entries:type_name -> pbflags.v1.ConditionOverrideListEntry
+	49, // 39: pbflags.v1.ConditionOverrideListEntry.override_value:type_name -> pbflags.v1.FlagValue
+	0,  // 40: pbflags.v1.ConditionOverrideListEntry.source:type_name -> pbflags.v1.OverrideSource
+	51, // 41: pbflags.v1.ConditionOverrideListEntry.created_at:type_name -> google.protobuf.Timestamp
+	1,  // 42: pbflags.v1.FlagAdminService.ListFeatures:input_type -> pbflags.v1.ListFeaturesRequest
+	8,  // 43: pbflags.v1.FlagAdminService.GetFlag:input_type -> pbflags.v1.GetFlagRequest
+	10, // 44: pbflags.v1.FlagAdminService.UpdateFlagState:input_type -> pbflags.v1.UpdateFlagStateRequest
+	12, // 45: pbflags.v1.FlagAdminService.SetFlagOverride:input_type -> pbflags.v1.SetFlagOverrideRequest
+	14, // 46: pbflags.v1.FlagAdminService.RemoveFlagOverride:input_type -> pbflags.v1.RemoveFlagOverrideRequest
+	16, // 47: pbflags.v1.FlagAdminService.GetAuditLog:input_type -> pbflags.v1.GetAuditLogRequest
+	20, // 48: pbflags.v1.FlagAdminService.ListLaunches:input_type -> pbflags.v1.ListLaunchesRequest
+	22, // 49: pbflags.v1.FlagAdminService.GetLaunch:input_type -> pbflags.v1.GetLaunchRequest
+	24, // 50: pbflags.v1.FlagAdminService.UpdateLaunchRamp:input_type -> pbflags.v1.UpdateLaunchRampRequest
+	26, // 51: pbflags.v1.FlagAdminService.UpdateLaunchStatus:input_type -> pbflags.v1.UpdateLaunchStatusRequest
+	28, // 52: pbflags.v1.FlagAdminService.KillLaunch:input_type -> pbflags.v1.KillLaunchRequest
+	30, // 53: pbflags.v1.FlagAdminService.UnkillLaunch:input_type -> pbflags.v1.UnkillLaunchRequest
+	32, // 54: pbflags.v1.FlagAdminService.AcquireSyncLock:input_type -> pbflags.v1.AcquireSyncLockRequest
+	34, // 55: pbflags.v1.FlagAdminService.ReleaseSyncLock:input_type -> pbflags.v1.ReleaseSyncLockRequest
+	36, // 56: pbflags.v1.FlagAdminService.GetSyncLock:input_type -> pbflags.v1.GetSyncLockRequest
+	38, // 57: pbflags.v1.FlagAdminService.SetConditionOverride:input_type -> pbflags.v1.SetConditionOverrideRequest
+	40, // 58: pbflags.v1.FlagAdminService.ClearConditionOverride:input_type -> pbflags.v1.ClearConditionOverrideRequest
+	42, // 59: pbflags.v1.FlagAdminService.ClearAllConditionOverrides:input_type -> pbflags.v1.ClearAllConditionOverridesRequest
+	44, // 60: pbflags.v1.FlagAdminService.ListConditionOverrides:input_type -> pbflags.v1.ListConditionOverridesRequest
+	2,  // 61: pbflags.v1.FlagAdminService.ListFeatures:output_type -> pbflags.v1.ListFeaturesResponse
+	9,  // 62: pbflags.v1.FlagAdminService.GetFlag:output_type -> pbflags.v1.GetFlagResponse
+	11, // 63: pbflags.v1.FlagAdminService.UpdateFlagState:output_type -> pbflags.v1.UpdateFlagStateResponse
+	13, // 64: pbflags.v1.FlagAdminService.SetFlagOverride:output_type -> pbflags.v1.SetFlagOverrideResponse
+	15, // 65: pbflags.v1.FlagAdminService.RemoveFlagOverride:output_type -> pbflags.v1.RemoveFlagOverrideResponse
+	17, // 66: pbflags.v1.FlagAdminService.GetAuditLog:output_type -> pbflags.v1.GetAuditLogResponse
+	21, // 67: pbflags.v1.FlagAdminService.ListLaunches:output_type -> pbflags.v1.ListLaunchesResponse
+	23, // 68: pbflags.v1.FlagAdminService.GetLaunch:output_type -> pbflags.v1.GetLaunchResponse
+	25, // 69: pbflags.v1.FlagAdminService.UpdateLaunchRamp:output_type -> pbflags.v1.UpdateLaunchRampResponse
+	27, // 70: pbflags.v1.FlagAdminService.UpdateLaunchStatus:output_type -> pbflags.v1.UpdateLaunchStatusResponse
+	29, // 71: pbflags.v1.FlagAdminService.KillLaunch:output_type -> pbflags.v1.KillLaunchResponse
+	31, // 72: pbflags.v1.FlagAdminService.UnkillLaunch:output_type -> pbflags.v1.UnkillLaunchResponse
+	33, // 73: pbflags.v1.FlagAdminService.AcquireSyncLock:output_type -> pbflags.v1.AcquireSyncLockResponse
+	35, // 74: pbflags.v1.FlagAdminService.ReleaseSyncLock:output_type -> pbflags.v1.ReleaseSyncLockResponse
+	37, // 75: pbflags.v1.FlagAdminService.GetSyncLock:output_type -> pbflags.v1.GetSyncLockResponse
+	39, // 76: pbflags.v1.FlagAdminService.SetConditionOverride:output_type -> pbflags.v1.SetConditionOverrideResponse
+	41, // 77: pbflags.v1.FlagAdminService.ClearConditionOverride:output_type -> pbflags.v1.ClearConditionOverrideResponse
+	43, // 78: pbflags.v1.FlagAdminService.ClearAllConditionOverrides:output_type -> pbflags.v1.ClearAllConditionOverridesResponse
+	45, // 79: pbflags.v1.FlagAdminService.ListConditionOverrides:output_type -> pbflags.v1.ListConditionOverridesResponse
+	61, // [61:80] is the sub-list for method output_type
+	42, // [42:61] is the sub-list for method input_type
+	42, // [42:42] is the sub-list for extension type_name
+	42, // [42:42] is the sub-list for extension extendee
+	0,  // [0:42] is the sub-list for field type_name
 }
 
 func init() { file_pbflags_v1_admin_proto_init() }
@@ -3005,13 +3065,14 @@ func file_pbflags_v1_admin_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pbflags_v1_admin_proto_rawDesc), len(file_pbflags_v1_admin_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   46,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_pbflags_v1_admin_proto_goTypes,
 		DependencyIndexes: file_pbflags_v1_admin_proto_depIdxs,
+		EnumInfos:         file_pbflags_v1_admin_proto_enumTypes,
 		MessageInfos:      file_pbflags_v1_admin_proto_msgTypes,
 	}.Build()
 	File_pbflags_v1_admin_proto = out.File

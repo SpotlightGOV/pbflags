@@ -295,23 +295,11 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 		ConfigManaged:   syncSHA != nil && *syncSHA != "",
 	}
 
-	// Load any active condition value overrides for this flag.
-	if overrides, oErr := s.ListOverridesForFlag(ctx, flagID); oErr == nil {
-		for _, o := range overrides {
-			d := &pbflagsv1.ConditionOverrideDetail{
-				OverrideValue: o.Value,
-				Source:        o.Source,
-				Actor:         o.Actor,
-				Reason:        o.Reason,
-				CreatedAt:     timestamppb.New(o.CreatedAt),
-			}
-			if o.ConditionIndex != nil {
-				d.ConditionIndex = o.ConditionIndex
-			}
-			fd.ConditionOverrides = append(fd.ConditionOverrides, d)
-		}
-	} else {
-		s.logger.Warn("failed to load condition overrides", "flag_id", flagID, "error", oErr)
+	// Defer loading overrides until after the condition chain is built so
+	// we can populate original_value (the chain entry being shadowed).
+	overrides, overridesErr := s.ListOverridesForFlag(ctx, flagID)
+	if overridesErr != nil {
+		s.logger.Warn("failed to load condition overrides", "flag_id", flagID, "error", overridesErr)
 	}
 
 	extra := &FlagExtra{}
@@ -357,6 +345,29 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 		}
 	}
 
+	// Now attach overrides to FlagDetail, populating original_value from
+	// the chain entry (or static default for nil index).
+	for _, o := range overrides {
+		d := &pbflagsv1.ConditionOverrideDetail{
+			OverrideValue: o.Value,
+			Source:        sourceStringToProto(o.Source),
+			Actor:         o.Actor,
+			Reason:        o.Reason,
+			CreatedAt:     timestamppb.New(o.CreatedAt),
+		}
+		if o.ConditionIndex == nil {
+			// Static-default override: original is the compiled default.
+			d.OriginalValue = fd.DefaultValue
+		} else {
+			d.ConditionIndex = o.ConditionIndex
+			idx := int(*o.ConditionIndex)
+			if idx >= 0 && idx < len(fd.Conditions) {
+				d.OriginalValue = fd.Conditions[idx].Value
+			}
+		}
+		fd.ConditionOverrides = append(fd.ConditionOverrides, d)
+	}
+
 	return fd, extra, nil
 }
 
@@ -386,6 +397,15 @@ func (s *Store) GetAuditLog(ctx context.Context, filter AuditLogFilter) ([]*pbfl
 	if filter.FlagID != "" {
 		query += fmt.Sprintf(" AND flag_id = $%d", argN)
 		args = append(args, filter.FlagID)
+		argN++
+	} else if filter.Action == "" || (filter.Action != ActionAcquireSyncLock && filter.Action != ActionReleaseSyncLock) {
+		// Hide global sync-lock sentinel rows from un-filtered listings —
+		// they have no real flag_id and would otherwise render in the UI
+		// as a phantom flag named "__sync_lock__". Surfaced only when
+		// the caller explicitly filters by the sentinel ID or by one of
+		// the sync-lock actions.
+		query += fmt.Sprintf(" AND flag_id <> $%d", argN)
+		args = append(args, auditFlagIDSyncLock)
 		argN++
 	}
 	if filter.Action != "" {
