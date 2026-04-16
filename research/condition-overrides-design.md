@@ -8,23 +8,33 @@
 When an incident requires changing flag behavior immediately, operators must today:
 1. Edit YAML config, open a PR, get it reviewed, merge, and wait for sync
 2. Or kill the entire flag (nuclear option)
+3. Or kill/pause a launch (only useful if the issue is launch-driven)
 
 There's no middle ground. Operators need to be able to change the *value* on a
 specific condition (or the static default) in real time, then follow up with a
 config-as-code PR at their own pace.
 
+Additionally, during incident response the config-as-code pipeline itself can
+be a hazard: partial application of a pending commit, or a scheduled sync
+landing mid-incident, can push the running system into an untested
+configuration. We need a way to temporarily freeze config pushes without
+killing individual flags.
+
 ## Design Principles
 
 1. **Config-as-code stays source of truth** when in use — live overrides are
    *temporary divergences*, not replacements.
-2. **Follow the launch ramp precedent** — `ramp_source` already tracks
+2. **Primitives stay orthogonal.** Launches are for gradual rollouts. Overrides
+   are for surgical value changes. A freeze is for pausing config pushes.
+   Operators compose them; the system doesn't conflate them.
+3. **Follow the launch ramp precedent** — `ramp_source` already tracks
    config vs cli vs ui, with warnings on override. Condition overrides should
    work the same way.
-3. **Audit everything** — every override is logged with actor, old value, new
-   value, and source.
-4. **Gated by server config** — a `--allow-condition-overrides` flag (default
+4. **Audit everything** — every override (and freeze) is logged with actor,
+   old value, new value, and source.
+5. **Gated by server config** — a `--allow-condition-overrides` flag (default
    false) must be set to enable the capability. Future RBAC narrows it further.
-5. **V1 = edit values only** — changing CEL expressions is V2.
+6. **V1 = edit values only** — changing CEL expressions is V2.
 
 ## Precedent: Launch Ramp Source Tracking
 
@@ -46,21 +56,29 @@ Condition overrides follow this exact pattern.
 ### New migration: `0xx_condition_overrides.sql`
 
 ```sql
--- Per-condition value overrides. One row per overridden condition on a flag.
--- The condition is identified by its 0-based index in the stored condition chain.
+-- Per-condition value overrides. One row per overridden condition on a flag,
+-- plus optionally one row per flag with condition_index IS NULL, which
+-- overrides the static/compiled default (flags with no conditions, or the
+-- terminal `otherwise` fall-through).
 CREATE TABLE feature_flags.condition_overrides (
   flag_id          VARCHAR(512) NOT NULL REFERENCES feature_flags.flags(flag_id),
-  condition_index  INT          NOT NULL,  -- 0-based index into StoredConditions
-  override_value   BYTEA        NOT NULL,  -- proto-encoded FlagValue
+  condition_index  INT          NULL,     -- 0-based index; NULL = static default
+  override_value   BYTEA        NOT NULL, -- proto-encoded FlagValue
   source           VARCHAR(20)  NOT NULL CHECK (source IN ('cli', 'ui')),
   actor            VARCHAR(255) NOT NULL,
-  created_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
-  PRIMARY KEY (flag_id, condition_index)
+  reason           TEXT         NOT NULL,
+  created_at       TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
--- Static-value override for flags with no conditions (or for the compiled default).
--- Only one row per flag. condition_index = -1 signals "override the static default."
--- (Alternatively, we use the same table with condition_index = -1.)
+-- One override per (flag, condition).
+CREATE UNIQUE INDEX condition_overrides_flag_cond
+  ON feature_flags.condition_overrides (flag_id, condition_index)
+  WHERE condition_index IS NOT NULL;
+
+-- One static-default override per flag.
+CREATE UNIQUE INDEX condition_overrides_flag_default
+  ON feature_flags.condition_overrides (flag_id)
+  WHERE condition_index IS NULL;
 ```
 
 **Why a separate table (not an extra column on `flags`)?**
@@ -87,21 +105,21 @@ cleaner.
 1. Killed?           → killed_at IS NOT NULL → return compiled default
 2. Conditions?       → walk chain top-to-bottom, first match wins
    ├─ Condition matches?
+   │  ├─ Has launch override? → entity in ramp? → return launch.value
    │  ├─ Has OVERRIDE for this condition index?   ← NEW
-   │  │  └─ return override_value (skip launch logic for this condition)
-   │  ├─ Has launch override?
-   │  │  └─ Entity in ramp? → return launch.value
+   │  │  └─ return override_value
    │  └─ return condition.value
    └─ No match → fall through
-3. Static override?  → condition_index = -1 override exists → return it  ← NEW
+3. Static override?  → condition_index IS NULL override exists → return it  ← NEW
 4. Default           → return compiled default from proto
 ```
 
-**Key decision:** An override on a condition *replaces the entire value path*
-for that condition, including any launch override. This is the correct incident
-response behavior — if you're overriding a condition's value during an incident,
-you want deterministic output, not "some users get the override and launch-ramp
-users get something else."
+**Key decision (revised):** Overrides and launches are orthogonal primitives.
+Launch precedence is unchanged — if a launch is ramping an entity into a new
+value, that still wins. Overrides change the *underlying* value for a condition.
+If the launch itself is the problem, kill or pause the launch; if the base
+value is wrong, override it. Composing the two falls out naturally and keeps
+each primitive's mental model simple.
 
 ### Implementation
 
@@ -127,32 +145,98 @@ New `EvaluationSource` value: `EVALUATION_SOURCE_CONDITION_OVERRIDE`
 
 When `pbflags sync` (or standalone file-watch sync) runs:
 
-1. **Conditions are overwritten as today** — `flags.conditions` is replaced with
-   the compiled config-as-code chain.
-2. **Overrides are NOT automatically cleared.** The sync logs a warning:
+1. **Freeze check first.** If the global freeze is held (see below), sync
+   fails loudly with a non-zero exit and a message pointing at the lock
+   holder, reason, and `pbflags unlock` command. No writes occur.
+2. **Conditions are overwritten as today** — `flags.conditions` is replaced
+   with the compiled config-as-code chain.
+3. **Overrides are auto-cleared by sync.** Once sync runs successfully, all
+   overrides for the synced flags are deleted. The intended workflow is:
+   take the freeze → apply overrides → merge follow-up config PR → release
+   the freeze → next sync picks up the config change and clears the now-redundant
+   overrides in the same operation. Each cleared override is audit-logged.
 
-   ```
-   WARN flag notifications/digest_frequency has 1 active condition override(s) — review and clear via UI or CLI
-   ```
+**Why auto-clear is safe now.** Without the freeze, auto-clear races with
+operators: a mid-incident override could be wiped by a scheduled sync. With the
+freeze, the window where overrides matter is also the window where sync is
+blocked, so by the time sync runs again the config is expected to be the
+source of truth again and the overrides are, by definition, stale.
 
-3. **Index stability:** If the condition chain changes shape (conditions added,
-   removed, reordered), existing overrides may point to the wrong condition.
-   Sync detects this by comparing the old and new condition count and CEL
-   expressions at each index. If an override's target condition changed:
+**No stale detection / CEL hashing.** The earlier design tried to detect
+when a condition chain changed shape beneath an override. With auto-clear on
+sync, this concern evaporates: overrides are short-lived by construction, and
+the next sync resets the world.
 
-   ```
-   WARN override on notifications/digest_frequency[1] is stale — condition at index 1 changed from
-        'ctx.plan == PlanLevel.ENTERPRISE' to 'ctx.plan == PlanLevel.PRO'; override will be IGNORED
-   ```
+---
 
-   The override row gets a `stale` flag set. Stale overrides are excluded from
-   evaluation but kept for audit trail until explicitly cleared.
+## Global Freeze
 
-### Stale detection
+The global freeze is a first-class primitive: a single boolean (with metadata)
+that, when held, causes all config-as-code sync operations to fail loudly.
+It's the "big red button" for the config pipeline during incident response.
 
-Add `stale BOOLEAN NOT NULL DEFAULT false` and `target_cel_hash VARCHAR(64)` to
-`condition_overrides`. When the override is created, store a hash of the CEL
-expression at that index. On sync, compare hashes; mark stale if they diverge.
+### Scope: global, not per-feature or per-flag
+
+Launches and multi-flag config changes routinely span features. A per-feature
+or per-flag freeze could allow half of a commit to land while the other half
+is blocked — pushing the running system into an untested combination. A global
+freeze prevents that entirely.
+
+### No TTL, no auto-release
+
+The freeze is released only by an explicit `pbflags unlock` (or equivalent UI
+action). There is no expiration. The reasoning:
+
+- While the freeze is held, every sync attempt fails loudly — there's a
+  continuous, visible signal that something is off. Forgotten freezes surface
+  quickly through blocked deploys.
+- A TTL that silently expires mid-incident is strictly worse: configuration
+  can start flowing again while no one is paying attention, defeating the
+  purpose of the freeze.
+
+### Data model
+
+```sql
+-- Singleton row. Absence = unlocked.
+CREATE TABLE feature_flags.sync_freeze (
+  id          INT          PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  actor       VARCHAR(255) NOT NULL,
+  reason      TEXT         NOT NULL,
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+```
+
+### API
+
+```protobuf
+rpc AcquireSyncFreeze(AcquireSyncFreezeRequest) returns (AcquireSyncFreezeResponse);
+rpc ReleaseSyncFreeze(ReleaseSyncFreezeRequest) returns (ReleaseSyncFreezeResponse);
+rpc GetSyncFreeze(GetSyncFreezeRequest) returns (GetSyncFreezeResponse);
+
+message AcquireSyncFreezeRequest {
+  string actor = 1;
+  string reason = 2;  // required
+}
+```
+
+### CLI
+
+```
+pbflags lock --reason="INC-1234: digest storm, holding config while we investigate"
+pbflags unlock
+pbflags lock --status
+```
+
+### Sync interaction
+
+```
+$ pbflags sync
+ERROR: sync freeze is active
+  Held by: alice@example.com
+  Reason:  INC-1234: digest storm, holding config while we investigate
+  Since:   2026-04-16 14:03:11Z (17m ago)
+  Release: pbflags unlock
+```
 
 ---
 
@@ -175,7 +259,9 @@ rpc ClearAllConditionOverrides(ClearAllConditionOverridesRequest)
 
 message SetConditionOverrideRequest {
   string flag_id = 1;
-  int32 condition_index = 2;   // 0-based; -1 = static default
+  // 0-based index into the condition chain. Omit (or set via oneof absence)
+  // to override the static/compiled default.
+  optional int32 condition_index = 2;
   FlagValue value = 3;
   string actor = 4;
   string reason = 5;           // required — incident ticket, explanation
@@ -190,7 +276,8 @@ message SetConditionOverrideResponse {
 
 message ClearConditionOverrideRequest {
   string flag_id = 1;
-  int32 condition_index = 2;   // -1 = static default
+  // Omit to clear the static-default override.
+  optional int32 condition_index = 2;
   string actor = 3;
 }
 
@@ -219,13 +306,13 @@ message FlagDetail {
 }
 
 message ConditionOverrideDetail {
-  int32 condition_index = 1;
+  // Absent = override of the static/compiled default.
+  optional int32 condition_index = 1;
   FlagValue override_value = 2;
   FlagValue original_value = 3;
   string actor = 4;
   string reason = 5;
   google.protobuf.Timestamp created_at = 6;
-  bool stale = 7;
 }
 ```
 
@@ -262,23 +349,23 @@ The conditions table gains an **Actions** column (V1):
 When a condition has an active override:
 
 ```
-# | Condition                          | Value              | Launch Override | Actions
-1 | ctx.plan == PlanLevel.ENTERPRISE   | "daily"            | —              | [Override Value]
-2 | ctx.plan == PlanLevel.PRO          | "hourly" ⚠ OVERRIDE | (bypassed)    | [Clear Override]
-  |                                    | was: "weekly"      |                |
-3 | otherwise                          | "weekly"           | —              | [Override Value]
+# | Condition                          | Value              | Launch Override      | Actions
+1 | ctx.plan == PlanLevel.ENTERPRISE   | "daily"            | —                   | [Override Value]
+2 | ctx.plan == PlanLevel.PRO          | "hourly" ⚠ OVERRIDE | digest-rollout     | [Clear Override]
+  |                                    | was: "weekly"      | (applied on top)    |
+3 | otherwise                          | "weekly"           | —                   | [Override Value]
 ```
 
 **Visual treatment for overrides:**
 - Override value shown in amber/warning color with badge
 - Original value shown below in muted text ("was: ...")
-- Launch override column shows "(bypassed)" since overrides supersede launches
+- Launch override column unchanged — launches still ramp on top of overrides
 - If config-managed: a banner at the top of the conditions section:
 
   > ⚠ This flag's conditions are managed by config-as-code (synced from
-  > `abc1234`). Overrides here are temporary — the next sync will NOT clear
-  > them, but the underlying conditions may change. Clear overrides after your
-  > config PR lands.
+  > `abc1234`). Overrides here are temporary — the next sync will clear them.
+  > Hold the global freeze (`pbflags lock`) while you apply overrides and
+  > prepare a follow-up config PR.
 
 **Override modal/inline form:**
 - Click "Override Value" → inline form appears in the row
@@ -289,7 +376,7 @@ When a condition has an active override:
 
 **Static-value flags (no conditions):**
 - Same pattern, but the single "compiled default" row gets the Override button
-- condition_index = -1
+- condition_index is NULL (omitted in the API request)
 
 ### Banner when ANY overrides are active (flag detail header)
 
@@ -312,16 +399,16 @@ operators can see at a glance which flags are diverged.
 ### `pb condition override`
 
 ```
-pb condition override <flag_id> <condition_index> <value> --reason="..."
+pb condition override <flag_id> [condition_index] <value> --reason="..."
 
   Override the value for a specific condition on a flag.
-  Use condition_index=-1 to override the static default.
+  Omit condition_index to override the static/compiled default.
 
   --reason   Required. Why this override is being set (incident ticket, etc.)
 
   Examples:
     pb condition override notifications/5 2 "daily" --reason="INC-1234: digest storm"
-    pb condition override notifications/5 -1 "weekly" --reason="INC-1234: safe default"
+    pb condition override notifications/5 "weekly" --reason="INC-1234: safe default"
 ```
 
 ### `pb condition clear`
@@ -357,13 +444,19 @@ When config-as-code is in use, the CLI prints:
 
 ```
 ⚠ Warning: This flag is managed by config-as-code (last sync: abc1234).
-  This override is temporary and will NOT be cleared by the next sync.
-  Follow up with a config change and then run: pb condition clear notifications/5
+  This override is temporary — the next successful sync will clear it.
+  If you're handling an incident, take the freeze first: pbflags lock --reason="..."
 
 Set override? [y/N]
 ```
 
 (Non-interactive mode with `--yes` skips the prompt, still prints the warning.)
+
+If the global freeze is *not* held, the CLI also emits a hint that the
+expected workflow is lock → override → follow-up config PR → unlock. The CLI
+does not block unlocked overrides — operators may legitimately want a
+short-lived override without freezing the pipeline — but it nudges toward the
+safer flow.
 
 ---
 
@@ -405,35 +498,40 @@ New actions:
 
 | Action | Description |
 |--------|-------------|
-| `SET_CONDITION_OVERRIDE` | Override value set on condition N |
-| `CLEAR_CONDITION_OVERRIDE` | Override cleared on condition N |
+| `SET_CONDITION_OVERRIDE` | Override value set on condition N (or default) |
+| `CLEAR_CONDITION_OVERRIDE` | Override cleared on condition N (or default) |
 | `CLEAR_ALL_CONDITION_OVERRIDES` | All overrides cleared on flag |
-| `CONDITION_OVERRIDE_STALE` | Sync marked override as stale |
+| `CONDITION_OVERRIDE_AUTO_CLEARED` | Sync cleared an override as part of a successful sync |
+| `ACQUIRE_SYNC_FREEZE` | Global sync freeze acquired |
+| `RELEASE_SYNC_FREEZE` | Global sync freeze released |
 
-Each entry records: flag_id, condition_index, old_value, new_value, actor, reason.
+Each override entry records: flag_id, condition_index, old_value, new_value,
+actor, reason. Freeze entries record: actor, reason, duration-held (on release).
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Data model + evaluator (no UI)
-- [ ] Migration: `condition_overrides` table
-- [ ] Store methods: SetConditionOverride, ClearConditionOverride, etc.
+### Phase 1: Freeze + data model + evaluator (no UI)
+- [ ] Migration: `sync_freeze` table, `condition_overrides` table (NULL index + partial unique indexes)
+- [ ] Store methods: AcquireSyncFreeze, ReleaseSyncFreeze, SetConditionOverride, ClearConditionOverride
+- [ ] Sync: freeze-check gate; on success, auto-clear overrides for synced flags (audit-logged)
 - [ ] Evaluator: load overrides, apply in condition walk
 - [ ] New `EvaluationSource` value
-- [ ] Sync: warn on active overrides, stale detection
 
 ### Phase 2: CLI
+- [ ] `pbflags lock`, `pbflags unlock`, `pbflags lock --status`
 - [ ] `pb condition override`, `pb condition clear`, `pb condition list`
-- [ ] Warning/confirmation when config-managed
+- [ ] Warning/confirmation when config-managed and freeze not held
 - [ ] `--allow-condition-overrides` server flag
 
 ### Phase 3: Admin UI
 - [ ] Flag detail: override indicators, inline override form
 - [ ] Flag detail: clear override / clear all buttons
 - [ ] Config-managed banner with sync SHA
-- [ ] Dashboard: override badge on affected flags
-- [ ] Audit log: override actions
+- [ ] Dashboard: override badge on affected flags; freeze banner when held
+- [ ] Freeze acquire/release UI (with reason field)
+- [ ] Audit log: override + freeze actions
 
 ### Phase 4 (V2): CEL expression editing
 - [ ] UI: inline CEL editor with syntax highlighting
@@ -444,15 +542,12 @@ Each entry records: flag_id, condition_index, old_value, new_value, actor, reaso
 
 ## Open Questions
 
-1. **Should sync auto-clear overrides when the config value matches the override
-   value?** (i.e., the follow-up PR landed and set the same value — the override
-   is now redundant.) Leaning yes for convenience, but it's a surprise
-   side-effect. Could be opt-in via `--auto-clear-matching-overrides`.
+1. **Freeze visibility in running services.** The freeze stops config pushes,
+   but evaluator caches already hold whatever config was last synced. Do we
+   want to surface "freeze held" in evaluator metrics / the SDK's health
+   endpoint so dashboards can correlate? Probably yes; cheap to add.
 
-2. **Should there be a TTL on overrides?** e.g., "override expires after 24h
-   unless renewed." Prevents forgotten overrides from drifting forever. Could be
-   a V2 addition.
-
-3. **Should the override table store the full condition chain snapshot?** This
-   would make stale detection trivial (diff the whole chain) but adds storage
-   cost. Current design with CEL hash is lighter.
+2. **Override TTL as a separate V2 knob.** Orthogonal to the freeze — a
+   *per-override* TTL could still be useful to prevent long-forgotten
+   overrides in non-incident use (e.g., A/B toggles an operator set and
+   never cleaned up). Not V1, but worth capturing as a future addition.
