@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	pbflagspb "github.com/SpotlightGOV/pbflags/gen/pbflags"
@@ -585,6 +586,88 @@ func (s *Store) queryLaunches(ctx context.Context, query string, args ...any) ([
 		launches = append(launches, l)
 	}
 	return launches, rows.Err()
+}
+
+// FlagsByLaunch returns a map from launch_id to the sorted list of
+// flag_ids whose condition chain references that launch (pb-6fi). The
+// scan is restricted to the union of features the supplied launches
+// affect — typically a small set — to keep the cost bounded for the
+// admin UI's per-launch "impacted flags" panel. Conditions live in a
+// proto-encoded BYTEA column, so we decode in Go rather than push the
+// filter into SQL.
+//
+// Returns an empty map (never nil) when launches is empty so callers
+// can index without nil-checks. Failures to decode an individual flag's
+// chain are logged and skipped — one bad row shouldn't blank out the
+// whole UI panel.
+func (s *Store) FlagsByLaunch(ctx context.Context, launches []Launch) (map[string][]string, error) {
+	out := map[string][]string{}
+	if len(launches) == 0 {
+		return out, nil
+	}
+
+	// Collect (launch_id set, feature scope) from the supplied launches.
+	wantLaunch := map[string]bool{}
+	featureSet := map[string]bool{}
+	for _, l := range launches {
+		wantLaunch[l.LaunchID] = true
+		for _, f := range l.AffectedFeatures {
+			featureSet[f] = true
+		}
+	}
+	if len(featureSet) == 0 {
+		return out, nil
+	}
+	features := make([]string, 0, len(featureSet))
+	for f := range featureSet {
+		features = append(features, f)
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT flag_id, conditions
+		FROM feature_flags.flags
+		WHERE feature_id = ANY($1)
+		  AND conditions IS NOT NULL`, features)
+	if err != nil {
+		return nil, fmt.Errorf("query flags by launch: %w", err)
+	}
+	defer rows.Close()
+
+	// Track membership to dedupe (multiple conditions in the same flag
+	// could reference the same launch).
+	seen := map[string]map[string]bool{} // launch_id -> flag_id -> bool
+	for rows.Next() {
+		var flagID string
+		var condBytes []byte
+		if err := rows.Scan(&flagID, &condBytes); err != nil {
+			return nil, err
+		}
+		var stored pbflagsv1.StoredConditions
+		if err := proto.Unmarshal(condBytes, &stored); err != nil {
+			s.logger.Warn("flags-by-launch: bad conditions blob (skipped)",
+				"flag_id", flagID, "error", err)
+			continue
+		}
+		for _, c := range stored.Conditions {
+			if c.LaunchId == "" || !wantLaunch[c.LaunchId] {
+				continue
+			}
+			if seen[c.LaunchId] == nil {
+				seen[c.LaunchId] = map[string]bool{}
+			}
+			if !seen[c.LaunchId][flagID] {
+				seen[c.LaunchId][flagID] = true
+				out[c.LaunchId] = append(out[c.LaunchId], flagID)
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for k := range out {
+		sort.Strings(out[k])
+	}
+	return out, nil
 }
 
 // KillLaunch sets killed_at on a launch (reversible emergency disable).

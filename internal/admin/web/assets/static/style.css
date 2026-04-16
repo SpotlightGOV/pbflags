@@ -1090,6 +1090,79 @@ select {
   flex-wrap: wrap;
 }
 
+/* pb-6fi: per-launch expand button + impacted-flags detail row in the
+   flag-detail launches panel. The chevron rotates on aria-expanded so
+   the affordance is obvious without a separate toggled icon, and the
+   count chip beside it (e.g. "3") makes the cost of expansion legible
+   before clicking. The detail row reuses the column structure of the
+   surrounding table so the wrapping flag-id chips don't escape the
+   table grid. */
+.launches-table .launch-col-expand {
+  width: 1%;
+  white-space: nowrap;
+  text-align: left;
+}
+.launch-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.15));
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  line-height: 1;
+}
+.launch-expand-btn:hover {
+  background: var(--surface-hover, rgba(0, 0, 0, 0.04));
+}
+.launch-expand-chevron {
+  display: inline-block;
+  transition: transform 120ms ease-out;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted, #888);
+}
+.launch-expand-btn[aria-expanded="true"] .launch-expand-chevron {
+  transform: rotate(90deg);
+}
+.launch-impacted-count {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted, #888);
+}
+.launch-impacted-row > td {
+  background: var(--surface-subtle, rgba(0, 0, 0, 0.025));
+  padding: 6px 12px 8px;
+  border-top: 0;
+}
+.launch-impacted-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  font-size: 12px;
+}
+.launch-impacted-label {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+  color: var(--text-muted, #888);
+  margin-right: 4px;
+}
+.launch-impacted-flag {
+  text-decoration: none;
+  padding: 1px 6px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  border-radius: 4px;
+  background: var(--surface, transparent);
+}
+.launch-impacted-flag:hover {
+  background: var(--surface-hover, rgba(0, 0, 0, 0.06));
+}
+
 /* Killed launches in the conditions table get strikethrough so it's
    obvious at-a-glance the override is no longer effective (pb-trr). */
 .launch-cell-killed {

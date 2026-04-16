@@ -460,6 +460,29 @@ func (h *Handler) loadFlagPageData(w http.ResponseWriter, r *http.Request, flagI
 		}
 	}
 
+	// flagsByLaunch lets the launches panel expand each row to reveal
+	// every flag that references the launch (pb-6fi). The current flag
+	// is filtered out — operators are already on its detail page, so
+	// listing it as "impacted" is noise.
+	var flagsByLaunch map[string][]string
+	if len(launches) > 0 {
+		fbl, fblErr := h.store.FlagsByLaunch(r.Context(), launches)
+		if fblErr != nil {
+			h.logger.Warn("flag detail: flags by launch", "flag_id", flagID, "error", fblErr)
+		} else {
+			for k, ids := range fbl {
+				filtered := ids[:0]
+				for _, id := range ids {
+					if id != flagID {
+						filtered = append(filtered, id)
+					}
+				}
+				fbl[k] = filtered
+			}
+			flagsByLaunch = fbl
+		}
+	}
+
 	data := h.pageData(r, "flag",
 		"Flag", flag,
 		"Audit", entries,
@@ -475,6 +498,7 @@ func (h *Handler) loadFlagPageData(w http.ResponseWriter, r *http.Request, flagI
 		"ConfigManaged", configManaged,
 		"OtherwiseCondition", otherwiseCondition,
 		"HasCELConditions", hasCELConditions,
+		"FlagsByLaunch", flagsByLaunch,
 	)
 	return data, true
 }

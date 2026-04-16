@@ -213,9 +213,10 @@
     <h3>Launches</h3>
     <span class="state-hint">Gradual rollouts affecting this feature</span>
   </div>
-  <table class="condition-table">
+  <table class="condition-table launches-table">
     <thead>
       <tr>
+        <th class="launch-col-expand"></th>
         <th>Launch</th>
         <th>Description</th>
         <th>Scope</th>
@@ -226,8 +227,23 @@
       </tr>
     </thead>
     <tbody>
+      {{$flagsByLaunch := .FlagsByLaunch}}
       {{range .Launches}}
-      <tr>
+      {{$impacted := index $flagsByLaunch .LaunchID}}
+      {{$rowID := printf "launch-impacted-%s" .LaunchID}}
+      <tr class="launch-row">
+        <td class="launch-col-expand">
+          {{if $impacted}}
+          <button type="button" class="launch-expand-btn"
+                  aria-expanded="false"
+                  aria-controls="{{$rowID}}"
+                  data-launch-impacted-toggle
+                  title="Show {{len $impacted}} other flag(s) affected by this launch">
+            <span class="launch-expand-chevron" aria-hidden="true">&rsaquo;</span>
+            <span class="launch-impacted-count">{{len $impacted}}</span>
+          </button>
+          {{end}}
+        </td>
         <td><code>{{.LaunchID}}</code></td>
         <td>{{if .Description}}{{deref .Description}}{{else}}<span class="cond-otherwise">&mdash;</span>{{end}}</td>
         <td>{{if .ScopeFeatureID}}<code>{{deref .ScopeFeatureID}}</code>{{else}}<span class="cond-otherwise">cross-feature</span>{{end}}</td>
@@ -256,10 +272,47 @@
           {{end}}
         </td>
       </tr>
+      {{if $impacted}}
+      <tr id="{{$rowID}}" class="launch-impacted-row" hidden>
+        <td></td>
+        <td colspan="7">
+          <div class="launch-impacted-list">
+            <span class="launch-impacted-label">Also affects:</span>
+            {{range $impacted}}
+            <a class="launch-impacted-flag" href="/flags/{{.}}"
+               hx-get="/flags/{{.}}" hx-target="#content" hx-push-url="true"><code>{{.}}</code></a>
+            {{end}}
+          </div>
+        </td>
+      </tr>
+      {{end}}
       {{end}}
     </tbody>
   </table>
 </div>
+<script>
+  // pb-6fi: expand/collapse the per-launch "impacted flags" detail row.
+  // Re-bound on every flag-detail render (including htmx swaps) — the
+  // script is inline and the buttons are scoped per-launch row, so no
+  // listener accumulates on the document. Idempotent: each call replaces
+  // any prior listener via the `bound` marker.
+  (function () {
+    var btns = document.querySelectorAll('[data-launch-impacted-toggle]');
+    btns.forEach(function (btn) {
+      if (btn.dataset.bound === '1') return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', function () {
+        var rowID = btn.getAttribute('aria-controls');
+        var row = document.getElementById(rowID);
+        if (!row) return;
+        var open = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+        if (open) row.setAttribute('hidden', '');
+        else row.removeAttribute('hidden');
+      });
+    });
+  })();
+</script>
 {{end}}
 
 <!-- Audit Log (recent) -->
