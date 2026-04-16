@@ -1245,7 +1245,7 @@ func actorFromRequest(r *http.Request) string {
 }
 
 // ---------------------------------------------------------------------------
-// Condition overrides + sync lock (gated by --allow-condition-overrides)
+// Condition overrides + sync lock (gated by --allow-runtime-overrides)
 // ---------------------------------------------------------------------------
 
 // staticDefaultKey is the lookup key in OverridesByCond for the row that

@@ -210,5 +210,5 @@ dev: dev-db dev/descriptors.pb
 		--evaluator-listen=localhost:9201 \
 		--listen=localhost:9200 \
 		--env-name=local \
-		--allow-condition-overrides \
+		--allow-runtime-overrides \
 		--dev-assets=internal/admin/web

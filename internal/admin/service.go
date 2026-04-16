@@ -266,7 +266,7 @@ func (a *AdminService) ReleaseSyncLock(ctx context.Context, req *connect.Request
 	return connect.NewResponse(&pbflagsv1.ReleaseSyncLockResponse{}), nil
 }
 
-// GetSyncLock is gated by --allow-condition-overrides for symmetry with
+// GetSyncLock is gated by --allow-runtime-overrides for symmetry with
 // Acquire/Release: if the feature isn't on, no part of the lock surface is
 // addressable.
 func (a *AdminService) GetSyncLock(ctx context.Context, _ *connect.Request[pbflagsv1.GetSyncLockRequest]) (*connect.Response[pbflagsv1.GetSyncLockResponse], error) {
