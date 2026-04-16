@@ -350,27 +350,45 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	data, ok := h.loadFlagPageData(w, r, flagID)
+	if !ok {
+		return
+	}
+
+	if r.Header.Get("HX-Request") == "true" {
+		h.render(w, "flag_content", data)
+		return
+	}
+	h.render(w, "layout", data)
+}
+
+// loadFlagPageData fetches all data required by the flag_content template
+// and returns it as a pageData map. Used by flagDetail and by mutation
+// handlers (override apply/clear, etc.) that re-render the same view.
+// Missing fields here cause sections of the page to silently disappear
+// after a mutation (pb-94n), so it must mirror flagDetail's contract.
+func (h *Handler) loadFlagPageData(w http.ResponseWriter, r *http.Request, flagID string) (map[string]any, bool) {
 	flag, extra, err := h.store.GetFlag(r.Context(), flagID)
 	if err != nil {
 		h.serverError(w, "get flag", err)
-		return
+		return nil, false
 	}
 	if flag == nil {
 		http.Error(w, "flag not found", http.StatusNotFound)
-		return
+		return nil, false
 	}
 
 	entries, err := h.store.GetAuditLog(r.Context(), admin.AuditLogFilter{FlagID: flagID, Limit: 20})
 	if err != nil {
 		h.serverError(w, "get audit log", err)
-		return
+		return nil, false
 	}
 
 	featureID := strings.Split(flagID, "/")[0]
 	launchesAffectingFeature, err := h.store.ListLaunchesAffecting(r.Context(), featureID)
 	if err != nil {
 		h.serverError(w, "get launches", err)
-		return
+		return nil, false
 	}
 
 	// Filter the feature-scoped launch list to only those actually
@@ -430,12 +448,7 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 		"OverrideCount", len(overridesByCond),
 		"ConfigManaged", configManaged,
 	)
-
-	if r.Header.Get("HX-Request") == "true" {
-		h.render(w, "flag_content", data)
-		return
-	}
-	h.render(w, "layout", data)
+	return data, true
 }
 
 func (h *Handler) auditLog(w http.ResponseWriter, r *http.Request) {
@@ -1189,38 +1202,14 @@ func (h *Handler) gateOverrides(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // renderFlagDetailContent re-renders the full flag_content fragment. Used
-// after a mutation to swap in the updated detail view.
+// after a mutation to swap in the updated detail view. Must include the
+// same data as flagDetail (Launches, KilledLaunches, etc.) or sections of
+// the page silently vanish after the mutation (pb-94n).
 func (h *Handler) renderFlagDetailContent(w http.ResponseWriter, r *http.Request, flagID string) {
-	flag, extra, err := h.store.GetFlag(r.Context(), flagID)
-	if err != nil {
-		h.serverError(w, "get flag after override", err)
+	data, ok := h.loadFlagPageData(w, r, flagID)
+	if !ok {
 		return
 	}
-	entries, err := h.store.GetAuditLog(r.Context(), admin.AuditLogFilter{FlagID: flagID, Limit: 20})
-	if err != nil {
-		h.logger.Warn("get audit log after override", "flag_id", flagID, "error", err)
-	}
-	overridesByCond := map[string]admin.ConditionOverride{}
-	if overrides, oErr := h.store.ListOverridesForFlag(r.Context(), flagID); oErr == nil {
-		for _, o := range overrides {
-			overridesByCond[overrideKey(o.ConditionIndex)] = o
-		}
-	}
-	configManaged, _ := h.store.IsConfigManaged(r.Context(), flagID)
-	featureID := strings.Split(flagID, "/")[0]
-
-	data := h.pageData(r, "flag",
-		"Flag", flag,
-		"Audit", entries,
-		"FlagID", flagID,
-		"Feature", featureID,
-		"Conditions", extra.Conditions,
-		"ConditionsError", extra.ConditionsError,
-		"SyncSHA", extra.SyncSHA,
-		"OverridesByCond", overridesByCond,
-		"OverrideCount", len(overridesByCond),
-		"ConfigManaged", configManaged,
-	)
 	h.render(w, "flag_content", data)
 }
 

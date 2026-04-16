@@ -1900,6 +1900,15 @@ body.sync-locked .shell {
   line-height: 1.4;
 }
 
+/* pb-a8d: warning variant for the unlock popover — replaces the
+   blocking confirm() alert with inline copy. Amber bar + slightly
+   denser color to read as a caution next to the muted help text. */
+.lock-form-help.lock-form-warn {
+  color: var(--text);
+  border-left: 2px solid var(--amber);
+  padding-left: 8px;
+}
+
 /* ─── Override controls (pb-wff.11) ────────────────────────────────── */
 
 .config-managed-warning {

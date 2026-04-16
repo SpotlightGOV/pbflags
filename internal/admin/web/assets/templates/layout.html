@@ -31,8 +31,8 @@
       <details class="lock-form lock-form-release">
         <summary class="btn btn-sm btn-on-warning">Release</summary>
         <form class="lock-form-popover"
-              hx-post="/api/unlock" hx-swap="none"
-              onsubmit="return confirm('Release the global sync lock? Pending sync runs will be allowed to proceed.');">
+              hx-post="/api/unlock" hx-swap="none">
+          <p class="lock-form-help lock-form-warn">Releasing the global sync lock allows pending sync runs to proceed.</p>
           <label>Reason
             <input type="text" name="reason" placeholder="why are you releasing?" required maxlength="200" autofocus>
           </label>
@@ -84,9 +84,9 @@
             <span class="lock-dot lock-dot-red"></span> Locked
           </summary>
           <form class="lock-form-popover lock-form-popover-toolbar"
-                hx-post="/api/unlock" hx-swap="none"
-                onsubmit="return confirm('Release the global sync lock? Pending sync runs will be allowed to proceed.');">
+                hx-post="/api/unlock" hx-swap="none">
             <p class="lock-form-help">Held by <strong>{{.SyncLock.Actor}}</strong> &middot; {{timeAgo .SyncLock.CreatedAt}}.</p>
+            <p class="lock-form-help lock-form-warn">Releasing allows pending sync runs to proceed and may overwrite active overrides.</p>
             <label>Reason
               <input type="text" name="reason" placeholder="why are you releasing?" required maxlength="200" autofocus>
             </label>

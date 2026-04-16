@@ -196,13 +196,11 @@ func TestSyncLockBannerAndRelease(t *testing.T) {
 		State: playwright.WaitForSelectorStateVisible,
 	}))
 
-	// Release via the banner's Release popover. The form has a confirm()
-	// dialog — auto-accept it.
-	page.OnDialog(func(d playwright.Dialog) { d.Accept() })
-
-	require.NoError(t, page.Locator(".lock-form-release summary").Click())
-	require.NoError(t, page.Locator(".lock-form-release input[name='reason']").Fill("e2e: releasing"))
-	require.NoError(t, page.Locator(".lock-form-release button[type='submit']").Click())
+	// Release via the banner's Release popover. (Warning text is now
+	// inline in the popover — no confirm() dialog to dismiss.)
+	require.NoError(t, page.Locator(".lock-banner .lock-form-release summary").Click())
+	require.NoError(t, page.Locator(".lock-banner .lock-form-release input[name='reason']").Fill("e2e: releasing"))
+	require.NoError(t, page.Locator(".lock-banner .lock-form-release button[type='submit']").Click())
 
 	// HX-Refresh; banner should be gone.
 	require.NoError(t, page.Locator(".lock-banner").WaitFor(playwright.LocatorWaitForOptions{

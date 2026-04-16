@@ -213,7 +213,7 @@
         </td>
         <td>
           {{if .KilledAt}}
-            <button class="btn btn-sm btn-primary"
+            <button class="btn btn-sm btn-danger btn-killed-state"
                     hx-post="/api/launches/unkill/{{.LaunchID}}"
                     hx-target="#content" hx-swap="innerHTML">Unkill</button>
           {{else}}
