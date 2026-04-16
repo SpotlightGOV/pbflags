@@ -206,7 +206,14 @@
         <td>{{if .Description}}{{deref .Description}}{{else}}<span class="cond-otherwise">&mdash;</span>{{end}}</td>
         <td>{{if .ScopeFeatureID}}<code>{{deref .ScopeFeatureID}}</code>{{else}}<span class="cond-otherwise">cross-feature</span>{{end}}</td>
         <td><code>{{.Dimension}}</code></td>
-        <td><strong>{{.RampPct}}%</strong></td>
+        <td>
+          {{if and $.AllowOverrides (not .KilledAt)}}
+            {{template "ramp_controls" dict "LaunchID" .LaunchID "RampPct" .RampPct "RampSource" .RampSource}}
+          {{else}}
+            <strong>{{.RampPct}}%</strong>
+            {{if eq .RampSource "config"}}<span class="ramp-source-tag" title="ramp_percentage is config-managed">cfg</span>{{end}}
+          {{end}}
+        </td>
         <td>
           <span class="badge badge-type">{{.Status}}</span>
           {{if .KilledAt}}<span class="badge badge-danger">KILLED</span>{{end}}
@@ -334,4 +341,49 @@
     </form>
   </details>
 </div>
+{{end}}
+
+{{/*
+  ramp_controls renders the in-table editor for a launch's ramp_percentage.
+  Args: LaunchID, RampPct (current int), RampSource (string).
+  The summary shows the current % so the table reads the same as before
+  the editor was added; clicking opens a popover with quick-pick buttons
+  (0/5/10/25/50/75/100) plus a custom 0-100 input + Apply. Buttons
+  submit immediately so common ramps are one click; the custom input
+  needs Apply because 0-100 is too wide a space for accidental typing.
+*/}}
+{{define "ramp_controls"}}
+<details class="ramp-form-details">
+  <summary class="ramp-summary"><strong>{{.RampPct}}%</strong>{{if eq .RampSource "config"}} <span class="ramp-source-tag" title="ramp_percentage is config-managed; UI changes will be overwritten on next sync">cfg</span>{{end}}</summary>
+  <div class="ramp-popover">
+    {{if eq .RampSource "config"}}
+    <p class="ramp-popover-help ramp-popover-help-warn">Heads up: this ramp is config-managed. Your change will be overwritten on the next successful sync — acquire the sync lock first if this is an incident response.</p>
+    {{else}}
+    <p class="ramp-popover-help">Adjust the ramp percentage for this launch. The audit log records prev / new + actor.</p>
+    {{end}}
+    <div class="ramp-quick">
+      <span class="ramp-quick-label">Set to</span>
+      <form class="ramp-quick-row"
+            hx-post="/api/launches/ramp/{{.LaunchID}}"
+            hx-target="#content" hx-swap="innerHTML">
+        <button type="submit" name="ramp_percentage" value="0"   class="btn btn-sm ramp-chip{{if eq .RampPct 0}} ramp-chip-current{{end}}">0%</button>
+        <button type="submit" name="ramp_percentage" value="5"   class="btn btn-sm ramp-chip{{if eq .RampPct 5}} ramp-chip-current{{end}}">5%</button>
+        <button type="submit" name="ramp_percentage" value="10"  class="btn btn-sm ramp-chip{{if eq .RampPct 10}} ramp-chip-current{{end}}">10%</button>
+        <button type="submit" name="ramp_percentage" value="25"  class="btn btn-sm ramp-chip{{if eq .RampPct 25}} ramp-chip-current{{end}}">25%</button>
+        <button type="submit" name="ramp_percentage" value="50"  class="btn btn-sm ramp-chip{{if eq .RampPct 50}} ramp-chip-current{{end}}">50%</button>
+        <button type="submit" name="ramp_percentage" value="75"  class="btn btn-sm ramp-chip{{if eq .RampPct 75}} ramp-chip-current{{end}}">75%</button>
+        <button type="submit" name="ramp_percentage" value="100" class="btn btn-sm ramp-chip{{if eq .RampPct 100}} ramp-chip-current{{end}}">100%</button>
+      </form>
+    </div>
+    <form class="ramp-custom-row"
+          hx-post="/api/launches/ramp/{{.LaunchID}}"
+          hx-target="#content" hx-swap="innerHTML">
+      <label class="ramp-custom-label">Custom
+        <input type="number" name="ramp_percentage" min="0" max="100" required
+               class="ramp-custom-input" placeholder="0-100" autocomplete="off">
+      </label>
+      <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+    </form>
+  </div>
+</details>
 {{end}}

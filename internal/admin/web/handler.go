@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -1067,6 +1068,12 @@ func splitListLines(raw string) []string {
 }
 
 // updateLaunchRamp handles POST /api/launches/ramp/{launchID}.
+//
+// On success: when the request was made from the per-flag launches table
+// (i.e. carries the HX-Current-URL of /flags/<id>), we re-render the
+// flag detail fragment so the table reflects the new % without a full
+// page reload — that's the operator's expected hot path during a ramp
+// adjustment. From other contexts (no flag context) we trigger a refresh.
 func (h *Handler) updateLaunchRamp(w http.ResponseWriter, r *http.Request) {
 	launchID := r.PathValue("launchID")
 	if launchID == "" {
@@ -1089,7 +1096,32 @@ func (h *Handler) updateLaunchRamp(w http.ResponseWriter, r *http.Request) {
 	if prevSource == "config" {
 		w.Header().Set("X-Warning", "ramp_percentage is defined in config; this change will be overwritten on next sync")
 	}
+	if flagID := flagIDFromHXCurrentURL(r); flagID != "" {
+		h.renderFlagDetailContent(w, r, flagID)
+		return
+	}
+	w.Header().Set("HX-Refresh", "true")
 	w.WriteHeader(http.StatusOK)
+}
+
+// flagIDFromHXCurrentURL extracts the flag ID from the htmx HX-Current-URL
+// header when the request originates from /flags/<id>. Returns "" otherwise.
+// Used to re-render the flag detail fragment after launch mutations
+// initiated from that page.
+func flagIDFromHXCurrentURL(r *http.Request) string {
+	cur := r.Header.Get("HX-Current-URL")
+	if cur == "" {
+		return ""
+	}
+	u, err := url.Parse(cur)
+	if err != nil {
+		return ""
+	}
+	const prefix = "/flags/"
+	if !strings.HasPrefix(u.Path, prefix) {
+		return ""
+	}
+	return strings.TrimPrefix(u.Path, prefix)
 }
 
 // updateLaunchStatus handles POST /api/launches/status/{launchID}.

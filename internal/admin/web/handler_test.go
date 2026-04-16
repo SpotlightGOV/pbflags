@@ -393,6 +393,30 @@ func TestGateRuntimeOverridesEnabled(t *testing.T) {
 
 func ptr[T any](v T) *T { return &v }
 
+func TestFlagIDFromHXCurrentURL(t *testing.T) {
+	cases := []struct {
+		name string
+		hdr  string
+		want string
+	}{
+		{"empty header", "", ""},
+		{"flag detail page", "http://localhost:8080/flags/feature/my_flag", "feature/my_flag"},
+		{"flag detail with query", "http://localhost:8080/flags/feature/my_flag?x=1", "feature/my_flag"},
+		{"non-flag page", "http://localhost:8080/launches", ""},
+		{"dashboard", "http://localhost:8080/", ""},
+		{"malformed", "::not-a-url::", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/launches/ramp/x", nil)
+			if tc.hdr != "" {
+				req.Header.Set("HX-Current-URL", tc.hdr)
+			}
+			assert.Equal(t, tc.want, flagIDFromHXCurrentURL(req))
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // List flag support
 // ---------------------------------------------------------------------------

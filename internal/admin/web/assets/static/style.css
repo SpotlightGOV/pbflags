@@ -2113,6 +2113,151 @@ body.sync-locked .shell {
   justify-content: flex-end;
 }
 
+/* ─── Launch ramp inline editor (pb-mv4) ────────────────────────────
+   Lives in the per-flag launches table. Summary keeps the same visual
+   weight as the old static "<strong>X%</strong>" so the table doesn't
+   gain a busy "edit me" affordance on every row — operators only learn
+   it's editable when they hover/click. Popover is anchored left because
+   the Ramp column is mid-table; right-anchoring would clip off-screen. */
+.ramp-form-details {
+  display: inline-block;
+  position: relative;
+}
+
+.ramp-summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  transition: all var(--transition);
+}
+.ramp-summary::-webkit-details-marker { display: none; }
+.ramp-summary:hover {
+  border-color: var(--border);
+  background: var(--bg-raised);
+}
+.ramp-form-details[open] > .ramp-summary {
+  border-color: var(--accent);
+  background: rgba(91, 127, 255, 0.08);
+}
+
+/* Small "cfg" tag next to the % when ramp_source=config — telegraphs
+   that any UI change here will be reverted by the next sync. */
+.ramp-source-tag {
+  display: inline-block;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+  background: rgba(251, 191, 36, 0.08);
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+.ramp-popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  min-width: 320px;
+  padding: 12px;
+  background: var(--bg-raised);
+  border: 1px solid var(--accent);
+  border-top-width: 2px;
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+}
+
+.ramp-popover-help {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  padding: 6px 10px;
+  background: rgba(91, 127, 255, 0.06);
+  border-left: 2px solid var(--accent);
+}
+.ramp-popover-help-warn {
+  color: var(--amber);
+  background: rgba(251, 191, 36, 0.06);
+  border-left-color: var(--amber);
+}
+
+.ramp-quick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ramp-quick-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.ramp-quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+}
+.ramp-chip {
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+  text-align: center;
+}
+.ramp-chip-current {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(91, 127, 255, 0.08);
+  cursor: default;
+}
+
+.ramp-custom-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 0;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.ramp-custom-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex: 1;
+}
+.ramp-custom-input {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  width: 90px;
+}
+
 /* "Clear all overrides" button in the conditions section header. */
 .clear-all-overrides {
   display: inline-flex;
