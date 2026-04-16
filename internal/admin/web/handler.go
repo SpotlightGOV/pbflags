@@ -585,33 +585,23 @@ func (h *Handler) updateFlagState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Re-fetch the flag after update.
-	flag, extra, err := h.store.GetFlag(r.Context(), flagID)
-	if err != nil {
-		h.serverError(w, "get flag after update", err)
-		return
-	}
-
-	// If targeting #content (flag detail page), render full detail view.
+	// If targeting #content (flag detail page), re-render the full
+	// detail view via the shared loader so every section the template
+	// expects (Launches, KilledLaunches, OverrideCount, OtherwiseCondition,
+	// HasCELConditions, FlagsByLaunch, etc.) is populated. Hand-rolling
+	// a minimal pageData here causes the whole UI to silently vanish
+	// after kill — same failure mode as pb-94n.
 	if r.Header.Get("HX-Target") == "content" {
-		entries, err := h.store.GetAuditLog(r.Context(), admin.AuditLogFilter{FlagID: flagID, Limit: 20})
-		if err != nil {
-			h.logger.Error("get audit log after state update", "flag_id", flagID, "error", err)
-		}
-		h.render(w, "flag_content", map[string]any{
-			"Flag":            flag,
-			"Audit":           entries,
-			"Page":            "flag",
-			"FlagID":          flagID,
-			"Feature":         strings.Split(flagID, "/")[0],
-			"Conditions":      extra.Conditions,
-			"ConditionsError": extra.ConditionsError,
-			"SyncSHA":         extra.SyncSHA,
-		})
+		h.renderFlagDetailContent(w, r, flagID)
 		return
 	}
 
 	// Otherwise render just the table row (dashboard view).
+	flag, _, err := h.store.GetFlag(r.Context(), flagID)
+	if err != nil {
+		h.serverError(w, "get flag after update", err)
+		return
+	}
 	h.render(w, "flag_row", map[string]any{"Flag": flag})
 }
 

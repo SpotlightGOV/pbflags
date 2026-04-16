@@ -201,7 +201,15 @@ dev-seed: dev/descriptors.pb
 # Run the admin server locally with live asset reloading (standalone mode).
 # CSS/template changes take effect on browser refresh; Go changes need a restart.
 # Uses dev/descriptors.pb (built from proto/) so conditions can be synced.
+#
+# Clears any stale sync lock left over from prior dev sessions: the admin
+# server triggers an initial sync on startup, which fails if the lock is
+# held — and `pb unlock` can't help here because it goes through the admin
+# API that won't come up. Delete the row directly so `make dev` is always
+# self-recoverable.
 dev: dev-db dev/descriptors.pb
+	@psql postgres://admin:admin@localhost:5433/pbflags?sslmode=disable \
+		-c "DELETE FROM feature_flags.sync_lock WHERE id = 1" >/dev/null 2>&1 || true
 	go run ./cmd/pbflags-admin \
 		--standalone \
 		--database=postgres://admin:admin@localhost:5433/pbflags?sslmode=disable \
