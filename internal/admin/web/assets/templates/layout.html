@@ -75,11 +75,47 @@
         {{if .Version}}<div class="sidebar-version"><a href="https://github.com/SpotlightGOV/pbflags" target="_blank" rel="noopener">pbflags</a> {{.Version}}</div>{{end}}
       </div>
     </nav>
-    <main class="main" id="content">
-      {{if eq .Page "dashboard"}}{{template "dashboard_content" .}}{{end}}
-      {{if eq .Page "flag"}}{{template "flag_content" .}}{{end}}
-      {{if eq .Page "launches"}}{{template "launches_content" .}}{{end}}
-      {{if eq .Page "audit"}}{{template "audit_content" .}}{{end}}
+    <main class="main">
+      {{if .AllowOverrides}}
+      <div class="page-toolbar">
+        {{if .SyncLock}}
+        <details class="lock-form lock-form-release lock-form-toolbar">
+          <summary class="btn btn-sm btn-locked">
+            <span class="lock-dot lock-dot-red"></span> Locked
+          </summary>
+          <form class="lock-form-popover lock-form-popover-toolbar"
+                hx-post="/api/unlock" hx-swap="none"
+                onsubmit="return confirm('Release the global sync lock? Pending sync runs will be allowed to proceed.');">
+            <p class="lock-form-help">Held by <strong>{{.SyncLock.Actor}}</strong> &middot; {{timeAgo .SyncLock.CreatedAt}}.</p>
+            <label>Reason
+              <input type="text" name="reason" placeholder="why are you releasing?" required maxlength="200" autofocus>
+            </label>
+            <button type="submit" class="btn btn-sm btn-primary">Release lock</button>
+          </form>
+        </details>
+        {{else}}
+        <details class="lock-form lock-form-acquire lock-form-toolbar">
+          <summary class="btn btn-sm btn-lock">
+            <span class="lock-dot"></span> Lock sync
+          </summary>
+          <form class="lock-form-popover lock-form-popover-toolbar"
+                hx-post="/api/lock" hx-swap="none">
+            <p class="lock-form-help">Pause config sync while you apply overrides. Anyone can release.</p>
+            <label>Reason
+              <input type="text" name="reason" placeholder="incident #1234 — pinning value X" required maxlength="200" autofocus>
+            </label>
+            <button type="submit" class="btn btn-sm btn-primary">Acquire lock</button>
+          </form>
+        </details>
+        {{end}}
+      </div>
+      {{end}}
+      <div id="content">
+        {{if eq .Page "dashboard"}}{{template "dashboard_content" .}}{{end}}
+        {{if eq .Page "flag"}}{{template "flag_content" .}}{{end}}
+        {{if eq .Page "launches"}}{{template "launches_content" .}}{{end}}
+        {{if eq .Page "audit"}}{{template "audit_content" .}}{{end}}
+      </div>
     </main>
   </div>
   <script>

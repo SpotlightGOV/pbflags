@@ -529,6 +529,16 @@ body {
   border-color: var(--red);
 }
 
+/* pb-33s: killed flags should make their Unkill button as loud as the
+   pre-kill hover state — so the killed status is obvious at a glance,
+   and clicking restores DEFAULT. Same shape as Kill Flag, filled. */
+.btn-danger.btn-killed-state,
+.btn-danger.btn-killed-state:hover {
+  background: var(--red-dim);
+  border-color: var(--red);
+  color: var(--text);
+}
+
 .btn-sm {
   font-size: 11px;
   padding: 3px 8px;
@@ -1777,32 +1787,33 @@ body.sync-locked .shell {
   filter: saturate(0.9);
 }
 
-/* Sidebar lock acquire trigger (collapsed; expands into a popover form) */
-.sidebar-lock {
-  padding: 12px 20px 0;
-  border-top: 1px solid var(--border);
-}
-
-.sidebar-lock-trigger {
+/* pb-2sq: page toolbar at top-right of every page, holds the lock control. */
+.page-toolbar {
   display: flex;
+  justify-content: flex-end;
   align-items: center;
   gap: 8px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-  padding: 6px 0;
-  list-style: none;
-  user-select: none;
-  transition: color var(--transition);
+  margin: -8px 0 16px;
 }
 
-.sidebar-lock-trigger::-webkit-details-marker { display: none; }
+/* Lock acquire/release trigger inside the page toolbar. Same shape as
+   Kill Flag (.btn .btn-sm) but with a status dot. pb-16d. */
+.btn-lock,
+.btn-locked {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+}
 
-.sidebar-lock-trigger:hover {
-  color: var(--amber);
+.btn-locked {
+  color: var(--red);
+  border-color: var(--red);
+  background: rgba(248, 113, 113, 0.08);
+}
+.btn-locked:hover {
+  background: var(--red-dim);
+  border-color: var(--red);
+  color: var(--text);
 }
 
 .lock-dot {
@@ -1814,9 +1825,9 @@ body.sync-locked .shell {
   flex-shrink: 0;
 }
 
-.sidebar-lock-trigger:hover .lock-dot {
-  background: var(--amber);
-  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.22);
+.lock-dot-red {
+  background: var(--red);
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.22);
 }
 
 /* Lock acquire/release popover form. <details><summary> drives open state. */
@@ -1851,6 +1862,14 @@ body.sync-locked .shell {
   top: 0;
   margin-left: 8px;
   margin-top: 0;
+}
+
+/* pb-ecb: popover anchored to the right edge of its trigger so it
+   stays within the viewport when the trigger sits in the top-right
+   page toolbar. */
+.lock-form-popover-toolbar {
+  right: 0;
+  left: auto;
 }
 
 .lock-form-popover label {

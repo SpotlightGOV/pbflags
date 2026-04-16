@@ -23,7 +23,7 @@
   </div>
   <div class="flag-detail-actions">
     {{if eq (stateLabel .Flag.State) "KILLED"}}
-      <button class="btn btn-primary"
+      <button class="btn btn-danger btn-killed-state"
               hx-post="/api/flags/state/{{.Flag.FlagId}}"
               hx-target="#content" hx-swap="innerHTML"
               hx-vals='{"state":"DEFAULT"}'>Unkill</button>
@@ -32,21 +32,6 @@
               hx-post="/api/flags/state/{{.Flag.FlagId}}"
               hx-target="#content" hx-swap="innerHTML"
               hx-vals='{"state":"KILLED"}'>Kill Flag</button>
-    {{end}}
-    {{if and .AllowOverrides (not .SyncLock)}}
-      <details class="lock-form lock-form-acquire">
-        <summary class="btn btn-sm">
-          <span class="lock-dot"></span> Lock sync
-        </summary>
-        <form class="lock-form-popover"
-              hx-post="/api/lock" hx-swap="none">
-          <p class="lock-form-help">Pause config sync while you apply overrides. Anyone can release.</p>
-          <label>Reason
-            <input type="text" name="reason" placeholder="incident #1234 — pinning value X" required maxlength="200" autofocus>
-          </label>
-          <button type="submit" class="btn btn-sm btn-primary">Acquire lock</button>
-        </form>
-      </details>
     {{end}}
   </div>
 </div>
