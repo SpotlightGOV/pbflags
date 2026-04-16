@@ -314,11 +314,21 @@ func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("dashboard: list overrides", "error", err)
 	}
 
+	// Per-feature config-managed flag (pb-rqw) so the dashboard can
+	// surface a "config" badge at-a-glance without scanning each flag's
+	// detail page for the warning banner.
+	configManagedFeatures, err := h.store.ConfigManagedFeatures(r.Context())
+	if err != nil {
+		h.logger.Warn("dashboard: list config-managed features", "error", err)
+		configManagedFeatures = map[string]bool{}
+	}
+
 	data := h.pageData(r, "dashboard",
 		"Features", features,
 		"FlagCount", countFlags(features),
 		"CondCounts", condCounts,
 		"OverrideCounts", overrideCounts,
+		"ConfigManagedFeatures", configManagedFeatures,
 	)
 
 	// htmx partial swap: return just the content block.

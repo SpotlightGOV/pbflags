@@ -781,6 +781,17 @@ body {
   pointer-events: none;
 }
 
+/* Config-managed badge (pb-rqw): muted info tone — informational, not
+   warning. The override warning banner already handles the workflow
+   prompt; this is just an at-a-glance "this is owned by git". */
+.badge-config {
+  color: var(--text-muted);
+  background: var(--bg-root);
+  border: 1px solid var(--border);
+  letter-spacing: 0.04em;
+  cursor: default;
+}
+
 /* Sync SHA badge */
 .badge-sync {
   color: var(--text-muted);

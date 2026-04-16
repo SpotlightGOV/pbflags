@@ -12,6 +12,9 @@
     {{if .Flag.Description}}<div class="flag-description">{{.Flag.Description}}</div>{{end}}
     <div class="flag-detail-badges">
       <span class="badge badge-type">{{typeLabel .Flag.FlagType}}</span>
+      {{if .ConfigManaged}}
+        <span class="badge badge-config" title="Conditions are managed by config-as-code; overrides are temporary until next sync">config</span>
+      {{end}}
       {{if .SyncSHA}}
         <span class="badge badge-sync" title="Config synced from git commit">{{slice .SyncSHA 0 8}}</span>
       {{end}}

@@ -26,11 +26,13 @@
 </div>
 {{end}}
 
+{{$cm := .ConfigManagedFeatures}}
 {{range .Features}}
 <div class="feature-card collapsed" data-feature="{{.FeatureId}}" data-feature-desc="{{.Description}}">
   <div class="feature-header" onclick="toggleFeature(this)">
     <span class="feature-chevron">&#9656;</span>
     <span class="feature-name">{{.FeatureId}}</span>
+    {{if index $cm .FeatureId}}<span class="badge badge-config" title="Conditions are managed by config-as-code; overrides are temporary until next sync">config</span>{{end}}
     <span class="feature-desc">{{.Description}}</span>
     <span class="feature-meta">
       {{if .Owner}}<span class="owner">{{.Owner}}</span>{{end}}

@@ -669,3 +669,25 @@ func (s *Store) IsConfigManaged(ctx context.Context, flagID string) (bool, error
 	}
 	return sha != nil && strings.TrimSpace(*sha) != "", nil
 }
+
+// ConfigManagedFeatures returns a set of feature IDs that are currently
+// config-as-code managed (sync_sha is set). Used by the dashboard to
+// surface a per-feature badge without an N+1 lookup.
+func (s *Store) ConfigManagedFeatures(ctx context.Context) (map[string]bool, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT feature_id FROM feature_flags.features
+		WHERE sync_sha IS NOT NULL AND sync_sha <> ''`)
+	if err != nil {
+		return nil, fmt.Errorf("query config-managed features: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
