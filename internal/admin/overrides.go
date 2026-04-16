@@ -14,47 +14,47 @@ import (
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
 
-// Audit-log action constants for the freeze + condition-override epic.
+// Audit-log action constants for the lock + condition-override epic.
 // Defined here (rather than as bare strings) so they're greppable and
 // callers can't typo them.
 const (
-	ActionAcquireSyncFreeze          = "ACQUIRE_SYNC_FREEZE"
-	ActionReleaseSyncFreeze          = "RELEASE_SYNC_FREEZE"
+	ActionAcquireSyncLock            = "ACQUIRE_SYNC_LOCK"
+	ActionReleaseSyncLock            = "RELEASE_SYNC_LOCK"
 	ActionSetConditionOverride       = "SET_CONDITION_OVERRIDE"
 	ActionClearConditionOverride     = "CLEAR_CONDITION_OVERRIDE"
 	ActionClearAllConditionOverrides = "CLEAR_ALL_CONDITION_OVERRIDES"
 	ActionConditionOverrideAutoClear = "CONDITION_OVERRIDE_AUTO_CLEARED"
 )
 
-// auditFlagIDSyncFreeze is a sentinel value used in the flag_audit_log.flag_id
+// auditFlagIDSyncLock is a sentinel value used in the flag_audit_log.flag_id
 // column for global-scope audit entries that aren't tied to any single flag.
-const auditFlagIDSyncFreeze = "__sync_freeze__"
+const auditFlagIDSyncLock = "__sync_lock__"
 
-// SyncFreezeInfo describes the held state of the global config-sync freeze.
-type SyncFreezeInfo struct {
+// SyncLockInfo describes the held state of the global config-sync lock.
+type SyncLockInfo struct {
 	Actor     string
 	Reason    string
 	CreatedAt time.Time
 }
 
-// SyncFreezeHeldError is returned when AcquireSyncFreeze is called while the
-// freeze is already held by someone else. It carries the current holder so
+// SyncLockHeldError is returned when AcquireSyncLock is called while the
+// lock is already held by someone else. It carries the current holder so
 // the caller can include it in user-facing error messages.
-type SyncFreezeHeldError struct {
-	Info SyncFreezeInfo
+type SyncLockHeldError struct {
+	Info SyncLockInfo
 }
 
-func (e *SyncFreezeHeldError) Error() string {
-	return fmt.Sprintf("sync freeze already held by %s: %s", e.Info.Actor, e.Info.Reason)
+func (e *SyncLockHeldError) Error() string {
+	return fmt.Sprintf("sync is already locked by %s: %s", e.Info.Actor, e.Info.Reason)
 }
 
-// ErrSyncFreezeNotHeld is returned when ReleaseSyncFreeze is called while
-// the freeze is not held.
-var ErrSyncFreezeNotHeld = errors.New("sync freeze is not held")
+// ErrSyncNotLocked is returned when ReleaseSyncLock is called while
+// the lock is not held.
+var ErrSyncNotLocked = errors.New("sync is not locked")
 
-// AcquireSyncFreeze takes the global sync freeze. If the freeze is already
-// held, returns *SyncFreezeHeldError carrying the current holder's metadata.
-func (s *Store) AcquireSyncFreeze(ctx context.Context, actor, reason string) (*SyncFreezeInfo, error) {
+// AcquireSyncLock takes the global sync lock. If the lock is already
+// held, returns *SyncLockHeldError carrying the current holder's metadata.
+func (s *Store) AcquireSyncLock(ctx context.Context, actor, reason string) (*SyncLockInfo, error) {
 	if actor == "" {
 		return nil, fmt.Errorf("actor is required")
 	}
@@ -68,36 +68,36 @@ func (s *Store) AcquireSyncFreeze(ctx context.Context, actor, reason string) (*S
 	}
 	defer tx.Rollback(ctx)
 
-	current, err := getSyncFreezeTx(ctx, tx)
+	current, err := getSyncLockTx(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
 	if current != nil {
-		return nil, &SyncFreezeHeldError{Info: *current}
+		return nil, &SyncLockHeldError{Info: *current}
 	}
 
 	var createdAt time.Time
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO feature_flags.sync_freeze (id, actor, reason)
+		INSERT INTO feature_flags.sync_lock (id, actor, reason)
 		VALUES (1, $1, $2)
 		RETURNING created_at`, actor, reason).Scan(&createdAt); err != nil {
-		return nil, fmt.Errorf("insert sync_freeze: %w", err)
+		return nil, fmt.Errorf("insert sync_lock: %w", err)
 	}
 
-	if err := insertAuditEntry(ctx, tx, auditFlagIDSyncFreeze,
-		ActionAcquireSyncFreeze, nil, stringValueProto(reason), actor); err != nil {
+	if err := insertAuditEntry(ctx, tx, auditFlagIDSyncLock,
+		ActionAcquireSyncLock, nil, stringValueProto(reason), actor); err != nil {
 		return nil, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
 	}
-	return &SyncFreezeInfo{Actor: actor, Reason: reason, CreatedAt: createdAt}, nil
+	return &SyncLockInfo{Actor: actor, Reason: reason, CreatedAt: createdAt}, nil
 }
 
-// ReleaseSyncFreeze releases the global sync freeze. Returns
-// ErrSyncFreezeNotHeld if no freeze is currently held.
-func (s *Store) ReleaseSyncFreeze(ctx context.Context, actor string) error {
+// ReleaseSyncLock releases the global sync lock. Returns
+// ErrSyncNotLocked if no lock is currently held.
+func (s *Store) ReleaseSyncLock(ctx context.Context, actor string) error {
 	if actor == "" {
 		return fmt.Errorf("actor is required")
 	}
@@ -108,53 +108,53 @@ func (s *Store) ReleaseSyncFreeze(ctx context.Context, actor string) error {
 	}
 	defer tx.Rollback(ctx)
 
-	current, err := getSyncFreezeTx(ctx, tx)
+	current, err := getSyncLockTx(ctx, tx)
 	if err != nil {
 		return err
 	}
 	if current == nil {
-		return ErrSyncFreezeNotHeld
+		return ErrSyncNotLocked
 	}
 
-	if _, err := tx.Exec(ctx, `DELETE FROM feature_flags.sync_freeze WHERE id = 1`); err != nil {
-		return fmt.Errorf("delete sync_freeze: %w", err)
+	if _, err := tx.Exec(ctx, `DELETE FROM feature_flags.sync_lock WHERE id = 1`); err != nil {
+		return fmt.Errorf("delete sync_lock: %w", err)
 	}
 
 	heldFor := time.Since(current.CreatedAt).Truncate(time.Second).String()
-	auditMsg := fmt.Sprintf("released after %s; reason was: %s", heldFor, current.Reason)
-	if err := insertAuditEntry(ctx, tx, auditFlagIDSyncFreeze,
-		ActionReleaseSyncFreeze, stringValueProto(current.Reason), stringValueProto(auditMsg), actor); err != nil {
+	auditMsg := fmt.Sprintf("unlocked after %s; reason was: %s", heldFor, current.Reason)
+	if err := insertAuditEntry(ctx, tx, auditFlagIDSyncLock,
+		ActionReleaseSyncLock, stringValueProto(current.Reason), stringValueProto(auditMsg), actor); err != nil {
 		return err
 	}
 
 	return tx.Commit(ctx)
 }
 
-// GetSyncFreeze returns the current freeze state, or (nil, nil) if unlocked.
-func (s *Store) GetSyncFreeze(ctx context.Context) (*SyncFreezeInfo, error) {
-	return getSyncFreeze(ctx, s.pool)
+// GetSyncLock returns the current lock state, or (nil, nil) if unlocked.
+func (s *Store) GetSyncLock(ctx context.Context) (*SyncLockInfo, error) {
+	return getSyncLock(ctx, s.pool)
 }
 
-// getSyncFreeze and getSyncFreezeTx allow both pool and tx callers.
-type sfQuerier interface {
+// getSyncLock and getSyncLockTx allow both pool and tx callers.
+type slQuerier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-func getSyncFreeze(ctx context.Context, q sfQuerier) (*SyncFreezeInfo, error) {
-	var info SyncFreezeInfo
-	err := q.QueryRow(ctx, `SELECT actor, reason, created_at FROM feature_flags.sync_freeze WHERE id = 1`).
+func getSyncLock(ctx context.Context, q slQuerier) (*SyncLockInfo, error) {
+	var info SyncLockInfo
+	err := q.QueryRow(ctx, `SELECT actor, reason, created_at FROM feature_flags.sync_lock WHERE id = 1`).
 		Scan(&info.Actor, &info.Reason, &info.CreatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("query sync_freeze: %w", err)
+		return nil, fmt.Errorf("query sync_lock: %w", err)
 	}
 	return &info, nil
 }
 
-func getSyncFreezeTx(ctx context.Context, tx pgx.Tx) (*SyncFreezeInfo, error) {
-	return getSyncFreeze(ctx, tx)
+func getSyncLockTx(ctx context.Context, tx pgx.Tx) (*SyncLockInfo, error) {
+	return getSyncLock(ctx, tx)
 }
 
 // ── Condition overrides ─────────────────────────────────────────────

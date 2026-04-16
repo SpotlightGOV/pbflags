@@ -87,9 +87,9 @@ func main() {
 	}
 
 	if err := run(context.Background(), *database, *descriptors, *configDir, *sha); err != nil {
-		if held, ok := defsync.IsFreezeHeld(err); ok {
+		if held, ok := defsync.IsLockHeld(err); ok {
 			fmt.Fprintf(os.Stderr,
-				"\nSync is FROZEN.\n  holder: %s\n  reason: %s\n  since:  %s\n\nRelease with: pbflags unlock\n\n",
+				"\nSync is LOCKED.\n  holder: %s\n  reason: %s\n  since:  %s\n\nUnlock with: pb unlock\n\n",
 				held.Info.Actor, held.Info.Reason, held.Info.CreatedAt.Format("2006-01-02 15:04:05 MST"))
 			os.Exit(2)
 		}

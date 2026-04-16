@@ -361,6 +361,94 @@ func shortType(t pbflagsv1.FlagType) string {
 	return strings.ToLower(s)
 }
 
+// parseFlagValue parses a CLI string into a FlagValue typed according to
+// the flag's declared type. List types are comma-separated. Empty strings
+// are accepted for STRING and *_LIST types (yielding empty values / lists).
+func parseFlagValue(t pbflagsv1.FlagType, raw string) (*pbflagsv1.FlagValue, error) {
+	switch t {
+	case pbflagsv1.FlagType_FLAG_TYPE_BOOL:
+		b, err := strconv.ParseBool(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid bool %q: %w", raw, err)
+		}
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolValue{BoolValue: b}}, nil
+	case pbflagsv1.FlagType_FLAG_TYPE_STRING:
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringValue{StringValue: raw}}, nil
+	case pbflagsv1.FlagType_FLAG_TYPE_INT64:
+		i, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid int64 %q: %w", raw, err)
+		}
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64Value{Int64Value: i}}, nil
+	case pbflagsv1.FlagType_FLAG_TYPE_DOUBLE:
+		f, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid double %q: %w", raw, err)
+		}
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleValue{DoubleValue: f}}, nil
+	case pbflagsv1.FlagType_FLAG_TYPE_BOOL_LIST:
+		parts := splitListValue(raw)
+		out := make([]bool, len(parts))
+		for i, p := range parts {
+			b, err := strconv.ParseBool(p)
+			if err != nil {
+				return nil, fmt.Errorf("invalid bool %q at index %d: %w", p, i, err)
+			}
+			out[i] = b
+		}
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_BoolListValue{
+			BoolListValue: &pbflagsv1.BoolList{Values: out},
+		}}, nil
+	case pbflagsv1.FlagType_FLAG_TYPE_STRING_LIST:
+		parts := splitListValue(raw)
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_StringListValue{
+			StringListValue: &pbflagsv1.StringList{Values: parts},
+		}}, nil
+	case pbflagsv1.FlagType_FLAG_TYPE_INT64_LIST:
+		parts := splitListValue(raw)
+		out := make([]int64, len(parts))
+		for i, p := range parts {
+			v, err := strconv.ParseInt(p, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid int64 %q at index %d: %w", p, i, err)
+			}
+			out[i] = v
+		}
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_Int64ListValue{
+			Int64ListValue: &pbflagsv1.Int64List{Values: out},
+		}}, nil
+	case pbflagsv1.FlagType_FLAG_TYPE_DOUBLE_LIST:
+		parts := splitListValue(raw)
+		out := make([]float64, len(parts))
+		for i, p := range parts {
+			v, err := strconv.ParseFloat(p, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid double %q at index %d: %w", p, i, err)
+			}
+			out[i] = v
+		}
+		return &pbflagsv1.FlagValue{Value: &pbflagsv1.FlagValue_DoubleListValue{
+			DoubleListValue: &pbflagsv1.DoubleList{Values: out},
+		}}, nil
+	default:
+		return nil, fmt.Errorf("unsupported flag type %s", t)
+	}
+}
+
+// splitListValue splits a comma-separated CLI list value, trimming
+// whitespace around each element. An empty input yields an empty slice.
+func splitListValue(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	for i, p := range parts {
+		parts[i] = strings.TrimSpace(p)
+	}
+	return parts
+}
+
 func shortValue(v *pbflagsv1.FlagValue) string {
 	if v == nil {
 		return "—"

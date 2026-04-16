@@ -207,15 +207,15 @@ func Compile(descriptorData []byte, configDir string) ([]byte, error) {
 // No proto descriptors or CEL compiler needed — all compilation was done
 // at compile time.
 //
-// Returns *FreezeHeldError when the global sync freeze is held.
+// Returns *LockHeldError when the global sync lock is held.
 func LoadBundle(ctx context.Context, conn *pgx.Conn, bundleData []byte, sha string) (LoadResult, error) {
 	bundle := &pbflagsv1.CompiledBundle{}
 	if err := proto.Unmarshal(bundleData, bundle); err != nil {
 		return LoadResult{}, fmt.Errorf("unmarshal bundle: %w", err)
 	}
 
-	// Freeze gate: fail loudly with no writes if held.
-	if err := checkFreeze(ctx, conn); err != nil {
+	// Lock gate: fail loudly with no writes if held.
+	if err := checkLock(ctx, conn); err != nil {
 		return LoadResult{}, err
 	}
 

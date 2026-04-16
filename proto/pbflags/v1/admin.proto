@@ -28,10 +28,10 @@ service FlagAdminService {
   rpc KillLaunch(KillLaunchRequest) returns (KillLaunchResponse);
   rpc UnkillLaunch(UnkillLaunchRequest) returns (UnkillLaunchResponse);
 
-  // Global config-sync freeze RPCs.
-  rpc AcquireSyncFreeze(AcquireSyncFreezeRequest) returns (AcquireSyncFreezeResponse);
-  rpc ReleaseSyncFreeze(ReleaseSyncFreezeRequest) returns (ReleaseSyncFreezeResponse);
-  rpc GetSyncFreeze(GetSyncFreezeRequest) returns (GetSyncFreezeResponse);
+  // Global config-sync lock RPCs.
+  rpc AcquireSyncLock(AcquireSyncLockRequest) returns (AcquireSyncLockResponse);
+  rpc ReleaseSyncLock(ReleaseSyncLockRequest) returns (ReleaseSyncLockResponse);
+  rpc GetSyncLock(GetSyncLockRequest) returns (GetSyncLockResponse);
 
   // Per-condition value override RPCs.
   rpc SetConditionOverride(SetConditionOverrideRequest) returns (SetConditionOverrideResponse);
@@ -74,6 +74,26 @@ message FlagDetail {
   // (i.e., the owning feature has a non-empty sync_sha). Operators get
   // a warning when overriding a config-managed flag.
   bool config_managed = 13;
+  // The compiled condition chain in evaluation order. Empty for static
+  // (conditionless) flags. Used by `pb condition list` and the admin UI
+  // to show overrides inline against the chain.
+  repeated ConditionDetail conditions = 14;
+}
+
+// ConditionDetail describes one entry in a flag's condition chain.
+message ConditionDetail {
+  // 0-based index into the chain.
+  int32 index = 1;
+  // CEL expression text; empty = "otherwise" (always-match fallback).
+  string cel = 2;
+  // Compiled value returned when this condition matches.
+  FlagValue value = 3;
+  // Human-readable annotation from YAML config (optional).
+  string comment = 4;
+  // Launch ID, when a launch is overriding this condition for ramped entities.
+  string launch_id = 5;
+  // Value returned when the entity is in the launch ramp (optional).
+  FlagValue launch_value = 6;
 }
 
 // ConditionOverrideDetail describes one active override attached to a flag.
@@ -212,28 +232,28 @@ message UnkillLaunchRequest {
 
 message UnkillLaunchResponse {}
 
-// ── Sync freeze messages ────────────────────────────────────────────
+// ── Sync lock messages ──────────────────────────────────────────────
 
-message AcquireSyncFreezeRequest {
+message AcquireSyncLockRequest {
   string actor = 1;
   string reason = 2; // required
 }
 
-message AcquireSyncFreezeResponse {
-  // Populated when the freeze was newly acquired.
+message AcquireSyncLockResponse {
+  // Populated when the lock was newly acquired.
   google.protobuf.Timestamp held_since = 1;
 }
 
-message ReleaseSyncFreezeRequest {
+message ReleaseSyncLockRequest {
   string actor = 1;
 }
 
-message ReleaseSyncFreezeResponse {}
+message ReleaseSyncLockResponse {}
 
-message GetSyncFreezeRequest {}
+message GetSyncLockRequest {}
 
-message GetSyncFreezeResponse {
-  // Populated when the freeze is currently held; absent fields = unlocked.
+message GetSyncLockResponse {
+  // Populated when the lock is currently held; absent fields = unlocked.
   bool held = 1;
   string actor = 2;
   string reason = 3;

@@ -324,7 +324,7 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 			s.logger.Warn("failed to unmarshal conditions", "flag_id", flagID, "error", err)
 			extra.ConditionsError = err.Error()
 		} else {
-			for _, e := range stored.Conditions {
+			for i, e := range stored.Conditions {
 				fc := FlagCondition{
 					Value:   flagfmt.DisplayConditionValue(e.Value),
 					Comment: e.Comment,
@@ -335,6 +335,24 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 					fc.LaunchValue = flagfmt.DisplayConditionValue(e.LaunchValue)
 				}
 				extra.Conditions = append(extra.Conditions, fc)
+
+				// Also surface the chain on FlagDetail so it travels over
+				// the wire (CLI / future UI consumers).
+				cd := &pbflagsv1.ConditionDetail{
+					Index:    int32(i),
+					Cel:      e.Cel,
+					Comment:  e.Comment,
+					LaunchId: e.LaunchId,
+				}
+				if v, vErr := unmarshalFlagValue(e.Value); vErr == nil {
+					cd.Value = v
+				}
+				if e.LaunchId != "" {
+					if lv, lvErr := unmarshalFlagValue(e.LaunchValue); lvErr == nil {
+						cd.LaunchValue = lv
+					}
+				}
+				fd.Conditions = append(fd.Conditions, cd)
 			}
 		}
 	}

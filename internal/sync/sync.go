@@ -28,11 +28,11 @@ type Result struct {
 // longer present in the descriptor. Runtime state (state, value) is never
 // modified.
 //
-// Returns *FreezeHeldError when the global sync freeze is held; callers
+// Returns *LockHeldError when the global sync lock is held; callers
 // should map this to a non-zero exit with a friendly unlock hint.
 func SyncDefinitions(ctx context.Context, conn *pgx.Conn, defs []evaluator.FlagDef, logger *slog.Logger) (Result, error) {
-	// Freeze gate: fail loudly with no writes if held.
-	if err := checkFreeze(ctx, conn); err != nil {
+	// Lock gate: fail loudly with no writes if held.
+	if err := checkLock(ctx, conn); err != nil {
 		return Result{}, err
 	}
 

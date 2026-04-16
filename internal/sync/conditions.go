@@ -57,8 +57,8 @@ func SyncConditions(
 	logger *slog.Logger,
 	sha string,
 ) (ConditionResult, error) {
-	// Freeze gate: fail loudly with no writes if held.
-	if err := checkFreeze(ctx, conn); err != nil {
+	// Lock gate: fail loudly with no writes if held.
+	if err := checkLock(ctx, conn); err != nil {
 		return ConditionResult{}, err
 	}
 

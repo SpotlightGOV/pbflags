@@ -1,10 +1,10 @@
 -- +goose Up
 
--- Singleton row representing the global config-sync freeze. When present,
+-- Singleton row representing the global config-sync lock. When present,
 -- pbflags-sync (and standalone admin file-watch sync) refuse to write. The
--- freeze is the "big red button" for the config-as-code pipeline during
+-- lock is the "big red button" for the config-as-code pipeline during
 -- incident response. Absence of the row = unlocked.
-CREATE TABLE IF NOT EXISTS feature_flags.sync_freeze (
+CREATE TABLE IF NOT EXISTS feature_flags.sync_lock (
     id          INT          PRIMARY KEY DEFAULT 1 CHECK (id = 1),
     actor       VARCHAR(255) NOT NULL,
     reason      TEXT         NOT NULL,
@@ -43,4 +43,4 @@ DROP INDEX IF EXISTS feature_flags.idx_condition_overrides_created_at;
 DROP INDEX IF EXISTS feature_flags.condition_overrides_flag_default;
 DROP INDEX IF EXISTS feature_flags.condition_overrides_flag_cond;
 DROP TABLE IF EXISTS feature_flags.condition_overrides;
-DROP TABLE IF EXISTS feature_flags.sync_freeze;
+DROP TABLE IF EXISTS feature_flags.sync_lock;

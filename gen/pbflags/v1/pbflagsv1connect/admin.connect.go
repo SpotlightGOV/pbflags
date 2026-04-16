@@ -70,15 +70,15 @@ const (
 	// FlagAdminServiceUnkillLaunchProcedure is the fully-qualified name of the FlagAdminService's
 	// UnkillLaunch RPC.
 	FlagAdminServiceUnkillLaunchProcedure = "/pbflags.v1.FlagAdminService/UnkillLaunch"
-	// FlagAdminServiceAcquireSyncFreezeProcedure is the fully-qualified name of the FlagAdminService's
-	// AcquireSyncFreeze RPC.
-	FlagAdminServiceAcquireSyncFreezeProcedure = "/pbflags.v1.FlagAdminService/AcquireSyncFreeze"
-	// FlagAdminServiceReleaseSyncFreezeProcedure is the fully-qualified name of the FlagAdminService's
-	// ReleaseSyncFreeze RPC.
-	FlagAdminServiceReleaseSyncFreezeProcedure = "/pbflags.v1.FlagAdminService/ReleaseSyncFreeze"
-	// FlagAdminServiceGetSyncFreezeProcedure is the fully-qualified name of the FlagAdminService's
-	// GetSyncFreeze RPC.
-	FlagAdminServiceGetSyncFreezeProcedure = "/pbflags.v1.FlagAdminService/GetSyncFreeze"
+	// FlagAdminServiceAcquireSyncLockProcedure is the fully-qualified name of the FlagAdminService's
+	// AcquireSyncLock RPC.
+	FlagAdminServiceAcquireSyncLockProcedure = "/pbflags.v1.FlagAdminService/AcquireSyncLock"
+	// FlagAdminServiceReleaseSyncLockProcedure is the fully-qualified name of the FlagAdminService's
+	// ReleaseSyncLock RPC.
+	FlagAdminServiceReleaseSyncLockProcedure = "/pbflags.v1.FlagAdminService/ReleaseSyncLock"
+	// FlagAdminServiceGetSyncLockProcedure is the fully-qualified name of the FlagAdminService's
+	// GetSyncLock RPC.
+	FlagAdminServiceGetSyncLockProcedure = "/pbflags.v1.FlagAdminService/GetSyncLock"
 	// FlagAdminServiceSetConditionOverrideProcedure is the fully-qualified name of the
 	// FlagAdminService's SetConditionOverride RPC.
 	FlagAdminServiceSetConditionOverrideProcedure = "/pbflags.v1.FlagAdminService/SetConditionOverride"
@@ -108,10 +108,10 @@ type FlagAdminServiceClient interface {
 	UpdateLaunchStatus(context.Context, *connect.Request[v1.UpdateLaunchStatusRequest]) (*connect.Response[v1.UpdateLaunchStatusResponse], error)
 	KillLaunch(context.Context, *connect.Request[v1.KillLaunchRequest]) (*connect.Response[v1.KillLaunchResponse], error)
 	UnkillLaunch(context.Context, *connect.Request[v1.UnkillLaunchRequest]) (*connect.Response[v1.UnkillLaunchResponse], error)
-	// Global config-sync freeze RPCs.
-	AcquireSyncFreeze(context.Context, *connect.Request[v1.AcquireSyncFreezeRequest]) (*connect.Response[v1.AcquireSyncFreezeResponse], error)
-	ReleaseSyncFreeze(context.Context, *connect.Request[v1.ReleaseSyncFreezeRequest]) (*connect.Response[v1.ReleaseSyncFreezeResponse], error)
-	GetSyncFreeze(context.Context, *connect.Request[v1.GetSyncFreezeRequest]) (*connect.Response[v1.GetSyncFreezeResponse], error)
+	// Global config-sync lock RPCs.
+	AcquireSyncLock(context.Context, *connect.Request[v1.AcquireSyncLockRequest]) (*connect.Response[v1.AcquireSyncLockResponse], error)
+	ReleaseSyncLock(context.Context, *connect.Request[v1.ReleaseSyncLockRequest]) (*connect.Response[v1.ReleaseSyncLockResponse], error)
+	GetSyncLock(context.Context, *connect.Request[v1.GetSyncLockRequest]) (*connect.Response[v1.GetSyncLockResponse], error)
 	// Per-condition value override RPCs.
 	SetConditionOverride(context.Context, *connect.Request[v1.SetConditionOverrideRequest]) (*connect.Response[v1.SetConditionOverrideResponse], error)
 	ClearConditionOverride(context.Context, *connect.Request[v1.ClearConditionOverrideRequest]) (*connect.Response[v1.ClearConditionOverrideResponse], error)
@@ -202,22 +202,22 @@ func NewFlagAdminServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(flagAdminServiceMethods.ByName("UnkillLaunch")),
 			connect.WithClientOptions(opts...),
 		),
-		acquireSyncFreeze: connect.NewClient[v1.AcquireSyncFreezeRequest, v1.AcquireSyncFreezeResponse](
+		acquireSyncLock: connect.NewClient[v1.AcquireSyncLockRequest, v1.AcquireSyncLockResponse](
 			httpClient,
-			baseURL+FlagAdminServiceAcquireSyncFreezeProcedure,
-			connect.WithSchema(flagAdminServiceMethods.ByName("AcquireSyncFreeze")),
+			baseURL+FlagAdminServiceAcquireSyncLockProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("AcquireSyncLock")),
 			connect.WithClientOptions(opts...),
 		),
-		releaseSyncFreeze: connect.NewClient[v1.ReleaseSyncFreezeRequest, v1.ReleaseSyncFreezeResponse](
+		releaseSyncLock: connect.NewClient[v1.ReleaseSyncLockRequest, v1.ReleaseSyncLockResponse](
 			httpClient,
-			baseURL+FlagAdminServiceReleaseSyncFreezeProcedure,
-			connect.WithSchema(flagAdminServiceMethods.ByName("ReleaseSyncFreeze")),
+			baseURL+FlagAdminServiceReleaseSyncLockProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("ReleaseSyncLock")),
 			connect.WithClientOptions(opts...),
 		),
-		getSyncFreeze: connect.NewClient[v1.GetSyncFreezeRequest, v1.GetSyncFreezeResponse](
+		getSyncLock: connect.NewClient[v1.GetSyncLockRequest, v1.GetSyncLockResponse](
 			httpClient,
-			baseURL+FlagAdminServiceGetSyncFreezeProcedure,
-			connect.WithSchema(flagAdminServiceMethods.ByName("GetSyncFreeze")),
+			baseURL+FlagAdminServiceGetSyncLockProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("GetSyncLock")),
 			connect.WithClientOptions(opts...),
 		),
 		setConditionOverride: connect.NewClient[v1.SetConditionOverrideRequest, v1.SetConditionOverrideResponse](
@@ -261,9 +261,9 @@ type flagAdminServiceClient struct {
 	updateLaunchStatus         *connect.Client[v1.UpdateLaunchStatusRequest, v1.UpdateLaunchStatusResponse]
 	killLaunch                 *connect.Client[v1.KillLaunchRequest, v1.KillLaunchResponse]
 	unkillLaunch               *connect.Client[v1.UnkillLaunchRequest, v1.UnkillLaunchResponse]
-	acquireSyncFreeze          *connect.Client[v1.AcquireSyncFreezeRequest, v1.AcquireSyncFreezeResponse]
-	releaseSyncFreeze          *connect.Client[v1.ReleaseSyncFreezeRequest, v1.ReleaseSyncFreezeResponse]
-	getSyncFreeze              *connect.Client[v1.GetSyncFreezeRequest, v1.GetSyncFreezeResponse]
+	acquireSyncLock            *connect.Client[v1.AcquireSyncLockRequest, v1.AcquireSyncLockResponse]
+	releaseSyncLock            *connect.Client[v1.ReleaseSyncLockRequest, v1.ReleaseSyncLockResponse]
+	getSyncLock                *connect.Client[v1.GetSyncLockRequest, v1.GetSyncLockResponse]
 	setConditionOverride       *connect.Client[v1.SetConditionOverrideRequest, v1.SetConditionOverrideResponse]
 	clearConditionOverride     *connect.Client[v1.ClearConditionOverrideRequest, v1.ClearConditionOverrideResponse]
 	clearAllConditionOverrides *connect.Client[v1.ClearAllConditionOverridesRequest, v1.ClearAllConditionOverridesResponse]
@@ -330,19 +330,19 @@ func (c *flagAdminServiceClient) UnkillLaunch(ctx context.Context, req *connect.
 	return c.unkillLaunch.CallUnary(ctx, req)
 }
 
-// AcquireSyncFreeze calls pbflags.v1.FlagAdminService.AcquireSyncFreeze.
-func (c *flagAdminServiceClient) AcquireSyncFreeze(ctx context.Context, req *connect.Request[v1.AcquireSyncFreezeRequest]) (*connect.Response[v1.AcquireSyncFreezeResponse], error) {
-	return c.acquireSyncFreeze.CallUnary(ctx, req)
+// AcquireSyncLock calls pbflags.v1.FlagAdminService.AcquireSyncLock.
+func (c *flagAdminServiceClient) AcquireSyncLock(ctx context.Context, req *connect.Request[v1.AcquireSyncLockRequest]) (*connect.Response[v1.AcquireSyncLockResponse], error) {
+	return c.acquireSyncLock.CallUnary(ctx, req)
 }
 
-// ReleaseSyncFreeze calls pbflags.v1.FlagAdminService.ReleaseSyncFreeze.
-func (c *flagAdminServiceClient) ReleaseSyncFreeze(ctx context.Context, req *connect.Request[v1.ReleaseSyncFreezeRequest]) (*connect.Response[v1.ReleaseSyncFreezeResponse], error) {
-	return c.releaseSyncFreeze.CallUnary(ctx, req)
+// ReleaseSyncLock calls pbflags.v1.FlagAdminService.ReleaseSyncLock.
+func (c *flagAdminServiceClient) ReleaseSyncLock(ctx context.Context, req *connect.Request[v1.ReleaseSyncLockRequest]) (*connect.Response[v1.ReleaseSyncLockResponse], error) {
+	return c.releaseSyncLock.CallUnary(ctx, req)
 }
 
-// GetSyncFreeze calls pbflags.v1.FlagAdminService.GetSyncFreeze.
-func (c *flagAdminServiceClient) GetSyncFreeze(ctx context.Context, req *connect.Request[v1.GetSyncFreezeRequest]) (*connect.Response[v1.GetSyncFreezeResponse], error) {
-	return c.getSyncFreeze.CallUnary(ctx, req)
+// GetSyncLock calls pbflags.v1.FlagAdminService.GetSyncLock.
+func (c *flagAdminServiceClient) GetSyncLock(ctx context.Context, req *connect.Request[v1.GetSyncLockRequest]) (*connect.Response[v1.GetSyncLockResponse], error) {
+	return c.getSyncLock.CallUnary(ctx, req)
 }
 
 // SetConditionOverride calls pbflags.v1.FlagAdminService.SetConditionOverride.
@@ -380,10 +380,10 @@ type FlagAdminServiceHandler interface {
 	UpdateLaunchStatus(context.Context, *connect.Request[v1.UpdateLaunchStatusRequest]) (*connect.Response[v1.UpdateLaunchStatusResponse], error)
 	KillLaunch(context.Context, *connect.Request[v1.KillLaunchRequest]) (*connect.Response[v1.KillLaunchResponse], error)
 	UnkillLaunch(context.Context, *connect.Request[v1.UnkillLaunchRequest]) (*connect.Response[v1.UnkillLaunchResponse], error)
-	// Global config-sync freeze RPCs.
-	AcquireSyncFreeze(context.Context, *connect.Request[v1.AcquireSyncFreezeRequest]) (*connect.Response[v1.AcquireSyncFreezeResponse], error)
-	ReleaseSyncFreeze(context.Context, *connect.Request[v1.ReleaseSyncFreezeRequest]) (*connect.Response[v1.ReleaseSyncFreezeResponse], error)
-	GetSyncFreeze(context.Context, *connect.Request[v1.GetSyncFreezeRequest]) (*connect.Response[v1.GetSyncFreezeResponse], error)
+	// Global config-sync lock RPCs.
+	AcquireSyncLock(context.Context, *connect.Request[v1.AcquireSyncLockRequest]) (*connect.Response[v1.AcquireSyncLockResponse], error)
+	ReleaseSyncLock(context.Context, *connect.Request[v1.ReleaseSyncLockRequest]) (*connect.Response[v1.ReleaseSyncLockResponse], error)
+	GetSyncLock(context.Context, *connect.Request[v1.GetSyncLockRequest]) (*connect.Response[v1.GetSyncLockResponse], error)
 	// Per-condition value override RPCs.
 	SetConditionOverride(context.Context, *connect.Request[v1.SetConditionOverrideRequest]) (*connect.Response[v1.SetConditionOverrideResponse], error)
 	ClearConditionOverride(context.Context, *connect.Request[v1.ClearConditionOverrideRequest]) (*connect.Response[v1.ClearConditionOverrideResponse], error)
@@ -470,22 +470,22 @@ func NewFlagAdminServiceHandler(svc FlagAdminServiceHandler, opts ...connect.Han
 		connect.WithSchema(flagAdminServiceMethods.ByName("UnkillLaunch")),
 		connect.WithHandlerOptions(opts...),
 	)
-	flagAdminServiceAcquireSyncFreezeHandler := connect.NewUnaryHandler(
-		FlagAdminServiceAcquireSyncFreezeProcedure,
-		svc.AcquireSyncFreeze,
-		connect.WithSchema(flagAdminServiceMethods.ByName("AcquireSyncFreeze")),
+	flagAdminServiceAcquireSyncLockHandler := connect.NewUnaryHandler(
+		FlagAdminServiceAcquireSyncLockProcedure,
+		svc.AcquireSyncLock,
+		connect.WithSchema(flagAdminServiceMethods.ByName("AcquireSyncLock")),
 		connect.WithHandlerOptions(opts...),
 	)
-	flagAdminServiceReleaseSyncFreezeHandler := connect.NewUnaryHandler(
-		FlagAdminServiceReleaseSyncFreezeProcedure,
-		svc.ReleaseSyncFreeze,
-		connect.WithSchema(flagAdminServiceMethods.ByName("ReleaseSyncFreeze")),
+	flagAdminServiceReleaseSyncLockHandler := connect.NewUnaryHandler(
+		FlagAdminServiceReleaseSyncLockProcedure,
+		svc.ReleaseSyncLock,
+		connect.WithSchema(flagAdminServiceMethods.ByName("ReleaseSyncLock")),
 		connect.WithHandlerOptions(opts...),
 	)
-	flagAdminServiceGetSyncFreezeHandler := connect.NewUnaryHandler(
-		FlagAdminServiceGetSyncFreezeProcedure,
-		svc.GetSyncFreeze,
-		connect.WithSchema(flagAdminServiceMethods.ByName("GetSyncFreeze")),
+	flagAdminServiceGetSyncLockHandler := connect.NewUnaryHandler(
+		FlagAdminServiceGetSyncLockProcedure,
+		svc.GetSyncLock,
+		connect.WithSchema(flagAdminServiceMethods.ByName("GetSyncLock")),
 		connect.WithHandlerOptions(opts...),
 	)
 	flagAdminServiceSetConditionOverrideHandler := connect.NewUnaryHandler(
@@ -538,12 +538,12 @@ func NewFlagAdminServiceHandler(svc FlagAdminServiceHandler, opts ...connect.Han
 			flagAdminServiceKillLaunchHandler.ServeHTTP(w, r)
 		case FlagAdminServiceUnkillLaunchProcedure:
 			flagAdminServiceUnkillLaunchHandler.ServeHTTP(w, r)
-		case FlagAdminServiceAcquireSyncFreezeProcedure:
-			flagAdminServiceAcquireSyncFreezeHandler.ServeHTTP(w, r)
-		case FlagAdminServiceReleaseSyncFreezeProcedure:
-			flagAdminServiceReleaseSyncFreezeHandler.ServeHTTP(w, r)
-		case FlagAdminServiceGetSyncFreezeProcedure:
-			flagAdminServiceGetSyncFreezeHandler.ServeHTTP(w, r)
+		case FlagAdminServiceAcquireSyncLockProcedure:
+			flagAdminServiceAcquireSyncLockHandler.ServeHTTP(w, r)
+		case FlagAdminServiceReleaseSyncLockProcedure:
+			flagAdminServiceReleaseSyncLockHandler.ServeHTTP(w, r)
+		case FlagAdminServiceGetSyncLockProcedure:
+			flagAdminServiceGetSyncLockHandler.ServeHTTP(w, r)
 		case FlagAdminServiceSetConditionOverrideProcedure:
 			flagAdminServiceSetConditionOverrideHandler.ServeHTTP(w, r)
 		case FlagAdminServiceClearConditionOverrideProcedure:
@@ -609,16 +609,16 @@ func (UnimplementedFlagAdminServiceHandler) UnkillLaunch(context.Context, *conne
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.UnkillLaunch is not implemented"))
 }
 
-func (UnimplementedFlagAdminServiceHandler) AcquireSyncFreeze(context.Context, *connect.Request[v1.AcquireSyncFreezeRequest]) (*connect.Response[v1.AcquireSyncFreezeResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.AcquireSyncFreeze is not implemented"))
+func (UnimplementedFlagAdminServiceHandler) AcquireSyncLock(context.Context, *connect.Request[v1.AcquireSyncLockRequest]) (*connect.Response[v1.AcquireSyncLockResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.AcquireSyncLock is not implemented"))
 }
 
-func (UnimplementedFlagAdminServiceHandler) ReleaseSyncFreeze(context.Context, *connect.Request[v1.ReleaseSyncFreezeRequest]) (*connect.Response[v1.ReleaseSyncFreezeResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.ReleaseSyncFreeze is not implemented"))
+func (UnimplementedFlagAdminServiceHandler) ReleaseSyncLock(context.Context, *connect.Request[v1.ReleaseSyncLockRequest]) (*connect.Response[v1.ReleaseSyncLockResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.ReleaseSyncLock is not implemented"))
 }
 
-func (UnimplementedFlagAdminServiceHandler) GetSyncFreeze(context.Context, *connect.Request[v1.GetSyncFreezeRequest]) (*connect.Response[v1.GetSyncFreezeResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.GetSyncFreeze is not implemented"))
+func (UnimplementedFlagAdminServiceHandler) GetSyncLock(context.Context, *connect.Request[v1.GetSyncLockRequest]) (*connect.Response[v1.GetSyncLockResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.GetSyncLock is not implemented"))
 }
 
 func (UnimplementedFlagAdminServiceHandler) SetConditionOverride(context.Context, *connect.Request[v1.SetConditionOverrideRequest]) (*connect.Response[v1.SetConditionOverrideResponse], error) {

@@ -53,6 +53,9 @@ Admin commands:
   flag       Flag operations (list, get, kill, unkill)
   launch     Launch lifecycle (list, get, ramp, status, kill, unkill)
   audit      View audit log
+  lock       Acquire the global sync lock (--reason required, --status to view)
+  unlock     Release the global sync lock
+  condition  Per-condition value overrides (override, clear, list)
 
 Auth commands:
   auth login   Save API credentials
@@ -101,6 +104,12 @@ func main() {
 		runLaunch(args[1:])
 	case "audit":
 		runAudit(args[1:])
+	case "lock":
+		runLock(args[1:])
+	case "unlock":
+		runUnlock(args[1:])
+	case "condition":
+		runCondition(args[1:])
 	case "auth":
 		runAuth(args[1:])
 	case "-h", "--help", "help":

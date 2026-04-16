@@ -17,7 +17,7 @@ config-as-code PR at their own pace.
 Additionally, during incident response the config-as-code pipeline itself can
 be a hazard: partial application of a pending commit, or a scheduled sync
 landing mid-incident, can push the running system into an untested
-configuration. We need a way to temporarily freeze config pushes without
+configuration. We need a way to temporarily lock config pushes without
 killing individual flags.
 
 ## Design Principles
@@ -25,13 +25,13 @@ killing individual flags.
 1. **Config-as-code stays source of truth** when in use — live overrides are
    *temporary divergences*, not replacements.
 2. **Primitives stay orthogonal.** Launches are for gradual rollouts. Overrides
-   are for surgical value changes. A freeze is for pausing config pushes.
+   are for surgical value changes. A sync lock is for pausing config pushes.
    Operators compose them; the system doesn't conflate them.
 3. **Follow the launch ramp precedent** — `ramp_source` already tracks
    config vs cli vs ui, with warnings on override. Condition overrides should
    work the same way.
-4. **Audit everything** — every override (and freeze) is logged with actor,
-   old value, new value, and source.
+4. **Audit everything** — every override (and lock acquire/release) is logged
+   with actor, old value, new value, and source.
 5. **Gated by server config** — a `--allow-condition-overrides` flag (default
    false) must be set to enable the capability. Future RBAC narrows it further.
 6. **V1 = edit values only** — changing CEL expressions is V2.
@@ -145,20 +145,21 @@ New `EvaluationSource` value: `EVALUATION_SOURCE_CONDITION_OVERRIDE`
 
 When `pbflags sync` (or standalone file-watch sync) runs:
 
-1. **Freeze check first.** If the global freeze is held (see below), sync
+1. **Lock check first.** If the global sync lock is held (see below), sync
    fails loudly with a non-zero exit and a message pointing at the lock
-   holder, reason, and `pbflags unlock` command. No writes occur.
+   holder, reason, and `pb unlock` command. No writes occur.
 2. **Conditions are overwritten as today** — `flags.conditions` is replaced
    with the compiled config-as-code chain.
 3. **Overrides are auto-cleared by sync.** Once sync runs successfully, all
    overrides for the synced flags are deleted. The intended workflow is:
-   take the freeze → apply overrides → merge follow-up config PR → release
-   the freeze → next sync picks up the config change and clears the now-redundant
-   overrides in the same operation. Each cleared override is audit-logged.
+   acquire the sync lock → apply overrides → merge follow-up config PR →
+   release the lock → next sync picks up the config change and clears the
+   now-redundant overrides in the same operation. Each cleared override is
+   audit-logged.
 
-**Why auto-clear is safe now.** Without the freeze, auto-clear races with
+**Why auto-clear is safe now.** Without the lock, auto-clear races with
 operators: a mid-incident override could be wiped by a scheduled sync. With the
-freeze, the window where overrides matter is also the window where sync is
+lock, the window where overrides matter is also the window where sync is
 blocked, so by the time sync runs again the config is expected to be the
 source of truth again and the overrides are, by definition, stale.
 
@@ -169,36 +170,36 @@ the next sync resets the world.
 
 ---
 
-## Global Freeze
+## Global Sync Lock
 
-The global freeze is a first-class primitive: a single boolean (with metadata)
+The global sync lock is a first-class primitive: a single boolean (with metadata)
 that, when held, causes all config-as-code sync operations to fail loudly.
 It's the "big red button" for the config pipeline during incident response.
 
 ### Scope: global, not per-feature or per-flag
 
 Launches and multi-flag config changes routinely span features. A per-feature
-or per-flag freeze could allow half of a commit to land while the other half
+or per-flag lock could allow half of a commit to land while the other half
 is blocked — pushing the running system into an untested combination. A global
-freeze prevents that entirely.
+lock prevents that entirely.
 
 ### No TTL, no auto-release
 
-The freeze is released only by an explicit `pbflags unlock` (or equivalent UI
+The lock is released only by an explicit `pb unlock` (or equivalent UI
 action). There is no expiration. The reasoning:
 
-- While the freeze is held, every sync attempt fails loudly — there's a
-  continuous, visible signal that something is off. Forgotten freezes surface
+- While the lock is held, every sync attempt fails loudly — there's a
+  continuous, visible signal that something is off. Forgotten locks surface
   quickly through blocked deploys.
 - A TTL that silently expires mid-incident is strictly worse: configuration
   can start flowing again while no one is paying attention, defeating the
-  purpose of the freeze.
+  purpose of the lock.
 
 ### Data model
 
 ```sql
 -- Singleton row. Absence = unlocked.
-CREATE TABLE feature_flags.sync_freeze (
+CREATE TABLE feature_flags.sync_lock (
   id          INT          PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   actor       VARCHAR(255) NOT NULL,
   reason      TEXT         NOT NULL,
@@ -209,11 +210,11 @@ CREATE TABLE feature_flags.sync_freeze (
 ### API
 
 ```protobuf
-rpc AcquireSyncFreeze(AcquireSyncFreezeRequest) returns (AcquireSyncFreezeResponse);
-rpc ReleaseSyncFreeze(ReleaseSyncFreezeRequest) returns (ReleaseSyncFreezeResponse);
-rpc GetSyncFreeze(GetSyncFreezeRequest) returns (GetSyncFreezeResponse);
+rpc AcquireSyncLock(AcquireSyncLockRequest) returns (AcquireSyncLockResponse);
+rpc ReleaseSyncLock(ReleaseSyncLockRequest) returns (ReleaseSyncLockResponse);
+rpc GetSyncLock(GetSyncLockRequest) returns (GetSyncLockResponse);
 
-message AcquireSyncFreezeRequest {
+message AcquireSyncLockRequest {
   string actor = 1;
   string reason = 2;  // required
 }
@@ -222,20 +223,20 @@ message AcquireSyncFreezeRequest {
 ### CLI
 
 ```
-pbflags lock --reason="INC-1234: digest storm, holding config while we investigate"
-pbflags unlock
-pbflags lock --status
+pb lock --reason="INC-1234: digest storm, holding config while we investigate"
+pb unlock
+pb lock --status
 ```
 
 ### Sync interaction
 
 ```
-$ pbflags sync
-ERROR: sync freeze is active
+$ pb sync
+ERROR: sync is locked
   Held by: alice@example.com
   Reason:  INC-1234: digest storm, holding config while we investigate
   Since:   2026-04-16 14:03:11Z (17m ago)
-  Release: pbflags unlock
+  Unlock:  pb unlock
 ```
 
 ---
@@ -364,7 +365,7 @@ When a condition has an active override:
 
   > ⚠ This flag's conditions are managed by config-as-code (synced from
   > `abc1234`). Overrides here are temporary — the next sync will clear them.
-  > Hold the global freeze (`pbflags lock`) while you apply overrides and
+  > Hold the global sync lock (`pb lock`) while you apply overrides and
   > prepare a follow-up config PR.
 
 **Override modal/inline form:**
@@ -472,17 +473,17 @@ When config-as-code is in use, the CLI prints:
 ```
 ⚠ Warning: This flag is managed by config-as-code (last sync: abc1234).
   This override is temporary — the next successful sync will clear it.
-  If you're handling an incident, take the freeze first: pbflags lock --reason="..."
+  If you're handling an incident, take the sync lock first: pb lock --reason="..."
 
 Set override? [y/N]
 ```
 
 (Non-interactive mode with `--yes` skips the prompt, still prints the warning.)
 
-If the global freeze is *not* held, the CLI also emits a hint that the
+If the global sync lock is *not* held, the CLI also emits a hint that the
 expected workflow is lock → override → follow-up config PR → unlock. The CLI
 does not block unlocked overrides — operators may legitimately want a
-short-lived override without freezing the pipeline — but it nudges toward the
+short-lived override without locking the pipeline — but it nudges toward the
 safer flow.
 
 ---
@@ -529,36 +530,36 @@ New actions:
 | `CLEAR_CONDITION_OVERRIDE` | Override cleared on condition N (or default) |
 | `CLEAR_ALL_CONDITION_OVERRIDES` | All overrides cleared on flag |
 | `CONDITION_OVERRIDE_AUTO_CLEARED` | Sync cleared an override as part of a successful sync |
-| `ACQUIRE_SYNC_FREEZE` | Global sync freeze acquired |
-| `RELEASE_SYNC_FREEZE` | Global sync freeze released |
+| `ACQUIRE_SYNC_LOCK` | Global sync lock acquired |
+| `RELEASE_SYNC_LOCK` | Global sync lock released |
 
 Each override entry records: flag_id, condition_index, old_value, new_value,
-actor, reason. Freeze entries record: actor, reason, duration-held (on release).
+actor, reason. Lock entries record: actor, reason, duration-held (on release).
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Freeze + data model + evaluator (no UI)
-- [ ] Migration: `sync_freeze` table, `condition_overrides` table (NULL index + partial unique indexes)
-- [ ] Store methods: AcquireSyncFreeze, ReleaseSyncFreeze, SetConditionOverride, ClearConditionOverride
-- [ ] Sync: freeze-check gate; on success, auto-clear overrides for synced flags (audit-logged)
+### Phase 1: Lock + data model + evaluator (no UI)
+- [ ] Migration: `sync_lock` table, `condition_overrides` table (NULL index + partial unique indexes)
+- [ ] Store methods: AcquireSyncLock, ReleaseSyncLock, SetConditionOverride, ClearConditionOverride
+- [ ] Sync: lock-check gate; on success, auto-clear overrides for synced flags (audit-logged)
 - [ ] Evaluator: load overrides, apply in condition walk
 - [ ] New `EvaluationSource` value
 
 ### Phase 2: CLI
-- [ ] `pbflags lock`, `pbflags unlock`, `pbflags lock --status`
+- [ ] `pb lock`, `pb unlock`, `pb lock --status`
 - [ ] `pb condition override`, `pb condition clear`, `pb condition list`
-- [ ] Warning/confirmation when config-managed and freeze not held
+- [ ] Warning/confirmation when config-managed and lock not held
 - [ ] `--allow-condition-overrides` server flag
 
 ### Phase 3: Admin UI
 - [ ] Flag detail: override indicators, inline override form
 - [ ] Flag detail: clear override / clear all buttons
 - [ ] Config-managed banner with sync SHA
-- [ ] Dashboard: override badge on affected flags; freeze banner when held
-- [ ] Freeze acquire/release UI (with reason field)
-- [ ] Audit log: override + freeze actions
+- [ ] Dashboard: override badge on affected flags; sync-lock banner when held
+- [ ] Lock acquire/release UI (with reason field)
+- [ ] Audit log: override + lock actions
 
 ### Phase 4 (V2): CEL expression editing
 - [ ] UI: inline CEL editor with syntax highlighting
@@ -574,6 +575,6 @@ None outstanding. Earlier drafts raised:
 - A per-override TTL — rejected. Time-based magical state changes create
   silent divergence; `pb overrides --min-age=...` is the right surface for
   spotting forgotten overrides.
-- Freeze visibility in evaluator caches / SDK health — rejected. The freeze
+- Sync-lock visibility in evaluator caches / SDK health — rejected. The lock
   only gates admin-side config pushes; running services keep serving the
   last synced config and have no need to know about it.

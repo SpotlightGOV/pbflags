@@ -25,7 +25,7 @@ type AdminService struct {
 type AdminServiceOption func(*AdminService)
 
 // WithAllowConditionOverrides enables the SetConditionOverride / Clear* /
-// freeze RPCs. Default is disabled — operators must explicitly opt in via
+// sync-lock RPCs. Default is disabled — operators must explicitly opt in via
 // the --allow-condition-overrides server flag.
 func WithAllowConditionOverrides() AdminServiceOption {
 	return func(a *AdminService) { a.allowConditionOverrides = true }
@@ -205,9 +205,9 @@ func (a *AdminService) UnkillLaunch(ctx context.Context, req *connect.Request[pb
 	return connect.NewResponse(&pbflagsv1.UnkillLaunchResponse{}), nil
 }
 
-// ── Sync freeze RPCs ────────────────────────────────────────────────
+// ── Sync lock RPCs ──────────────────────────────────────────────────
 
-func (a *AdminService) AcquireSyncFreeze(ctx context.Context, req *connect.Request[pbflagsv1.AcquireSyncFreezeRequest]) (*connect.Response[pbflagsv1.AcquireSyncFreezeResponse], error) {
+func (a *AdminService) AcquireSyncLock(ctx context.Context, req *connect.Request[pbflagsv1.AcquireSyncLockRequest]) (*connect.Response[pbflagsv1.AcquireSyncLockResponse], error) {
 	if !a.allowConditionOverrides {
 		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("condition overrides are disabled on this server"))
 	}
@@ -215,43 +215,43 @@ func (a *AdminService) AcquireSyncFreeze(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("reason is required"))
 	}
 	actor := authn.SubjectFromContext(ctx, req.Msg.GetActor())
-	a.logger.Info("acquiring sync freeze", "actor", actor, "reason", req.Msg.GetReason())
-	info, err := a.store.AcquireSyncFreeze(ctx, actor, req.Msg.GetReason())
+	a.logger.Info("acquiring sync lock", "actor", actor, "reason", req.Msg.GetReason())
+	info, err := a.store.AcquireSyncLock(ctx, actor, req.Msg.GetReason())
 	if err != nil {
-		var held *SyncFreezeHeldError
+		var held *SyncLockHeldError
 		if errors.As(err, &held) {
 			return nil, connect.NewError(connect.CodeFailedPrecondition,
-				fmt.Errorf("sync freeze already held by %s since %s: %s",
+				fmt.Errorf("sync is already locked by %s since %s: %s",
 					held.Info.Actor, held.Info.CreatedAt.Format(time.RFC3339), held.Info.Reason))
 		}
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&pbflagsv1.AcquireSyncFreezeResponse{
+	return connect.NewResponse(&pbflagsv1.AcquireSyncLockResponse{
 		HeldSince: timestamppb.New(info.CreatedAt),
 	}), nil
 }
 
-func (a *AdminService) ReleaseSyncFreeze(ctx context.Context, req *connect.Request[pbflagsv1.ReleaseSyncFreezeRequest]) (*connect.Response[pbflagsv1.ReleaseSyncFreezeResponse], error) {
+func (a *AdminService) ReleaseSyncLock(ctx context.Context, req *connect.Request[pbflagsv1.ReleaseSyncLockRequest]) (*connect.Response[pbflagsv1.ReleaseSyncLockResponse], error) {
 	if !a.allowConditionOverrides {
 		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("condition overrides are disabled on this server"))
 	}
 	actor := authn.SubjectFromContext(ctx, req.Msg.GetActor())
-	a.logger.Info("releasing sync freeze", "actor", actor)
-	if err := a.store.ReleaseSyncFreeze(ctx, actor); err != nil {
-		if errors.Is(err, ErrSyncFreezeNotHeld) {
+	a.logger.Info("releasing sync lock", "actor", actor)
+	if err := a.store.ReleaseSyncLock(ctx, actor); err != nil {
+		if errors.Is(err, ErrSyncNotLocked) {
 			return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 		}
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&pbflagsv1.ReleaseSyncFreezeResponse{}), nil
+	return connect.NewResponse(&pbflagsv1.ReleaseSyncLockResponse{}), nil
 }
 
-func (a *AdminService) GetSyncFreeze(ctx context.Context, _ *connect.Request[pbflagsv1.GetSyncFreezeRequest]) (*connect.Response[pbflagsv1.GetSyncFreezeResponse], error) {
-	info, err := a.store.GetSyncFreeze(ctx)
+func (a *AdminService) GetSyncLock(ctx context.Context, _ *connect.Request[pbflagsv1.GetSyncLockRequest]) (*connect.Response[pbflagsv1.GetSyncLockResponse], error) {
+	info, err := a.store.GetSyncLock(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	resp := &pbflagsv1.GetSyncFreezeResponse{}
+	resp := &pbflagsv1.GetSyncLockResponse{}
 	if info != nil {
 		resp.Held = true
 		resp.Actor = info.Actor

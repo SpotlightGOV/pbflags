@@ -12,30 +12,30 @@ import (
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
 
-// FreezeInfo describes the holder of an active sync freeze.
-type FreezeInfo struct {
+// LockInfo describes the holder of an active sync lock.
+type LockInfo struct {
 	Actor     string
 	Reason    string
 	CreatedAt time.Time
 }
 
-// FreezeHeldError is returned by sync entry points when the global sync
-// freeze is held. The CLI maps this to a non-zero exit with a friendly
+// LockHeldError is returned by sync entry points when the global sync
+// lock is held. The CLI maps this to a non-zero exit with a friendly
 // message that includes the unlock command.
-type FreezeHeldError struct {
-	Info FreezeInfo
+type LockHeldError struct {
+	Info LockInfo
 }
 
-func (e *FreezeHeldError) Error() string {
-	return fmt.Sprintf("sync is frozen by %s: %s (held since %s) — release with: pbflags unlock",
+func (e *LockHeldError) Error() string {
+	return fmt.Sprintf("sync is locked by %s: %s (locked since %s) — unlock with: pb unlock",
 		e.Info.Actor, e.Info.Reason, e.Info.CreatedAt.Format(time.RFC3339))
 }
 
-// IsFreezeHeld unwraps an error chain looking for a FreezeHeldError.
-func IsFreezeHeld(err error) (*FreezeHeldError, bool) {
-	var f *FreezeHeldError
-	if errors.As(err, &f) {
-		return f, true
+// IsLockHeld unwraps an error chain looking for a LockHeldError.
+func IsLockHeld(err error) (*LockHeldError, bool) {
+	var l *LockHeldError
+	if errors.As(err, &l) {
+		return l, true
 	}
 	return nil, false
 }
@@ -46,21 +46,21 @@ type queryRower interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// checkFreeze returns a *FreezeHeldError when the global sync freeze is
+// checkLock returns a *LockHeldError when the global sync lock is
 // held. Callers should invoke this BEFORE any write tx so the gate fails
 // loudly with no side effects.
-func checkFreeze(ctx context.Context, q queryRower) error {
-	var info FreezeInfo
+func checkLock(ctx context.Context, q queryRower) error {
+	var info LockInfo
 	err := q.QueryRow(ctx,
-		`SELECT actor, reason, created_at FROM feature_flags.sync_freeze WHERE id = 1`).
+		`SELECT actor, reason, created_at FROM feature_flags.sync_lock WHERE id = 1`).
 		Scan(&info.Actor, &info.Reason, &info.CreatedAt)
 	if err == pgx.ErrNoRows {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("check sync freeze: %w", err)
+		return fmt.Errorf("check sync lock: %w", err)
 	}
-	return &FreezeHeldError{Info: info}
+	return &LockHeldError{Info: info}
 }
 
 // auto-clear constants. Mirrored from internal/admin/overrides.go to avoid
