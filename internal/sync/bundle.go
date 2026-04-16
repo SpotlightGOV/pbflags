@@ -167,6 +167,14 @@ func Compile(descriptorData []byte, configDir string) ([]byte, error) {
 					}
 					cflag.Conditions = compiled.Conditions
 					cflag.DimensionMetadata = compiled.DimMeta
+
+					// YAML config overrides the proto default:
+					// static value, or the otherwise clause of a condition chain.
+					if entry.Value != nil {
+						cflag.DefaultValue, _ = proto.Marshal(entry.Value)
+					} else if n := len(entry.Conditions); n > 0 && entry.Conditions[n-1].When == "" {
+						cflag.DefaultValue, _ = proto.Marshal(entry.Conditions[n-1].Value)
+					}
 				}
 			}
 

@@ -150,6 +150,96 @@ flags:
 	})
 }
 
+// TestCompileStaticValueOverridesDefault verifies that a YAML static value
+// override replaces the proto default in the compiled bundle's DefaultValue.
+// Regression test for pb-ecs: YAML value overrides were silently dropped.
+func TestCompileStaticValueOverridesDefault(t *testing.T) {
+	t.Parallel()
+
+	descData, err := buildDescriptorSet(&example.Notifications{}, &example.EvaluationContext{})
+	require.NoError(t, err)
+
+	configDir := t.TempDir()
+
+	// Proto default for max_retries is 3; override to 10 via YAML.
+	configYAML := `
+feature: notifications
+flags:
+  max_retries:
+    value: 10
+`
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "notifications.yaml"), []byte(configYAML), 0o644))
+
+	bundleData, err := Compile(descData, configDir)
+	require.NoError(t, err)
+
+	bundle := &pbflagsv1.CompiledBundle{}
+	require.NoError(t, proto.Unmarshal(bundleData, bundle))
+
+	// Find the max_retries flag.
+	var retriesFlag *pbflagsv1.CompiledFlag
+	for _, f := range bundle.Features {
+		if f.FeatureId == "notifications" {
+			for _, fl := range f.Flags {
+				if fl.Name == "max_retries" {
+					retriesFlag = fl
+				}
+			}
+		}
+	}
+	require.NotNil(t, retriesFlag, "max_retries flag should be in bundle")
+
+	// The DefaultValue must reflect the YAML override (10), not the proto default (3).
+	var defaultVal pbflagsv1.FlagValue
+	require.NoError(t, proto.Unmarshal(retriesFlag.DefaultValue, &defaultVal))
+	require.Equal(t, int64(10), defaultVal.GetInt64Value(),
+		"DefaultValue should be the YAML override (10), not proto default (3)")
+}
+
+// TestCompileOtherwiseOverridesDefault verifies that a condition chain with
+// only an otherwise clause also overrides the proto default in DefaultValue.
+func TestCompileOtherwiseOverridesDefault(t *testing.T) {
+	t.Parallel()
+
+	descData, err := buildDescriptorSet(&example.Notifications{}, &example.EvaluationContext{})
+	require.NoError(t, err)
+
+	configDir := t.TempDir()
+
+	// Proto default for max_retries is 3; override via bare otherwise.
+	configYAML := `
+feature: notifications
+flags:
+  max_retries:
+    conditions:
+      - otherwise: 10
+`
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "notifications.yaml"), []byte(configYAML), 0o644))
+
+	bundleData, err := Compile(descData, configDir)
+	require.NoError(t, err)
+
+	bundle := &pbflagsv1.CompiledBundle{}
+	require.NoError(t, proto.Unmarshal(bundleData, bundle))
+
+	var retriesFlag *pbflagsv1.CompiledFlag
+	for _, f := range bundle.Features {
+		if f.FeatureId == "notifications" {
+			for _, fl := range f.Flags {
+				if fl.Name == "max_retries" {
+					retriesFlag = fl
+				}
+			}
+		}
+	}
+	require.NotNil(t, retriesFlag)
+
+	var defaultVal pbflagsv1.FlagValue
+	require.NoError(t, proto.Unmarshal(retriesFlag.DefaultValue, &defaultVal))
+	require.Equal(t, int64(10), defaultVal.GetInt64Value(),
+		"DefaultValue should be the otherwise value (10), not proto default (3)")
+}
+
 func TestFlagTypeString(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
