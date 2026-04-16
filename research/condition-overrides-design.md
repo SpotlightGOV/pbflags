@@ -438,6 +438,33 @@ pb condition list <flag_id>
     3  otherwise                          "weekly"  —         config
 ```
 
+### `pb overrides` — global listing
+
+```
+pb overrides [--min-age=DURATION] [--actor=USER] [--format=table|json]
+
+  List every active condition override across all flags, newest first.
+  Intended as the "what's diverged right now?" observability tool: overrides
+  don't expire automatically, so operators periodically review this list and
+  decide what to clear.
+
+  --min-age   Only show overrides older than this (e.g., 24h, 7d).
+              Useful for "forgot to clean up after the incident" sweeps.
+  --actor     Filter by actor.
+  --format    Default table; json for scripting.
+
+  Output:
+    FLAG                        COND  VALUE      WAS        AGE     ACTOR    REASON
+    notifications/digest_freq   2     "hourly"   "weekly"   2h14m   alice    INC-1234: digest storm
+    billing/trial_length        —     14         30         6d03h   bob      INC-1198: accounting bug
+    search/min_score            1     0.5        0.7        14d     carol    experiment, remove by EOW
+```
+
+This replaces any notion of a TTL. Overrides are deliberately persistent
+until a human clears them (or a sync clears them as part of a successful
+config push). `pb overrides --min-age=7d` is the expected tool for spotting
+overrides that have outlived their purpose.
+
 ### Warning on override
 
 When config-as-code is in use, the CLI prints:
@@ -542,12 +569,11 @@ actor, reason. Freeze entries record: actor, reason, duration-held (on release).
 
 ## Open Questions
 
-1. **Freeze visibility in running services.** The freeze stops config pushes,
-   but evaluator caches already hold whatever config was last synced. Do we
-   want to surface "freeze held" in evaluator metrics / the SDK's health
-   endpoint so dashboards can correlate? Probably yes; cheap to add.
+None outstanding. Earlier drafts raised:
 
-2. **Override TTL as a separate V2 knob.** Orthogonal to the freeze — a
-   *per-override* TTL could still be useful to prevent long-forgotten
-   overrides in non-incident use (e.g., A/B toggles an operator set and
-   never cleaned up). Not V1, but worth capturing as a future addition.
+- A per-override TTL — rejected. Time-based magical state changes create
+  silent divergence; `pb overrides --min-age=...` is the right surface for
+  spotting forgotten overrides.
+- Freeze visibility in evaluator caches / SDK health — rejected. The freeze
+  only gates admin-side config pushes; running services keep serving the
+  last synced config and have no need to know about it.
