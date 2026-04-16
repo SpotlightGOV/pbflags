@@ -437,6 +437,29 @@ func (h *Handler) loadFlagPageData(w http.ResponseWriter, r *http.Request, flagI
 		}
 	}
 
+	// otherwiseCondition is the trailing "always-match" entry at the end
+	// of a compiled chain (empty CEL). Pulled out here so the consolidated
+	// Otherwise row in the template (pb-wff.39) can render the right
+	// value/launch without scoping gymnastics inside Go templates.
+	var otherwiseCondition *admin.FlagCondition
+	if n := len(extra.Conditions); n > 0 {
+		if last := extra.Conditions[n-1]; last.CEL == "" {
+			otherwiseCondition = &extra.Conditions[n-1]
+		}
+	}
+	// hasCELConditions = at least one entry in the chain has a non-empty
+	// CEL expression. Used by the template to decide whether to render
+	// the Conditions table at all (a static-value flag's chain holds
+	// only the trailing "otherwise" row, which now lives in the
+	// consolidated Otherwise section).
+	hasCELConditions := false
+	for _, c := range extra.Conditions {
+		if c.CEL != "" {
+			hasCELConditions = true
+			break
+		}
+	}
+
 	data := h.pageData(r, "flag",
 		"Flag", flag,
 		"Audit", entries,
@@ -450,6 +473,8 @@ func (h *Handler) loadFlagPageData(w http.ResponseWriter, r *http.Request, flagI
 		"OverridesByCond", overridesByCond,
 		"OverrideCount", len(overridesByCond),
 		"ConfigManaged", configManaged,
+		"OtherwiseCondition", otherwiseCondition,
+		"HasCELConditions", hasCELConditions,
 	)
 	return data, true
 }

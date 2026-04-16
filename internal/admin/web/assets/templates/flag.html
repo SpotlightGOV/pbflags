@@ -57,7 +57,7 @@
 
 <!-- Configuration -->
 <div class="detail-section" id="conditions-section">
-  {{if .Conditions}}
+  {{if .HasCELConditions}}
   <div class="detail-section-header">
     <h3>Conditions</h3>
     <span class="state-hint">Evaluated top-to-bottom; first match wins</span>
@@ -87,17 +87,17 @@
       {{$flagID := .FlagID}}
       {{$overrides := .OverridesByCond}}
       {{range $i, $c := .Conditions}}
+      {{/*
+        Skip the trailing "otherwise" row (empty CEL) — it's surfaced
+        below as the consolidated "Otherwise" row that shares the same
+        value-source / override controls as the no-conditions case.
+      */}}
+      {{if $c.CEL}}
       {{$ov := overrideForCond $overrides $i}}
-      {{$isOtherwise := not $c.CEL}}
-      <tr class="condition-row{{if $isOtherwise}} condition-row-otherwise{{end}}{{if hasOverride $ov}} condition-row-overridden{{end}}">
+      <tr class="condition-row{{if hasOverride $ov}} condition-row-overridden{{end}}">
         <td class="cond-num">{{inc $i}}</td>
         <td>
-          {{if $c.CEL}}
-            <code class="cond-cel">{{$c.CEL}}</code>
-          {{else}}
-            <span class="cond-otherwise">otherwise</span>
-            {{if $allow}}<span class="cond-otherwise-hint">override via the default row below</span>{{end}}
-          {{end}}
+          <code class="cond-cel">{{$c.CEL}}</code>
           {{if $c.Comment}}
             <span class="cond-comment">{{$c.Comment}}</span>
           {{end}}
@@ -126,25 +126,40 @@
         </td>
         {{if $allow}}
         <td class="cond-action-cell">
-          {{if $isOtherwise}}
-            <span class="cond-action-na" title="Use the static-default row below to override the otherwise fallback.">—</span>
-          {{else}}
-            {{template "override_controls" dict "FlagID" $flagID "Flag" $flag "CondIndex" $i "Override" $ov}}
-          {{end}}
+          {{template "override_controls" dict "FlagID" $flagID "Flag" $flag "CondIndex" $i "Override" $ov}}
         </td>
         {{end}}
       </tr>
       {{end}}
+      {{end}}
     </tbody>
   </table>
   {{end}}
+  {{/*
+    Consolidated "Otherwise" row (pb-wff.39). Replaces the old
+    static-default / compiled-default split. Same row+CSS regardless of
+    whether the flag has CEL conditions, a YAML otherwise clause, or just
+    a compiled default — operators always see one row labeled "Otherwise"
+    with the value the flag returns when nothing else matches, plus
+    override controls. The override is recorded with condition_index =
+    NULL (the single static-default override slot), preserving existing
+    server-side wiring.
+
+    Value source priority for display:
+      1. Otherwise condition value (last compiled chain entry, when present).
+      2. Compiled default (.Flag.DefaultValue), when the chain is empty.
+
+    Section is suppressed only for read-only views of static-default-only
+    flags (no conditions AND no allow-overrides) — preserves prior gating.
+  */}}
   {{if or .Conditions .AllowOverrides}}
   {{$defaultOv := index .OverridesByCond "default"}}
+  {{$ow := .OtherwiseCondition}}
   <table class="condition-table condition-table-default">
     <thead>
       <tr>
         <th class="cond-col-num">*</th>
-        <th class="cond-col-expr">Static default {{if .Conditions}}<span class="cond-otherwise-hint">used when no condition matches and override of the otherwise row</span>{{else}}<span class="cond-otherwise-hint">compiled into the binary</span>{{end}}</th>
+        <th class="cond-col-expr">Otherwise <span class="cond-otherwise-hint">value returned when nothing else matches</span></th>
         <th class="cond-col-val">Value</th>
         <th class="cond-col-launch"></th>
         {{if .AllowOverrides}}<th class="cond-col-action">Override</th>{{end}}
@@ -153,22 +168,33 @@
     <tbody>
       <tr class="condition-row condition-row-otherwise condition-row-default{{if hasOverride $defaultOv}} condition-row-overridden{{end}}">
         <td class="cond-num cond-num-default">*</td>
-        <td><span class="cond-otherwise">compiled default</span></td>
+        <td><span class="cond-otherwise">otherwise</span></td>
         <td>
           {{if hasOverride $defaultOv}}
             <span class="cond-value cond-value-overridden">{{flagValue $defaultOv.Value}}</span>
             <div class="cond-override-meta">
-              <span class="override-was">was: {{flagValue .Flag.DefaultValue}}</span>
+              <span class="override-was">was: {{if $ow}}{{$ow.Value}}{{else}}{{flagValue .Flag.DefaultValue}}{{end}}</span>
               <span class="override-by">{{$defaultOv.Actor}} &middot; {{timeAgo $defaultOv.CreatedAt}}</span>
               {{if $defaultOv.Reason}}<span class="override-reason" title="{{$defaultOv.Reason}}">&ldquo;{{$defaultOv.Reason}}&rdquo;</span>{{end}}
             </div>
+          {{else if $ow}}
+            <span class="cond-value">{{$ow.Value}}</span>
           {{else if isListType .Flag.FlagType}}
             {{template "list_chips" dict "Items" (listItems .Flag.DefaultValue) "Muted" false}}
           {{else}}
             <span class="cond-value">{{flagValue .Flag.DefaultValue}}</span>
           {{end}}
         </td>
-        <td></td>
+        <td>
+          {{if and $ow $ow.LaunchID}}
+            {{$killed := index .KilledLaunches $ow.LaunchID}}
+            <span class="launch-cell{{if $killed}} launch-cell-killed{{end}}"
+                  {{if $killed}}title="launch killed — value no longer effective"{{end}}>
+              <code class="launch-id">{{$ow.LaunchID}}</code>:
+              <span class="cond-value">{{$ow.LaunchValue}}</span>
+            </span>
+          {{end}}
+        </td>
         {{if .AllowOverrides}}
         <td class="cond-action-cell">
           {{template "override_controls" dict "FlagID" .FlagID "Flag" .Flag "CondIndex" -1 "Override" $defaultOv}}
