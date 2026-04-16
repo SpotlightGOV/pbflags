@@ -194,7 +194,9 @@ dev-seed: dev/descriptors.pb
 		--descriptors=dev/descriptors.pb \
 		--features=dev/features
 	psql postgres://admin:admin@localhost:5433/pbflags?sslmode=disable < dev/seed-launches.sql
-	@echo "Demo data synced (flags + launch states). Refresh the admin UI."
+	PBFLAGS_DATABASE=postgres://admin:admin@localhost:5433/pbflags?sslmode=disable \
+		go run dev/seed-overrides.go
+	@echo "Demo data synced (flags + launch states + overrides). Refresh the admin UI."
 
 # Run the admin server locally with live asset reloading (standalone mode).
 # CSS/template changes take effect on browser refresh; Go changes need a restart.
@@ -208,4 +210,5 @@ dev: dev-db dev/descriptors.pb
 		--evaluator-listen=localhost:9201 \
 		--listen=localhost:9200 \
 		--env-name=local \
+		--allow-condition-overrides \
 		--dev-assets=internal/admin/web

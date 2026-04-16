@@ -24,6 +24,7 @@ import (
 // testEnv holds all resources for an E2E test session.
 type testEnv struct {
 	pool    *pgxpool.Pool
+	store   *admin.Store
 	baseURL string
 	pw      *playwright.Playwright
 	browser playwright.Browser
@@ -42,8 +43,26 @@ func e2eSpecs() []testdb.FlagSpec {
 	}
 }
 
-func setupEnv(t *testing.T) *testEnv {
+// envOpt configures setupEnv. Defaults match the original read-only setup
+// so existing tests are unaffected; new tests opt in to override behavior
+// by passing withOverrides().
+type envOpt func(*envOpts)
+
+type envOpts struct {
+	allowOverrides bool
+}
+
+// withOverrides flips on the --allow-condition-overrides web gate so the
+// pb-wff override + sync-lock controls render and POSTs are accepted.
+func withOverrides() envOpt { return func(o *envOpts) { o.allowOverrides = true } }
+
+func setupEnv(t *testing.T, opts ...envOpt) *testEnv {
 	t.Helper()
+
+	cfg := envOpts{}
+	for _, o := range opts {
+		o(&cfg)
+	}
 
 	_, pool := testdb.Require(t)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
@@ -53,7 +72,10 @@ func setupEnv(t *testing.T) *testEnv {
 
 	store := admin.NewStore(pool, logger)
 
-	handler, err := web.NewHandler(store, logger, web.EnvConfig{Name: "e2e-test"})
+	handler, err := web.NewHandler(store, logger, web.EnvConfig{
+		Name:                    "e2e-test",
+		AllowConditionOverrides: cfg.allowOverrides,
+	})
 	require.NoError(t, err)
 
 	mux := http.NewServeMux()
@@ -88,6 +110,7 @@ func setupEnv(t *testing.T) *testEnv {
 
 	return &testEnv{
 		pool:    pool,
+		store:   store,
 		baseURL: baseURL,
 		pw:      pw,
 		browser: browser,
