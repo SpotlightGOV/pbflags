@@ -59,6 +59,11 @@
            {{if eq .Page "dashboard"}}class="active"{{end}}>
           <span class="nav-icon">&#9632;</span> Dashboard
         </a>
+        <a href="/launches"
+           hx-get="/launches" hx-target="#content" hx-push-url="true"
+           {{if eq .Page "launches"}}class="active"{{end}}>
+          <span class="nav-icon">&#9658;</span> Launches
+        </a>
         <a href="/audit"
            hx-get="/audit" hx-target="#content" hx-push-url="true"
            {{if eq .Page "audit"}}class="active"{{end}}>
@@ -91,6 +96,7 @@
     <main class="main" id="content">
       {{if eq .Page "dashboard"}}{{template "dashboard_content" .}}{{end}}
       {{if eq .Page "flag"}}{{template "flag_content" .}}{{end}}
+      {{if eq .Page "launches"}}{{template "launches_content" .}}{{end}}
       {{if eq .Page "audit"}}{{template "audit_content" .}}{{end}}
     </main>
   </div>

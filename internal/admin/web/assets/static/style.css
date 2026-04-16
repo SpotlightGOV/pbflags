@@ -1069,6 +1069,15 @@ select {
   flex-wrap: wrap;
 }
 
+.launch-include-killed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  cursor: pointer;
+}
+
 /* Empty states */
 .empty-state {
   padding: 40px 20px;

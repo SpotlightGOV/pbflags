@@ -1,0 +1,99 @@
+{{define "launches_content"}}
+<div class="page-header">
+  <h2>Launches</h2>
+  <div class="subtitle">{{len .Launches}} launches across all features</div>
+</div>
+
+<div class="filter-bar" id="launch-filters">
+  <label>Search:</label>
+  <input type="text" id="launch-filter-search" placeholder="launch_id substring..."
+         style="width: 220px" oninput="applyLaunchFilters()">
+  <label>Status:</label>
+  <select id="launch-filter-status" onchange="applyLaunchFilters()">
+    <option value="">All</option>
+    <option value="CREATED">CREATED</option>
+    <option value="ACTIVE">ACTIVE</option>
+    <option value="SOAKING">SOAKING</option>
+  </select>
+  <label class="launch-include-killed">
+    <input type="checkbox" id="launch-filter-killed" onchange="applyLaunchFilters()">
+    include killed
+  </label>
+  <span id="launch-filter-count" class="filter-count"></span>
+</div>
+
+{{if not .Launches}}
+<div class="empty-state">
+  <div class="empty-icon">&#9873;</div>
+  <div>No launches found.</div>
+</div>
+{{else}}
+<div class="detail-section">
+  <table class="condition-table" id="launches-table">
+    <thead>
+      <tr>
+        <th>Launch</th>
+        <th>Description</th>
+        <th>Scope</th>
+        <th>Dimension</th>
+        <th>Ramp</th>
+        <th>Status</th>
+        <th>Affected</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Launches}}
+      <tr data-launch-id="{{.LaunchID}}"
+          data-status="{{.Status}}"
+          data-killed="{{if .KilledAt}}1{{else}}0{{end}}">
+        <td><code>{{.LaunchID}}</code></td>
+        <td>{{if .Description}}{{deref .Description}}{{else}}<span class="cond-otherwise">&mdash;</span>{{end}}</td>
+        <td>{{if .ScopeFeatureID}}<code>{{deref .ScopeFeatureID}}</code>{{else}}<span class="cond-otherwise">cross-feature</span>{{end}}</td>
+        <td><code>{{.Dimension}}</code></td>
+        <td><strong>{{.RampPct}}%</strong></td>
+        <td>
+          <span class="badge badge-type">{{.Status}}</span>
+          {{if .KilledAt}}<span class="badge badge-danger">KILLED</span>{{end}}
+        </td>
+        <td>{{len .AffectedFeatures}} features</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+<script>
+  function applyLaunchFilters() {
+    var search = (document.getElementById('launch-filter-search') || {}).value;
+    if (search === undefined) return;
+    var status = (document.getElementById('launch-filter-status') || {}).value;
+    var includeKilled = (document.getElementById('launch-filter-killed') || {}).checked;
+
+    search = search.toLowerCase();
+    var rows = document.querySelectorAll('#launches-table tbody tr');
+    var visible = 0;
+    rows.forEach(function(row) {
+      var id = (row.getAttribute('data-launch-id') || '').toLowerCase();
+      var rowStatus = row.getAttribute('data-status') || '';
+      var killed = row.getAttribute('data-killed') === '1';
+      var matchSearch = !search || id.indexOf(search) !== -1;
+      var matchStatus = !status || rowStatus === status;
+      var matchKilled = includeKilled || !killed;
+      if (matchSearch && matchStatus && matchKilled) {
+        row.style.display = '';
+        visible++;
+      } else {
+        row.style.display = 'none';
+      }
+    });
+    var countEl = document.getElementById('launch-filter-count');
+    if (countEl) {
+      var isFiltering = search || status || !includeKilled;
+      countEl.textContent = isFiltering ? (visible + ' of ' + rows.length + ' launches') : '';
+    }
+  }
+  // Apply default filter (hide killed) on initial render.
+  applyLaunchFilters();
+</script>
+{{end}}

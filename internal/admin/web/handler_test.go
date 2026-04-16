@@ -1,9 +1,12 @@
 package web
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
@@ -11,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
+	"github.com/SpotlightGOV/pbflags/internal/admin"
+	"github.com/SpotlightGOV/pbflags/internal/testdb"
 )
 
 // ---------------------------------------------------------------------------
@@ -511,4 +516,40 @@ func TestFormatListForTextarea(t *testing.T) {
 	}}
 	assert.Equal(t, "alpha\nbravo\ncharlie", formatListForTextarea(val))
 	assert.Equal(t, "", formatListForTextarea(nil))
+}
+
+// ---------------------------------------------------------------------------
+// Top-level /launches page
+// ---------------------------------------------------------------------------
+
+func TestLaunchesPage(t *testing.T) {
+	t.Parallel()
+	_, pool := testdb.Require(t)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	store := admin.NewStore(pool, logger)
+
+	tf := testdb.CreateTestFeature(t, pool, []testdb.FlagSpec{{FlagType: "BOOL"}})
+	launchID := "test-launches-page-" + tf.FeatureID
+	_, err := pool.Exec(context.Background(), `
+		INSERT INTO feature_flags.launches
+			(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, status)
+		VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
+		launchID, tf.FeatureID, "user_id", 25, []string{tf.FeatureID})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM feature_flags.launches WHERE launch_id = $1`, launchID)
+	})
+
+	h, err := NewHandler(store, logger)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/launches", nil)
+	w := httptest.NewRecorder()
+	h.launches(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "<h2>Launches</h2>")
+	assert.Contains(t, body, launchID)
+	assert.Contains(t, body, "user_id")
 }

@@ -168,6 +168,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	// Pages.
 	inner.HandleFunc("GET /{$}", h.dashboard)
 	inner.HandleFunc("GET /flags/{flagID...}", h.flagDetail)
+	inner.HandleFunc("GET /launches", h.launches)
 	inner.HandleFunc("GET /audit", h.auditLog)
 
 	// htmx API endpoints. Wildcards must be the final path segment (Go 1.22+ ServeMux);
@@ -430,6 +431,22 @@ func (h *Handler) auditLog(w http.ResponseWriter, r *http.Request) {
 
 	if r.Header.Get("HX-Request") == "true" {
 		h.render(w, "audit_content", data)
+		return
+	}
+	h.render(w, "layout", data)
+}
+
+func (h *Handler) launches(w http.ResponseWriter, r *http.Request) {
+	launches, err := h.store.ListAllLaunches(r.Context())
+	if err != nil {
+		h.serverError(w, "list launches", err)
+		return
+	}
+
+	data := h.pageData(r, "launches", "Launches", launches)
+
+	if r.Header.Get("HX-Request") == "true" {
+		h.render(w, "launches_content", data)
 		return
 	}
 	h.render(w, "layout", data)
