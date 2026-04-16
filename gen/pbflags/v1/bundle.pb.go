@@ -502,8 +502,13 @@ type CompiledLaunch struct {
 	// All features that reference this launch. Populated by sync.
 	AffectedFeatures []string `protobuf:"bytes,8,rep,name=affected_features,json=affectedFeatures,proto3" json:"affected_features,omitempty"`
 	Description      string   `protobuf:"bytes,9,opt,name=description,proto3" json:"description,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Optional rollout-step progression (each value 0-100, sorted ascending,
+	// unique). Used by the admin UI as the quick-pick chips in the ramp
+	// editor; empty = use UI defaults. Authoritative when set in config —
+	// not adjustable from the UI.
+	RampSteps     []int32 `protobuf:"varint,10,rep,packed,name=ramp_steps,json=rampSteps,proto3" json:"ramp_steps,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CompiledLaunch) Reset() {
@@ -578,6 +583,13 @@ func (x *CompiledLaunch) GetDescription() string {
 	return ""
 }
 
+func (x *CompiledLaunch) GetRampSteps() []int32 {
+	if x != nil {
+		return x.RampSteps
+	}
+	return nil
+}
+
 var File_pbflags_v1_bundle_proto protoreflect.FileDescriptor
 
 const file_pbflags_v1_bundle_proto_rawDesc = "" +
@@ -631,14 +643,17 @@ const file_pbflags_v1_bundle_proto_rawDesc = "" +
 	"dimensions\x1a`\n" +
 	"\x0fDimensionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x127\n" +
-	"\x05value\x18\x02 \x01(\v2!.pbflags.v1.CompiledDimensionMetaR\x05value:\x028\x01\"\x98\x02\n" +
+	"\x05value\x18\x02 \x01(\v2!.pbflags.v1.CompiledDimensionMetaR\x05value:\x028\x01\"\xb7\x02\n" +
 	"\x0eCompiledLaunch\x12\x1b\n" +
 	"\tlaunch_id\x18\x01 \x01(\tR\blaunchId\x12\x1c\n" +
 	"\tdimension\x18\x03 \x01(\tR\tdimension\x12,\n" +
 	"\x0framp_percentage\x18\x06 \x01(\x05H\x00R\x0erampPercentage\x88\x01\x01\x12(\n" +
 	"\x10scope_feature_id\x18\a \x01(\tR\x0escopeFeatureId\x12+\n" +
 	"\x11affected_features\x18\b \x03(\tR\x10affectedFeatures\x12 \n" +
-	"\vdescription\x18\t \x01(\tR\vdescriptionB\x12\n" +
+	"\vdescription\x18\t \x01(\tR\vdescription\x12\x1d\n" +
+	"\n" +
+	"ramp_steps\x18\n" +
+	" \x03(\x05R\trampStepsB\x12\n" +
 	"\x10_ramp_percentageJ\x04\b\x02\x10\x03J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06B_\n" +
 	"!org.spotlightgov.pbflags.v1.protoP\x01Z8github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1b\x06proto3"
 

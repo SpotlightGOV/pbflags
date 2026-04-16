@@ -197,6 +197,12 @@ func Compile(descriptorData []byte, configDir string) ([]byte, error) {
 			rp := int32(*def.Entry.RampPercentage)
 			cl.RampPercentage = &rp
 		}
+		if len(def.Entry.RampSteps) > 0 {
+			cl.RampSteps = make([]int32, len(def.Entry.RampSteps))
+			for i, s := range def.Entry.RampSteps {
+				cl.RampSteps[i] = int32(s)
+			}
+		}
 		bundle.Launches = append(bundle.Launches, cl)
 	}
 
@@ -308,21 +314,26 @@ func LoadBundle(ctx context.Context, conn *pgx.Conn, bundleData []byte, sha stri
 		if launch.RampPercentage != nil {
 			rampPct = *launch.RampPercentage
 		}
+		// ramp_steps is config-authoritative — empty list when unset clears
+		// any prior config-set steps. Pass int32 slice straight through to
+		// pgx; the column is INTEGER[].
+		rampSteps := launch.RampSteps
 		if launch.RampPercentage != nil {
 			// Config specifies ramp — authoritative on every sync.
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO feature_flags.launches
-					(launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, affected_features, description)
-				VALUES ($1, $2, $3, $4, 'config', $5, $6)
+					(launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, affected_features, description, ramp_steps)
+				VALUES ($1, $2, $3, $4, 'config', $5, $6, $7)
 				ON CONFLICT (launch_id) DO UPDATE SET
 					dimension = EXCLUDED.dimension,
 					ramp_percentage = EXCLUDED.ramp_percentage,
 					ramp_source = 'config',
 					affected_features = EXCLUDED.affected_features,
 					description = EXCLUDED.description,
+					ramp_steps = EXCLUDED.ramp_steps,
 					updated_at = now()`,
 				launch.LaunchId, scopeFeatureID, launch.Dimension, rampPct,
-				launch.AffectedFeatures, launch.Description,
+				launch.AffectedFeatures, launch.Description, rampSteps,
 			); err != nil {
 				return LoadResult{}, fmt.Errorf("upsert launch %q: %w", launch.LaunchId, err)
 			}
@@ -330,15 +341,16 @@ func LoadBundle(ctx context.Context, conn *pgx.Conn, bundleData []byte, sha stri
 			// No ramp in config — preserve runtime ramp value and source.
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO feature_flags.launches
-					(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
-				VALUES ($1, $2, $3, $4, $5, $6)
+					(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description, ramp_steps)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
 				ON CONFLICT (launch_id) DO UPDATE SET
 					dimension = EXCLUDED.dimension,
 					affected_features = EXCLUDED.affected_features,
 					description = EXCLUDED.description,
+					ramp_steps = EXCLUDED.ramp_steps,
 					updated_at = now()`,
 				launch.LaunchId, scopeFeatureID, launch.Dimension, rampPct,
-				launch.AffectedFeatures, launch.Description,
+				launch.AffectedFeatures, launch.Description, rampSteps,
 			); err != nil {
 				return LoadResult{}, fmt.Errorf("upsert launch %q: %w", launch.LaunchId, err)
 			}

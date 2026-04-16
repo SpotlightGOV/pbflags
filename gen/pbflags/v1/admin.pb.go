@@ -1230,7 +1230,8 @@ type LaunchDetail struct {
 	Description      string                 `protobuf:"bytes,8,opt,name=description,proto3" json:"description,omitempty"`
 	CreatedAt        *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt        *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	RampSource       string                 `protobuf:"bytes,11,opt,name=ramp_source,json=rampSource,proto3" json:"ramp_source,omitempty"` // unspecified, config, cli, ui
+	RampSource       string                 `protobuf:"bytes,11,opt,name=ramp_source,json=rampSource,proto3" json:"ramp_source,omitempty"`      // unspecified, config, cli, ui
+	RampSteps        []int32                `protobuf:"varint,12,rep,packed,name=ramp_steps,json=rampSteps,proto3" json:"ramp_steps,omitempty"` // launch-defined rollout progression; empty = UI defaults
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -1340,6 +1341,13 @@ func (x *LaunchDetail) GetRampSource() string {
 		return x.RampSource
 	}
 	return ""
+}
+
+func (x *LaunchDetail) GetRampSteps() []int32 {
+	if x != nil {
+		return x.RampSteps
+	}
+	return nil
 }
 
 type ListLaunchesRequest struct {
@@ -2771,7 +2779,7 @@ const file_pbflags_v1_admin_proto_rawDesc = "" +
 	"\tnew_value\x18\x05 \x01(\v2\x15.pbflags.v1.FlagValueR\bnewValue\x12\x14\n" +
 	"\x05actor\x18\x06 \x01(\tR\x05actor\x129\n" +
 	"\n" +
-	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xd3\x03\n" +
+	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xf2\x03\n" +
 	"\fLaunchDetail\x12\x1b\n" +
 	"\tlaunch_id\x18\x01 \x01(\tR\blaunchId\x12(\n" +
 	"\x10scope_feature_id\x18\x02 \x01(\tR\x0escopeFeatureId\x12\x1c\n" +
@@ -2787,7 +2795,9 @@ const file_pbflags_v1_admin_proto_rawDesc = "" +
 	"updated_at\x18\n" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1f\n" +
 	"\vramp_source\x18\v \x01(\tR\n" +
-	"rampSource\"4\n" +
+	"rampSource\x12\x1d\n" +
+	"\n" +
+	"ramp_steps\x18\f \x03(\x05R\trampSteps\"4\n" +
 	"\x13ListLaunchesRequest\x12\x1d\n" +
 	"\n" +
 	"feature_id\x18\x01 \x01(\tR\tfeatureId\"L\n" +

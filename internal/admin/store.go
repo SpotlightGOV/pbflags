@@ -515,6 +515,7 @@ type Launch struct {
 	Description      *string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	RampSteps        []int32
 }
 
 // GetLaunch returns a single launch by ID.
@@ -522,11 +523,11 @@ func (s *Store) GetLaunch(ctx context.Context, launchID string) (*Launch, error)
 	var l Launch
 	err := s.pool.QueryRow(ctx, `
 		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, status,
-		       killed_at, affected_features, description, created_at, updated_at
+		       killed_at, affected_features, description, created_at, updated_at, ramp_steps
 		FROM feature_flags.launches
 		WHERE launch_id = $1`, launchID).Scan(
 		&l.LaunchID, &l.ScopeFeatureID, &l.Dimension, &l.RampPct, &l.RampSource, &l.Status,
-		&l.KilledAt, &l.AffectedFeatures, &l.Description, &l.CreatedAt, &l.UpdatedAt)
+		&l.KilledAt, &l.AffectedFeatures, &l.Description, &l.CreatedAt, &l.UpdatedAt, &l.RampSteps)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -540,7 +541,7 @@ func (s *Store) GetLaunch(ctx context.Context, launchID string) (*Launch, error)
 func (s *Store) ListLaunches(ctx context.Context, featureID string) ([]Launch, error) {
 	return s.queryLaunches(ctx, `
 		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, status,
-		       killed_at, affected_features, description, created_at, updated_at
+		       killed_at, affected_features, description, created_at, updated_at, ramp_steps
 		FROM feature_flags.launches
 		WHERE scope_feature_id = $1
 		ORDER BY created_at ASC, launch_id ASC`, featureID)
@@ -550,7 +551,7 @@ func (s *Store) ListLaunches(ctx context.Context, featureID string) ([]Launch, e
 func (s *Store) ListLaunchesAffecting(ctx context.Context, featureID string) ([]Launch, error) {
 	return s.queryLaunches(ctx, `
 		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, status,
-		       killed_at, affected_features, description, created_at, updated_at
+		       killed_at, affected_features, description, created_at, updated_at, ramp_steps
 		FROM feature_flags.launches
 		WHERE $1 = ANY(affected_features)
 		ORDER BY created_at ASC, launch_id ASC`, featureID)
@@ -560,7 +561,7 @@ func (s *Store) ListLaunchesAffecting(ctx context.Context, featureID string) ([]
 func (s *Store) ListAllLaunches(ctx context.Context) ([]Launch, error) {
 	return s.queryLaunches(ctx, `
 		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, status,
-		       killed_at, affected_features, description, created_at, updated_at
+		       killed_at, affected_features, description, created_at, updated_at, ramp_steps
 		FROM feature_flags.launches
 		ORDER BY created_at ASC, launch_id ASC`)
 }
@@ -577,7 +578,7 @@ func (s *Store) queryLaunches(ctx context.Context, query string, args ...any) ([
 		var l Launch
 		if err := rows.Scan(
 			&l.LaunchID, &l.ScopeFeatureID, &l.Dimension, &l.RampPct, &l.RampSource, &l.Status,
-			&l.KilledAt, &l.AffectedFeatures, &l.Description, &l.CreatedAt, &l.UpdatedAt,
+			&l.KilledAt, &l.AffectedFeatures, &l.Description, &l.CreatedAt, &l.UpdatedAt, &l.RampSteps,
 		); err != nil {
 			return nil, err
 		}

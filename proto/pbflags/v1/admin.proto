@@ -185,6 +185,7 @@ message LaunchDetail {
   google.protobuf.Timestamp created_at = 9;
   google.protobuf.Timestamp updated_at = 10;
   string ramp_source = 11; // unspecified, config, cli, ui
+  repeated int32 ramp_steps = 12; // launch-defined rollout progression; empty = UI defaults
 }
 
 message ListLaunchesRequest {

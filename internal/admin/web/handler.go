@@ -83,6 +83,7 @@ func NewHandler(store *admin.Store, logger *slog.Logger, env ...EnvConfig) (*Han
 		"flagIDEscape":       flagIDEscape,
 		"dict":               dict,
 		"inc":                func(i int) int { return i + 1 },
+		"int32ToInt":         func(i int32) int { return int(i) },
 		"slice":              safeSlice,
 		"condCount":          func(m map[string]int, id string) int { return m[id] },
 		"overrideCount":      func(m map[string]int, id string) int { return m[id] },

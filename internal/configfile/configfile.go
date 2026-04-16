@@ -27,6 +27,11 @@ type LaunchEntry struct {
 	Dimension      string // hashable dimension to hash on (must be UNIFORM)
 	RampPercentage *int   // ramp percentage (0-100); nil = not set in config (CLI/UI controls persist)
 	Description    string // optional human-readable description
+	// RampSteps is the launch's preferred rollout progression. When set,
+	// the admin UI uses these as the quick-pick chips in the ramp editor
+	// (instead of 0/5/10/25/50/75/100). Must be sorted ascending, unique,
+	// and each value 0-100. nil/empty = use UI defaults.
+	RampSteps []int
 }
 
 // FlagEntry is a single flag's configuration — either a static value or
@@ -68,6 +73,7 @@ type rawLaunchEntry struct {
 	Dimension      string `yaml:"dimension"`
 	RampPercentage *int   `yaml:"ramp_percentage"`
 	Description    string `yaml:"description"`
+	RampSteps      []int  `yaml:"ramp_steps"`
 }
 
 type rawFlagEntry struct {
@@ -228,6 +234,10 @@ func Parse(data []byte, flagTypes map[string]pbflagsv1.FlagType) (*Config, []str
 					errs = append(errs, fmt.Errorf("launch %q: ramp_percentage must be 0-100, got %d", launchID, *rawLaunch.RampPercentage))
 					continue
 				}
+			}
+			if err := validateRampSteps(launchID, rawLaunch.RampSteps); err != nil {
+				errs = append(errs, err)
+				continue
 			}
 			cfg.Launches[launchID] = LaunchEntry(rawLaunch)
 		}
@@ -510,7 +520,33 @@ func ParseCrossFeatureLaunch(data []byte) (LaunchEntry, error) {
 			return LaunchEntry{}, fmt.Errorf("ramp_percentage must be 0-100, got %d", *raw.RampPercentage)
 		}
 	}
+	if err := validateRampSteps("", raw.RampSteps); err != nil {
+		return LaunchEntry{}, err
+	}
 	return LaunchEntry(raw), nil
+}
+
+// validateRampSteps enforces the ramp_steps invariants: each value 0-100,
+// strictly ascending, no duplicates. Empty/nil is valid (means "use UI
+// defaults"). launchID is included in error messages when non-empty so
+// per-feature batch parses point at the offending entry.
+func validateRampSteps(launchID string, steps []int) error {
+	if len(steps) == 0 {
+		return nil
+	}
+	prefix := "ramp_steps"
+	if launchID != "" {
+		prefix = fmt.Sprintf("launch %q: ramp_steps", launchID)
+	}
+	for i, s := range steps {
+		if s < 0 || s > 100 {
+			return fmt.Errorf("%s: value at index %d must be 0-100, got %d", prefix, i, s)
+		}
+		if i > 0 && s <= steps[i-1] {
+			return fmt.Errorf("%s: must be strictly ascending (got %d after %d at index %d)", prefix, s, steps[i-1], i)
+		}
+	}
+	return nil
 }
 
 // stripComment removes the leading "# " (or "#") from a yaml.Node comment

@@ -649,6 +649,84 @@ flags:
 			t.Errorf("error = %q, want dimension error", err.Error())
 		}
 	})
+
+	t.Run("ramp_steps parses and validates", func(t *testing.T) {
+		yaml := `
+feature: notifications
+launches:
+  rollout_1:
+    dimension: user_id
+    ramp_steps: [0, 1, 5, 10, 25, 100]
+flags:
+  email_enabled:
+    value: true
+`
+		cfg, _, err := Parse([]byte(yaml), flagTypes)
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		got := cfg.Launches["rollout_1"].RampSteps
+		want := []int{0, 1, 5, 10, 25, 100}
+		if len(got) != len(want) {
+			t.Fatalf("RampSteps len = %d, want %d (got %v)", len(got), len(want), got)
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				t.Fatalf("RampSteps[%d] = %d, want %d", i, got[i], want[i])
+			}
+		}
+	})
+
+	t.Run("ramp_steps rejects out-of-range value", func(t *testing.T) {
+		yaml := `
+feature: notifications
+launches:
+  rollout_1:
+    dimension: user_id
+    ramp_steps: [0, 50, 150]
+flags:
+  email_enabled:
+    value: true
+`
+		_, _, err := Parse([]byte(yaml), flagTypes)
+		if err == nil || !strings.Contains(err.Error(), "must be 0-100") {
+			t.Fatalf("expected 0-100 range error, got %v", err)
+		}
+	})
+
+	t.Run("ramp_steps rejects non-ascending sequence", func(t *testing.T) {
+		yaml := `
+feature: notifications
+launches:
+  rollout_1:
+    dimension: user_id
+    ramp_steps: [10, 5]
+flags:
+  email_enabled:
+    value: true
+`
+		_, _, err := Parse([]byte(yaml), flagTypes)
+		if err == nil || !strings.Contains(err.Error(), "strictly ascending") {
+			t.Fatalf("expected ascending error, got %v", err)
+		}
+	})
+
+	t.Run("ramp_steps rejects duplicates", func(t *testing.T) {
+		yaml := `
+feature: notifications
+launches:
+  rollout_1:
+    dimension: user_id
+    ramp_steps: [0, 25, 25, 100]
+flags:
+  email_enabled:
+    value: true
+`
+		_, _, err := Parse([]byte(yaml), flagTypes)
+		if err == nil || !strings.Contains(err.Error(), "strictly ascending") {
+			t.Fatalf("expected duplicate error (via ascending check), got %v", err)
+		}
+	})
 }
 
 func TestParseConditionLaunchOverride(t *testing.T) {

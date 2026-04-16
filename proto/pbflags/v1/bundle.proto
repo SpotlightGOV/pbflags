@@ -93,4 +93,9 @@ message CompiledLaunch {
   // All features that reference this launch. Populated by sync.
   repeated string affected_features = 8;
   string description = 9;
+  // Optional rollout-step progression (each value 0-100, sorted ascending,
+  // unique). Used by the admin UI as the quick-pick chips in the ramp
+  // editor; empty = use UI defaults. Authoritative when set in config —
+  // not adjustable from the UI.
+  repeated int32 ramp_steps = 10;
 }

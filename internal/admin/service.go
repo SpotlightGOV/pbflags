@@ -516,6 +516,7 @@ func launchToProto(l *Launch) *pbflagsv1.LaunchDetail {
 		AffectedFeatures: l.AffectedFeatures,
 		CreatedAt:        timestamppb.New(l.CreatedAt),
 		UpdatedAt:        timestamppb.New(l.UpdatedAt),
+		RampSteps:        l.RampSteps,
 	}
 	if l.ScopeFeatureID != nil {
 		d.ScopeFeatureId = *l.ScopeFeatureID

@@ -208,7 +208,7 @@
         <td><code>{{.Dimension}}</code></td>
         <td>
           {{if and $.AllowOverrides (not .KilledAt)}}
-            {{template "ramp_controls" dict "LaunchID" .LaunchID "RampPct" .RampPct "RampSource" .RampSource}}
+            {{template "ramp_controls" dict "LaunchID" .LaunchID "RampPct" .RampPct "RampSource" .RampSource "RampSteps" .RampSteps}}
           {{else}}
             <strong>{{.RampPct}}%</strong>
             {{if eq .RampSource "config"}}<span class="ramp-source-tag" title="ramp_percentage is config-managed">cfg</span>{{end}}
@@ -345,12 +345,15 @@
 
 {{/*
   ramp_controls renders the in-table editor for a launch's ramp_percentage.
-  Args: LaunchID, RampPct (current int), RampSource (string).
-  The summary shows the current % so the table reads the same as before
-  the editor was added; clicking opens a popover with quick-pick buttons
-  (0/5/10/25/50/75/100) plus a custom 0-100 input + Apply. Buttons
-  submit immediately so common ramps are one click; the custom input
-  needs Apply because 0-100 is too wide a space for accidental typing.
+  Args: LaunchID, RampPct (current int), RampSource (string), RampSteps
+  (optional []int32 from launch config). When RampSteps is non-empty we
+  render those values as the quick-pick chips; otherwise we fall back to
+  a sensible default progression (0/5/10/25/50/75/100). The summary
+  shows the current % so the table reads the same as before the editor
+  was added; clicking opens a popover with quick-pick buttons plus a
+  custom 0-100 input + Apply. Buttons submit immediately so common
+  ramps are one click; the custom input needs Apply because 0-100 is
+  too wide a space for accidental typing.
 */}}
 {{define "ramp_controls"}}
 <details class="ramp-form-details">
@@ -362,17 +365,23 @@
     <p class="ramp-popover-help">Adjust the ramp percentage for this launch. The audit log records prev / new + actor.</p>
     {{end}}
     <div class="ramp-quick">
-      <span class="ramp-quick-label">Set to</span>
+      <span class="ramp-quick-label">Set to{{if .RampSteps}} <span class="ramp-source-tag" title="quick-pick chips come from this launch's configured ramp_steps">cfg</span>{{end}}</span>
       <form class="ramp-quick-row"
             hx-post="/api/launches/ramp/{{.LaunchID}}"
             hx-target="#content" hx-swap="innerHTML">
-        <button type="submit" name="ramp_percentage" value="0"   class="btn btn-sm ramp-chip{{if eq .RampPct 0}} ramp-chip-current{{end}}">0%</button>
-        <button type="submit" name="ramp_percentage" value="5"   class="btn btn-sm ramp-chip{{if eq .RampPct 5}} ramp-chip-current{{end}}">5%</button>
-        <button type="submit" name="ramp_percentage" value="10"  class="btn btn-sm ramp-chip{{if eq .RampPct 10}} ramp-chip-current{{end}}">10%</button>
-        <button type="submit" name="ramp_percentage" value="25"  class="btn btn-sm ramp-chip{{if eq .RampPct 25}} ramp-chip-current{{end}}">25%</button>
-        <button type="submit" name="ramp_percentage" value="50"  class="btn btn-sm ramp-chip{{if eq .RampPct 50}} ramp-chip-current{{end}}">50%</button>
-        <button type="submit" name="ramp_percentage" value="75"  class="btn btn-sm ramp-chip{{if eq .RampPct 75}} ramp-chip-current{{end}}">75%</button>
-        <button type="submit" name="ramp_percentage" value="100" class="btn btn-sm ramp-chip{{if eq .RampPct 100}} ramp-chip-current{{end}}">100%</button>
+        {{if .RampSteps}}
+          {{range .RampSteps}}
+          <button type="submit" name="ramp_percentage" value="{{.}}" class="btn btn-sm ramp-chip{{if eq (int32ToInt .) $.RampPct}} ramp-chip-current{{end}}">{{.}}%</button>
+          {{end}}
+        {{else}}
+          <button type="submit" name="ramp_percentage" value="0"   class="btn btn-sm ramp-chip{{if eq .RampPct 0}} ramp-chip-current{{end}}">0%</button>
+          <button type="submit" name="ramp_percentage" value="5"   class="btn btn-sm ramp-chip{{if eq .RampPct 5}} ramp-chip-current{{end}}">5%</button>
+          <button type="submit" name="ramp_percentage" value="10"  class="btn btn-sm ramp-chip{{if eq .RampPct 10}} ramp-chip-current{{end}}">10%</button>
+          <button type="submit" name="ramp_percentage" value="25"  class="btn btn-sm ramp-chip{{if eq .RampPct 25}} ramp-chip-current{{end}}">25%</button>
+          <button type="submit" name="ramp_percentage" value="50"  class="btn btn-sm ramp-chip{{if eq .RampPct 50}} ramp-chip-current{{end}}">50%</button>
+          <button type="submit" name="ramp_percentage" value="75"  class="btn btn-sm ramp-chip{{if eq .RampPct 75}} ramp-chip-current{{end}}">75%</button>
+          <button type="submit" name="ramp_percentage" value="100" class="btn btn-sm ramp-chip{{if eq .RampPct 100}} ramp-chip-current{{end}}">100%</button>
+        {{end}}
       </form>
     </div>
     <form class="ramp-custom-row"

@@ -35,6 +35,20 @@ type flagInfo struct {
 	FlagType pbflagsv1.FlagType
 }
 
+// intsToInt32s converts a []int (from YAML config) to []int32 for pgx
+// INTEGER[] binding. Returns nil for empty input so the column gets the
+// table default ('{}').
+func intsToInt32s(in []int) []int32 {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]int32, len(in))
+	for i, v := range in {
+		out[i] = int32(v)
+	}
+	return out
+}
+
 func buildFeatureIndex(defs []evaluator.FlagDef) featureIndex {
 	idx := featureIndex{}
 	for _, d := range defs {
@@ -186,21 +200,23 @@ func SyncConditions(
 			if launch.RampPercentage != nil {
 				rampPct = *launch.RampPercentage
 			}
+			rampSteps := intsToInt32s(launch.RampSteps)
 			if launch.RampPercentage != nil {
 				// Config specifies ramp — authoritative on every sync.
 				if _, err := tx.Exec(ctx, `
 					INSERT INTO feature_flags.launches
-						(launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, affected_features, description)
-					VALUES ($1, $2, $3, $4, 'config', $5, $6)
+						(launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, affected_features, description, ramp_steps)
+					VALUES ($1, $2, $3, $4, 'config', $5, $6, $7)
 					ON CONFLICT (launch_id) DO UPDATE SET
 						dimension = EXCLUDED.dimension,
 						ramp_percentage = EXCLUDED.ramp_percentage,
 						ramp_source = 'config',
 						affected_features = EXCLUDED.affected_features,
 						description = EXCLUDED.description,
+						ramp_steps = EXCLUDED.ramp_steps,
 						updated_at = now()`,
 					launchID, featureID, launch.Dimension, rampPct,
-					lc.AffectedFeatures(launchID), launch.Description,
+					lc.AffectedFeatures(launchID), launch.Description, rampSteps,
 				); err != nil {
 					return ConditionResult{}, fmt.Errorf("upsert launch %q: %w", launchID, err)
 				}
@@ -208,15 +224,16 @@ func SyncConditions(
 				// No ramp in config — preserve runtime ramp value and source.
 				if _, err := tx.Exec(ctx, `
 					INSERT INTO feature_flags.launches
-						(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
-					VALUES ($1, $2, $3, $4, $5, $6)
+						(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description, ramp_steps)
+					VALUES ($1, $2, $3, $4, $5, $6, $7)
 					ON CONFLICT (launch_id) DO UPDATE SET
 						dimension = EXCLUDED.dimension,
 						affected_features = EXCLUDED.affected_features,
 						description = EXCLUDED.description,
+						ramp_steps = EXCLUDED.ramp_steps,
 						updated_at = now()`,
 					launchID, featureID, launch.Dimension, rampPct,
-					lc.AffectedFeatures(launchID), launch.Description,
+					lc.AffectedFeatures(launchID), launch.Description, rampSteps,
 				); err != nil {
 					return ConditionResult{}, fmt.Errorf("upsert launch %q: %w", launchID, err)
 				}
@@ -236,35 +253,38 @@ func SyncConditions(
 		if def.Entry.RampPercentage != nil {
 			rampPct = *def.Entry.RampPercentage
 		}
+		rampSteps := intsToInt32s(def.Entry.RampSteps)
 		if def.Entry.RampPercentage != nil {
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO feature_flags.launches
-					(launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, affected_features, description)
-				VALUES ($1, NULL, $2, $3, 'config', $4, $5)
+					(launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, affected_features, description, ramp_steps)
+				VALUES ($1, NULL, $2, $3, 'config', $4, $5, $6)
 				ON CONFLICT (launch_id) DO UPDATE SET
 					dimension = EXCLUDED.dimension,
 					ramp_percentage = EXCLUDED.ramp_percentage,
 					ramp_source = 'config',
 					affected_features = EXCLUDED.affected_features,
 					description = EXCLUDED.description,
+					ramp_steps = EXCLUDED.ramp_steps,
 					updated_at = now()`,
 				launchID, def.Entry.Dimension, rampPct,
-				lc.AffectedFeatures(launchID), def.Entry.Description,
+				lc.AffectedFeatures(launchID), def.Entry.Description, rampSteps,
 			); err != nil {
 				return ConditionResult{}, fmt.Errorf("upsert cross-feature launch %q: %w", launchID, err)
 			}
 		} else {
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO feature_flags.launches
-					(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description)
-				VALUES ($1, NULL, $2, $3, $4, $5)
+					(launch_id, scope_feature_id, dimension, ramp_percentage, affected_features, description, ramp_steps)
+				VALUES ($1, NULL, $2, $3, $4, $5, $6)
 				ON CONFLICT (launch_id) DO UPDATE SET
 					dimension = EXCLUDED.dimension,
 					affected_features = EXCLUDED.affected_features,
 					description = EXCLUDED.description,
+					ramp_steps = EXCLUDED.ramp_steps,
 					updated_at = now()`,
 				launchID, def.Entry.Dimension, rampPct,
-				lc.AffectedFeatures(launchID), def.Entry.Description,
+				lc.AffectedFeatures(launchID), def.Entry.Description, rampSteps,
 			); err != nil {
 				return ConditionResult{}, fmt.Errorf("upsert cross-feature launch %q: %w", launchID, err)
 			}
