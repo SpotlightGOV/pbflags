@@ -50,7 +50,14 @@
         <td>{{if .Description}}{{deref .Description}}{{else}}<span class="cond-otherwise">&mdash;</span>{{end}}</td>
         <td>{{if .ScopeFeatureID}}<code>{{deref .ScopeFeatureID}}</code>{{else}}<span class="cond-otherwise">cross-feature</span>{{end}}</td>
         <td><code>{{.Dimension}}</code></td>
-        <td><strong>{{.RampPct}}%</strong></td>
+        <td>
+          {{if and $.AllowOverrides (not .KilledAt)}}
+            {{template "ramp_controls" dict "LaunchID" .LaunchID "RampPct" .RampPct "RampSource" .RampSource "RampSteps" .RampSteps}}
+          {{else}}
+            <strong>{{.RampPct}}%</strong>
+            {{if eq .RampSource "config"}}<span class="ramp-source-tag" title="ramp_percentage is config-managed">cfg</span>{{end}}
+          {{end}}
+        </td>
         <td>
           <span class="badge badge-type">{{.Status}}</span>
           {{if .KilledAt}}<span class="badge badge-danger">KILLED</span>{{end}}

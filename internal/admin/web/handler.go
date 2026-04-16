@@ -14,7 +14,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -1109,11 +1108,13 @@ func splitListLines(raw string) []string {
 
 // updateLaunchRamp handles POST /api/launches/ramp/{launchID}.
 //
-// On success: when the request was made from the per-flag launches table
-// (i.e. carries the HX-Current-URL of /flags/<id>), we re-render the
-// flag detail fragment so the table reflects the new % without a full
-// page reload — that's the operator's expected hot path during a ramp
-// adjustment. From other contexts (no flag context) we trigger a refresh.
+// On success we re-render only the ramp_controls partial and let the
+// caller swap it in via outerHTML on the closest <details>. Re-rendering
+// the entire #content fragment used to cause a perceptible jump because
+// the new HTML reset the popover open-state and any other transient UI,
+// shifting the layout under the operator. The targeted swap keeps the
+// ramp button right where it was — no scroll, no refocus, no flicker.
+// Works identically from the flag detail page and the launches page.
 func (h *Handler) updateLaunchRamp(w http.ResponseWriter, r *http.Request) {
 	launchID := r.PathValue("launchID")
 	if launchID == "" {
@@ -1136,32 +1137,21 @@ func (h *Handler) updateLaunchRamp(w http.ResponseWriter, r *http.Request) {
 	if prevSource == "config" {
 		w.Header().Set("X-Warning", "ramp_percentage is defined in config; this change will be overwritten on next sync")
 	}
-	if flagID := flagIDFromHXCurrentURL(r); flagID != "" {
-		h.renderFlagDetailContent(w, r, flagID)
+	launch, err := h.store.GetLaunch(r.Context(), launchID)
+	if err != nil {
+		h.serverError(w, "get launch after ramp", err)
 		return
 	}
-	w.Header().Set("HX-Refresh", "true")
-	w.WriteHeader(http.StatusOK)
-}
-
-// flagIDFromHXCurrentURL extracts the flag ID from the htmx HX-Current-URL
-// header when the request originates from /flags/<id>. Returns "" otherwise.
-// Used to re-render the flag detail fragment after launch mutations
-// initiated from that page.
-func flagIDFromHXCurrentURL(r *http.Request) string {
-	cur := r.Header.Get("HX-Current-URL")
-	if cur == "" {
-		return ""
+	if launch == nil {
+		http.Error(w, "launch not found", http.StatusNotFound)
+		return
 	}
-	u, err := url.Parse(cur)
-	if err != nil {
-		return ""
-	}
-	const prefix = "/flags/"
-	if !strings.HasPrefix(u.Path, prefix) {
-		return ""
-	}
-	return strings.TrimPrefix(u.Path, prefix)
+	h.render(w, "ramp_controls", map[string]any{
+		"LaunchID":   launch.LaunchID,
+		"RampPct":    launch.RampPct,
+		"RampSource": launch.RampSource,
+		"RampSteps":  launch.RampSteps,
+	})
 }
 
 // updateLaunchStatus handles POST /api/launches/status/{launchID}.

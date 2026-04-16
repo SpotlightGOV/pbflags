@@ -447,7 +447,7 @@
       <span class="ramp-quick-label">Set to{{if .RampSteps}} <span class="ramp-source-tag" title="quick-pick chips come from this launch's configured ramp_steps">cfg</span>{{end}}</span>
       <form class="ramp-quick-row"
             hx-post="/api/launches/ramp/{{.LaunchID}}"
-            hx-target="#content" hx-swap="innerHTML">
+            hx-target="closest details" hx-swap="outerHTML">
         {{if .RampSteps}}
           {{range .RampSteps}}
           <button type="submit" name="ramp_percentage" value="{{.}}" class="btn btn-sm ramp-chip{{if eq (int32ToInt .) $.RampPct}} ramp-chip-current{{end}}">{{.}}%</button>
@@ -465,7 +465,7 @@
     </div>
     <form class="ramp-custom-row"
           hx-post="/api/launches/ramp/{{.LaunchID}}"
-          hx-target="#content" hx-swap="innerHTML">
+          hx-target="closest details" hx-swap="outerHTML">
       <label class="ramp-custom-label">Custom
         <input type="number" name="ramp_percentage" min="0" max="100" required
                class="ramp-custom-input" placeholder="0-100" autocomplete="off">

@@ -27,7 +27,7 @@ import (
 	"github.com/SpotlightGOV/pbflags/internal/admin"
 )
 
-const defaultDB = "postgres://admin:admin@localhost:5433/pbflags?sslmode=disable"
+const defaultDB = "postgres://admin:admin@localhost:9202/pbflags?sslmode=disable"
 
 func main() {
 	dbURL := os.Getenv("PBFLAGS_DATABASE")

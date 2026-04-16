@@ -190,11 +190,11 @@ dev/descriptors.pb: $(shell find proto -name '*.proto' -type f)
 # Call from a second terminal after `make dev` is running.
 dev-seed: dev/descriptors.pb
 	go run ./cmd/pbflags sync \
-		--database=postgres://admin:admin@localhost:5433/pbflags?sslmode=disable \
+		--database=postgres://admin:admin@localhost:9202/pbflags?sslmode=disable \
 		--descriptors=dev/descriptors.pb \
 		--features=dev/features
-	psql postgres://admin:admin@localhost:5433/pbflags?sslmode=disable < dev/seed-launches.sql
-	PBFLAGS_DATABASE=postgres://admin:admin@localhost:5433/pbflags?sslmode=disable \
+	psql postgres://admin:admin@localhost:9202/pbflags?sslmode=disable < dev/seed-launches.sql
+	PBFLAGS_DATABASE=postgres://admin:admin@localhost:9202/pbflags?sslmode=disable \
 		go run dev/seed-overrides.go
 	@echo "Demo data synced (flags + launch states + overrides). Refresh the admin UI."
 
@@ -208,11 +208,11 @@ dev-seed: dev/descriptors.pb
 # API that won't come up. Delete the row directly so `make dev` is always
 # self-recoverable.
 dev: dev-db dev/descriptors.pb
-	@psql postgres://admin:admin@localhost:5433/pbflags?sslmode=disable \
+	@psql postgres://admin:admin@localhost:9202/pbflags?sslmode=disable \
 		-c "DELETE FROM feature_flags.sync_lock WHERE id = 1" >/dev/null 2>&1 || true
 	go run ./cmd/pbflags-admin \
 		--standalone \
-		--database=postgres://admin:admin@localhost:5433/pbflags?sslmode=disable \
+		--database=postgres://admin:admin@localhost:9202/pbflags?sslmode=disable \
 		--descriptors=dev/descriptors.pb \
 		--features=dev/features \
 		--evaluator-listen=localhost:9201 \

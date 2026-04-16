@@ -27,7 +27,7 @@ make dev-db
 make dev
 ```
 
-This starts `pbflags-admin --standalone` against a local PostgreSQL on port 5433. The admin UI is at `http://localhost:9200`, the evaluator at `http://localhost:9201`. CSS and template changes take effect on browser refresh; Go changes require a restart.
+This starts `pbflags-admin --standalone` against a local PostgreSQL on port 9202 (kept in the pbflags 92xx range to avoid colliding with cloud-sql-proxy or other Postgres clients on 5432/5433). The admin UI is at `http://localhost:9200`, the evaluator at `http://localhost:9201`. CSS and template changes take effect on browser refresh; Go changes require a restart.
 
 ## Running tests
 
