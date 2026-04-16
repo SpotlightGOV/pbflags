@@ -543,7 +543,7 @@ func (s *Store) ListLaunches(ctx context.Context, featureID string) ([]Launch, e
 		       killed_at, affected_features, description, created_at, updated_at
 		FROM feature_flags.launches
 		WHERE scope_feature_id = $1
-		ORDER BY created_at ASC`, featureID)
+		ORDER BY created_at ASC, launch_id ASC`, featureID)
 }
 
 // ListLaunchesAffecting returns all launches that affect a feature (including cross-feature).
@@ -553,7 +553,7 @@ func (s *Store) ListLaunchesAffecting(ctx context.Context, featureID string) ([]
 		       killed_at, affected_features, description, created_at, updated_at
 		FROM feature_flags.launches
 		WHERE $1 = ANY(affected_features)
-		ORDER BY created_at ASC`, featureID)
+		ORDER BY created_at ASC, launch_id ASC`, featureID)
 }
 
 // ListAllLaunches returns all launches.
@@ -562,7 +562,7 @@ func (s *Store) ListAllLaunches(ctx context.Context) ([]Launch, error) {
 		SELECT launch_id, scope_feature_id, dimension, ramp_percentage, ramp_source, status,
 		       killed_at, affected_features, description, created_at, updated_at
 		FROM feature_flags.launches
-		ORDER BY created_at ASC`)
+		ORDER BY created_at ASC, launch_id ASC`)
 }
 
 func (s *Store) queryLaunches(ctx context.Context, query string, args ...any) ([]Launch, error) {

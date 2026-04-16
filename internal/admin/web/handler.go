@@ -378,6 +378,16 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 
 	configManaged, _ := h.store.IsConfigManaged(r.Context(), flagID)
 
+	// killedLaunches lets the conditions table strike through rows whose
+	// launch is no longer effective (pb-trr). Built once here so the
+	// template doesn't have to range through .Launches per condition.
+	killedLaunches := map[string]bool{}
+	for _, l := range launches {
+		if l.KilledAt != nil {
+			killedLaunches[l.LaunchID] = true
+		}
+	}
+
 	data := h.pageData(r, "flag",
 		"Flag", flag,
 		"Audit", entries,
@@ -387,6 +397,7 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 		"ConditionsError", extra.ConditionsError,
 		"SyncSHA", extra.SyncSHA,
 		"Launches", launches,
+		"KilledLaunches", killedLaunches,
 		"OverridesByCond", overridesByCond,
 		"OverrideCount", len(overridesByCond),
 		"ConfigManaged", configManaged,

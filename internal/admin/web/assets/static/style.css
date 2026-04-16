@@ -1069,6 +1069,15 @@ select {
   flex-wrap: wrap;
 }
 
+/* Killed launches in the conditions table get strikethrough so it's
+   obvious at-a-glance the override is no longer effective (pb-trr). */
+.launch-cell-killed {
+  text-decoration: line-through;
+  text-decoration-color: var(--danger, #f88);
+  text-decoration-thickness: 1px;
+  opacity: 0.65;
+}
+
 .launch-include-killed {
   display: inline-flex;
   align-items: center;

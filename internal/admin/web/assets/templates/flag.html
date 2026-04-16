@@ -113,8 +113,12 @@
         </td>
         <td>
           {{if $c.LaunchID}}
-            <code class="launch-id">{{$c.LaunchID}}</code>:
-            <span class="cond-value">{{$c.LaunchValue}}</span>
+            {{$killed := index $.KilledLaunches $c.LaunchID}}
+            <span class="launch-cell{{if $killed}} launch-cell-killed{{end}}"
+                  {{if $killed}}title="launch killed — value no longer effective"{{end}}>
+              <code class="launch-id">{{$c.LaunchID}}</code>:
+              <span class="cond-value">{{$c.LaunchValue}}</span>
+            </span>
           {{end}}
         </td>
         {{if $allow}}
@@ -184,6 +188,7 @@
     <thead>
       <tr>
         <th>Launch</th>
+        <th>Description</th>
         <th>Scope</th>
         <th>Dimension</th>
         <th>Ramp</th>
@@ -195,6 +200,7 @@
       {{range .Launches}}
       <tr>
         <td><code>{{.LaunchID}}</code></td>
+        <td>{{if .Description}}{{deref .Description}}{{else}}<span class="cond-otherwise">&mdash;</span>{{end}}</td>
         <td>{{if .ScopeFeatureID}}<code>{{deref .ScopeFeatureID}}</code>{{else}}<span class="cond-otherwise">cross-feature</span>{{end}}</td>
         <td><code>{{.Dimension}}</code></td>
         <td><strong>{{.RampPct}}%</strong></td>
