@@ -49,7 +49,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -207,16 +206,6 @@ func setEnvIfFlag(key, value string) {
 	if value != "" {
 		os.Setenv(key, value)
 	}
-}
-
-// envBool returns true when the named env var holds a truthy value
-// ("1", "true", "yes" — case-insensitive). Empty/unset → false.
-func envBool(key string) bool {
-	switch strings.ToLower(os.Getenv(key)) {
-	case "1", "true", "yes", "on":
-		return true
-	}
-	return false
 }
 
 func setDurationEnvIfFlag(key string, d time.Duration) {
