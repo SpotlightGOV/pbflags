@@ -1698,13 +1698,14 @@ select {
 }
 
 /* ─── Sync lock banner (pb-wff.12 / .13) ────────────────────────────
-   Visible on every page when the global sync lock is held. Sticky beneath
-   the env banner so it's always in the operator's eye line — the lock has
-   real consequences (sync paused, overrides won't auto-clear) and it must
-   not be possible to forget it's on. */
+   Visible on every page when the global sync lock is held. Renders in
+   normal flow above the shell so it pushes the page-toolbar (and its
+   release-lock button) down rather than overlaying them — see pb-tdd
+   feedback that a sticky banner hides the very control you want next.
+   The banner stays plenty loud thanks to amber gradient + warning hatch
+   + body.sync-locked dimming the rest of the shell. */
 .lock-banner {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 99;
   background: linear-gradient(180deg, var(--amber) 0%, #f59e0b 100%);
   color: #0b0d12;
@@ -1721,7 +1722,6 @@ select {
     transparent 16px
   ), linear-gradient(180deg, var(--amber) 0%, #f59e0b 100%);
 }
-.env-banner + .lock-banner { top: 25px; }
 
 .lock-banner-inner {
   max-width: 1200px;
