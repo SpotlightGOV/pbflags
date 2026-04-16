@@ -363,34 +363,6 @@ func printJSON(v any) {
 	}
 }
 
-// printJSONErr writes v to stderr as canonical JSON. Used on error
-// paths where the caller wants the failure to be machine-parseable
-// (e.g. `pb lock --json` against an already-locked sync). Mirrors the
-// proto/json dispatch in printJSON.
-func printJSONErr(v any) {
-	if m, ok := v.(proto.Message); ok {
-		opts := protojson.MarshalOptions{
-			Multiline:       true,
-			Indent:          "  ",
-			UseProtoNames:   true,
-			EmitUnpopulated: false,
-		}
-		buf, err := opts.Marshal(m)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "marshal: %v\n", err)
-			return
-		}
-		os.Stderr.Write(buf)
-		fmt.Fprintln(os.Stderr)
-		return
-	}
-	enc := json.NewEncoder(os.Stderr)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(v); err != nil {
-		fmt.Fprintf(os.Stderr, "marshal: %v\n", err)
-	}
-}
-
 // parsePositionalFlags wraps fs.Parse to allow flags interleaved with
 // positional arguments AND to treat negative-numeric tokens like "-5"
 // or "-1.0" as positional rather than unknown flags. Returns the
