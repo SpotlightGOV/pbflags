@@ -56,14 +56,16 @@ flags:
       - 120
 
 # Feature-scoped launches — dimension and ramp only.
+# Both launches use session_id (globally required) rather than user_id so
+# they're valid for both the 'anon' and 'user' scopes the feature targets.
 launches:
   email_enabled_pro_rollout:
-    dimension: user_id
+    dimension: session_id
     ramp_percentage: 25
     description: "Roll out email for Pro users"
 
   hourly_digest_rollout:
-    dimension: user_id
+    dimension: session_id
     description: "Roll out hourly digest for Pro users"
 
 # scoring_experiment is a cross-feature launch defined in launches/scoring_experiment.yaml.
