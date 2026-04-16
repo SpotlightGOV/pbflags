@@ -708,7 +708,10 @@ body {
   flex-shrink: 0;
 }
 
-.btn-kill {
+/* Kill / Unkill in the flag detail header — both must be the same
+   size so the header doesn't visibly shrink/grow when the state flips. */
+.flag-detail-actions .btn-kill,
+.flag-detail-actions .btn-killed-state {
   font-size: 13px;
   font-weight: 600;
   padding: 8px 20px;
