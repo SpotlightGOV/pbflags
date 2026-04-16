@@ -86,7 +86,10 @@ func setupServiceEnv(t *testing.T) *serviceTestEnv {
 
 	// Admin server.
 	store := admin.NewStore(pool, logger)
-	adminSvc := admin.NewAdminService(store, logger)
+	// Integration tests exercise the real state-changing RPCs (kills,
+	// overrides, ramps) end-to-end, so the runtime-overrides gate must
+	// be on or every mutation returns PermissionDenied.
+	adminSvc := admin.NewAdminService(store, logger, admin.WithAllowRuntimeOverrides())
 	adminMux := http.NewServeMux()
 	adminPath, adminHandler := pbflagsv1connect.NewFlagAdminServiceHandler(adminSvc)
 	adminMux.Handle(adminPath, adminHandler)

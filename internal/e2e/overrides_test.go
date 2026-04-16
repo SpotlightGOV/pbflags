@@ -15,15 +15,17 @@ import (
 
 // Tests for the pb-wff condition-override + sync-lock admin UI.
 //
-// All write paths are gated by --allow-condition-overrides so each test
-// opts into the gated env via withOverrides(). Tests that acquire the
-// global sync lock must clean it up explicitly because the lock is a
-// singleton row, not scoped to the per-test feature.
+// All write paths are gated by --allow-runtime-overrides; the harness
+// defaults that on, matching production. The TestOverrideGatingDisabled
+// test below opts out via withoutOverrides() to exercise the read-only
+// surface. Tests that acquire the global sync lock must clean it up
+// explicitly because the lock is a singleton row, not scoped to the
+// per-test feature.
 
 // TestOverrideStaticDefault sets an override on the always-rendered
 // static-default row of a no-conditions flag, then clears it.
 func TestOverrideStaticDefault(t *testing.T) {
-	env := setupEnv(t, withOverrides())
+	env := setupEnv(t)
 
 	page := env.newPage(t)
 	_, err := page.Goto(env.baseURL + "/flags/" + env.tf.FlagID(2)) // STRING flag
@@ -63,7 +65,7 @@ func TestOverrideStaticDefault(t *testing.T) {
 // TestOverrideBoolFlag exercises the BOOL-typed value-select widget on
 // the override form (vs the free-text input the STRING test exercised).
 func TestOverrideBoolFlag(t *testing.T) {
-	env := setupEnv(t, withOverrides())
+	env := setupEnv(t)
 
 	page := env.newPage(t)
 	_, err := page.Goto(env.baseURL + "/flags/" + env.tf.FlagID(1)) // BOOL flag
@@ -94,7 +96,7 @@ func TestOverrideBoolFlag(t *testing.T) {
 // TestDashboardOverrideBadge confirms that after setting an override on
 // a flag, the dashboard shows the amber OVR badge for that row.
 func TestDashboardOverrideBadge(t *testing.T) {
-	env := setupEnv(t, withOverrides())
+	env := setupEnv(t)
 
 	// Set the override directly via the store (faster than driving the UI
 	// for a side-effect test).
@@ -138,7 +140,7 @@ func TestDashboardOverrideBadge(t *testing.T) {
 // TestSyncLockBannerAndRelease covers acquiring the sync lock via the
 // sidebar and releasing it via the sticky banner.
 func TestSyncLockBannerAndRelease(t *testing.T) {
-	env := setupEnv(t, withOverrides())
+	env := setupEnv(t)
 
 	// Singleton sync_lock row is global; clean up if any test leaves it set.
 	t.Cleanup(func() {
@@ -213,7 +215,7 @@ func TestSyncLockBannerAndRelease(t *testing.T) {
 // overrides, the override controls do not render in the UI. The gate's
 // 403-on-POST behavior is covered by handler_test.go unit tests.
 func TestOverrideGatingDisabled(t *testing.T) {
-	env := setupEnv(t) // no withOverrides()
+	env := setupEnv(t, withoutOverrides())
 
 	page := env.newPage(t)
 	_, err := page.Goto(env.baseURL + "/flags/" + env.tf.FlagID(1))

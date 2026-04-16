@@ -22,10 +22,10 @@ func newTestAdminService() *AdminService {
 
 // newTestAdminServiceWithOverrides is the variant with the gating flag on.
 // Use when the test exercises a code path that's gated by
-// --allow-condition-overrides but that returns from validation before
+// --allow-runtime-overrides but that returns from validation before
 // touching the (zero-value) Store.
 func newTestAdminServiceWithOverrides() *AdminService {
-	return NewAdminService(&Store{}, slog.Default(), WithAllowConditionOverrides())
+	return NewAdminService(&Store{}, slog.Default(), WithAllowRuntimeOverrides())
 }
 
 func TestAdminService_GetFlag_EmptyFlagID(t *testing.T) {
@@ -38,7 +38,7 @@ func TestAdminService_GetFlag_EmptyFlagID(t *testing.T) {
 
 func TestAdminService_UpdateFlagState_EmptyFlagID(t *testing.T) {
 	t.Parallel()
-	svc := newTestAdminService()
+	svc := newTestAdminServiceWithOverrides()
 	_, err := svc.UpdateFlagState(context.Background(), connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
 		FlagId: "",
 		State:  pbflagsv1.State_STATE_KILLED,
@@ -49,7 +49,7 @@ func TestAdminService_UpdateFlagState_EmptyFlagID(t *testing.T) {
 
 func TestAdminService_UpdateFlagState_Unspecified(t *testing.T) {
 	t.Parallel()
-	svc := newTestAdminService()
+	svc := newTestAdminServiceWithOverrides()
 	_, err := svc.UpdateFlagState(context.Background(), connect.NewRequest(&pbflagsv1.UpdateFlagStateRequest{
 		FlagId: "feature/1",
 		State:  pbflagsv1.State_STATE_UNSPECIFIED,
@@ -84,7 +84,7 @@ func TestAdminService_GetLaunch_EmptyLaunchID(t *testing.T) {
 
 func TestAdminService_UpdateLaunchRamp_EmptyLaunchID(t *testing.T) {
 	t.Parallel()
-	svc := newTestAdminService()
+	svc := newTestAdminServiceWithOverrides()
 	_, err := svc.UpdateLaunchRamp(context.Background(), connect.NewRequest(&pbflagsv1.UpdateLaunchRampRequest{
 		LaunchId: "",
 	}))
@@ -94,7 +94,7 @@ func TestAdminService_UpdateLaunchRamp_EmptyLaunchID(t *testing.T) {
 
 func TestAdminService_UpdateLaunchStatus_EmptyLaunchID(t *testing.T) {
 	t.Parallel()
-	svc := newTestAdminService()
+	svc := newTestAdminServiceWithOverrides()
 	_, err := svc.UpdateLaunchStatus(context.Background(), connect.NewRequest(&pbflagsv1.UpdateLaunchStatusRequest{
 		LaunchId: "",
 		Status:   "active",
@@ -105,7 +105,7 @@ func TestAdminService_UpdateLaunchStatus_EmptyLaunchID(t *testing.T) {
 
 func TestAdminService_UpdateLaunchStatus_EmptyStatus(t *testing.T) {
 	t.Parallel()
-	svc := newTestAdminService()
+	svc := newTestAdminServiceWithOverrides()
 	_, err := svc.UpdateLaunchStatus(context.Background(), connect.NewRequest(&pbflagsv1.UpdateLaunchStatusRequest{
 		LaunchId: "launch-1",
 		Status:   "",
@@ -116,7 +116,7 @@ func TestAdminService_UpdateLaunchStatus_EmptyStatus(t *testing.T) {
 
 func TestAdminService_KillLaunch_EmptyLaunchID(t *testing.T) {
 	t.Parallel()
-	svc := newTestAdminService()
+	svc := newTestAdminServiceWithOverrides()
 	_, err := svc.KillLaunch(context.Background(), connect.NewRequest(&pbflagsv1.KillLaunchRequest{LaunchId: ""}))
 	require.Error(t, err)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
@@ -124,7 +124,7 @@ func TestAdminService_KillLaunch_EmptyLaunchID(t *testing.T) {
 
 func TestAdminService_UnkillLaunch_EmptyLaunchID(t *testing.T) {
 	t.Parallel()
-	svc := newTestAdminService()
+	svc := newTestAdminServiceWithOverrides()
 	_, err := svc.UnkillLaunch(context.Background(), connect.NewRequest(&pbflagsv1.UnkillLaunchRequest{LaunchId: ""}))
 	require.Error(t, err)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))

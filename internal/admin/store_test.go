@@ -39,7 +39,12 @@ func setupTestEnv(t *testing.T) *testEnv {
 	t.Helper()
 	store, pool := setupTestStore(t)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	admin := NewAdminService(store, logger)
+	// Default to runtime overrides enabled — integration tests exercise
+	// the real RPC paths, and the gate's PermissionDenied would mask
+	// the validation errors most of these tests assert on. Tests that
+	// specifically want the gated-off behavior should construct their
+	// own AdminService.
+	admin := NewAdminService(store, logger, WithAllowRuntimeOverrides())
 	return &testEnv{pool: pool, store: store, admin: admin}
 }
 

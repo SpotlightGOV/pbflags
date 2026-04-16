@@ -37,7 +37,7 @@
 //	PBFLAGS_AUTH_STRATEGY       Authentication strategy: none, shared-secret, trusted-header (default: none)
 //	PBFLAGS_AUTH_TOKEN           Shared-secret Bearer token (required if strategy=shared-secret)
 //	PBFLAGS_AUTH_HEADER          Header name for trusted-header strategy (default: X-Forwarded-User)
-//	PBFLAGS_ALLOW_CONDITION_OVERRIDES  Enable Set/Clear condition override RPCs (default: false)
+//	PBFLAGS_ALLOW_RUNTIME_OVERRIDES  Allow state-changing admin RPCs and UI controls (default: true; set =false for read-only admin)
 package main
 
 import (
@@ -48,6 +48,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -96,7 +97,7 @@ func main() {
 	envName := fs.String("env-name", "", "Environment label shown in admin UI")
 	envColor := fs.String("env-color", "", "Accent color for admin UI environment banner (hex)")
 	devAssets := fs.String("dev-assets", "", "Read admin UI assets from disk for live reload (dev only)")
-	allowConditionOverrides := fs.Bool("allow-condition-overrides", false, "Enable Set/Clear condition override RPCs (live incident-response writes; default off). Also via PBFLAGS_ALLOW_CONDITION_OVERRIDES.")
+	allowRuntimeOverrides := fs.Bool("allow-runtime-overrides", true, "Allow state-changing admin RPCs and UI controls (condition overrides, sync lock, flag/launch kill, launch ramp adjustments). Default on. Set =false for read-only admin. Also via PBFLAGS_ALLOW_RUNTIME_OVERRIDES.")
 	fs.Parse(args)
 
 	setEnvIfFlag("PBFLAGS_DATABASE", *database)
@@ -166,15 +167,31 @@ func main() {
 		logger.Info("admin auth enabled", "strategy", authCfg.Strategy)
 	}
 
-	// Honor the env var as a fallback.
-	if !*allowConditionOverrides && envBool("PBFLAGS_ALLOW_CONDITION_OVERRIDES") {
-		*allowConditionOverrides = true
+	// Env var fills in when the flag wasn't explicitly passed; explicit
+	// --allow-runtime-overrides= wins over env. Accepts standard boolean
+	// strings ("true"/"false"/"1"/"0"/"yes"/"no"/"on"/"off"). Anything
+	// else is ignored — silent fallback to the flag default keeps a
+	// typo'd env var from quietly flipping policy.
+	flagWasSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "allow-runtime-overrides" {
+			flagWasSet = true
+		}
+	})
+	if !flagWasSet {
+		if v := os.Getenv("PBFLAGS_ALLOW_RUNTIME_OVERRIDES"); v != "" {
+			if b, err := strconv.ParseBool(v); err == nil {
+				*allowRuntimeOverrides = b
+			} else {
+				logger.Warn("ignoring unparseable PBFLAGS_ALLOW_RUNTIME_OVERRIDES", "value", v)
+			}
+		}
 	}
-	if *allowConditionOverrides {
-		logger.Info("condition overrides enabled — Set/Clear RPCs are live")
+	if !*allowRuntimeOverrides {
+		logger.Info("runtime overrides disabled — admin is read-only (no overrides, kills, ramps, or sync lock)")
 	}
 
-	if err := run(cfg, *standalone, *configDir, *devAssets, *allowConditionOverrides, auth, logger); err != nil {
+	if err := run(cfg, *standalone, *configDir, *devAssets, *allowRuntimeOverrides, auth, logger); err != nil {
 		if held, ok := defsync.IsLockHeld(err); ok {
 			fmt.Fprintf(os.Stderr,
 				"\nSync is LOCKED.\n  holder: %s\n  reason: %s\n  since:  %s\n\nUnlock with: pb unlock\n\n",
@@ -208,7 +225,7 @@ func setDurationEnvIfFlag(key string, d time.Duration) {
 	}
 }
 
-func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, allowConditionOverrides bool, auth authn.Authenticator, logger *slog.Logger) error {
+func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, allowRuntimeOverrides bool, auth authn.Authenticator, logger *slog.Logger) error {
 	mode := "normal"
 	if standalone {
 		mode = "standalone"
@@ -425,8 +442,8 @@ func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, 
 	adminLogger := logger.With("component", "admin")
 	store := admin.NewStore(pool, adminLogger)
 	var adminOpts []admin.AdminServiceOption
-	if allowConditionOverrides {
-		adminOpts = append(adminOpts, admin.WithAllowConditionOverrides())
+	if allowRuntimeOverrides {
+		adminOpts = append(adminOpts, admin.WithAllowRuntimeOverrides())
 	}
 	adminService := admin.NewAdminService(store, adminLogger, adminOpts...)
 
@@ -436,11 +453,11 @@ func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, 
 	adminMux.Handle(adminPath, adminHandler)
 
 	webHandler, err := adminweb.NewHandler(store, adminLogger, adminweb.EnvConfig{
-		Name:                    cfg.EnvName,
-		Color:                   cfg.EnvColor,
-		Version:                 version,
-		DevAssetsDir:            devAssetsDir,
-		AllowConditionOverrides: allowConditionOverrides,
+		Name:                  cfg.EnvName,
+		Color:                 cfg.EnvColor,
+		Version:               version,
+		DevAssetsDir:          devAssetsDir,
+		AllowRuntimeOverrides: allowRuntimeOverrides,
 	})
 	if err != nil {
 		return fmt.Errorf("create web handler: %w", err)

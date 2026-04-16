@@ -170,7 +170,7 @@ func TestKillAndUnkillFlag(t *testing.T) {
 }
 
 func TestFlagDetailReadOnly(t *testing.T) {
-	env := setupEnv(t)
+	env := setupEnv(t, withoutOverrides())
 
 	page := env.newPage(t)
 	_, err := page.Goto(env.baseURL + "/flags/" + env.tf.FlagID(2))

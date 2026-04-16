@@ -16,19 +16,21 @@ import (
 
 // AdminService implements the FlagAdminService Connect handler.
 type AdminService struct {
-	store                   *Store
-	logger                  *slog.Logger
-	allowConditionOverrides bool
+	store                 *Store
+	logger                *slog.Logger
+	allowRuntimeOverrides bool
 }
 
 // AdminServiceOption configures optional AdminService behavior.
 type AdminServiceOption func(*AdminService)
 
-// WithAllowConditionOverrides enables the SetConditionOverride / Clear* /
-// sync-lock RPCs. Default is disabled — operators must explicitly opt in via
-// the --allow-condition-overrides server flag.
-func WithAllowConditionOverrides() AdminServiceOption {
-	return func(a *AdminService) { a.allowConditionOverrides = true }
+// WithAllowRuntimeOverrides enables every state-changing RPC: condition
+// overrides, sync lock acquire/release, flag state updates (kill/unkill),
+// and launch ramp/status/kill/unkill. Default is disabled — operators
+// opt in via the --allow-runtime-overrides server flag (default true at
+// the binary level; off only on locked-down read-only deployments).
+func WithAllowRuntimeOverrides() AdminServiceOption {
+	return func(a *AdminService) { a.allowRuntimeOverrides = true }
 }
 
 // NewAdminService creates a FlagAdminService handler.
@@ -65,6 +67,9 @@ func (a *AdminService) GetFlag(ctx context.Context, req *connect.Request[pbflags
 }
 
 func (a *AdminService) UpdateFlagState(ctx context.Context, req *connect.Request[pbflagsv1.UpdateFlagStateRequest]) (*connect.Response[pbflagsv1.UpdateFlagStateResponse], error) {
+	if !a.allowRuntimeOverrides {
+		return nil, errRuntimeOverridesDisabled()
+	}
 	msg := req.Msg
 	if msg.FlagId == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
@@ -136,6 +141,9 @@ func (a *AdminService) GetLaunch(ctx context.Context, req *connect.Request[pbfla
 }
 
 func (a *AdminService) UpdateLaunchRamp(ctx context.Context, req *connect.Request[pbflagsv1.UpdateLaunchRampRequest]) (*connect.Response[pbflagsv1.UpdateLaunchRampResponse], error) {
+	if !a.allowRuntimeOverrides {
+		return nil, errRuntimeOverridesDisabled()
+	}
 	if req.Msg.GetLaunchId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
 	}
@@ -165,6 +173,9 @@ var validLaunchStatuses = map[string]bool{
 }
 
 func (a *AdminService) UpdateLaunchStatus(ctx context.Context, req *connect.Request[pbflagsv1.UpdateLaunchStatusRequest]) (*connect.Response[pbflagsv1.UpdateLaunchStatusResponse], error) {
+	if !a.allowRuntimeOverrides {
+		return nil, errRuntimeOverridesDisabled()
+	}
 	if req.Msg.GetLaunchId() == "" || req.Msg.GetStatus() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
 	}
@@ -182,6 +193,9 @@ func (a *AdminService) UpdateLaunchStatus(ctx context.Context, req *connect.Requ
 }
 
 func (a *AdminService) KillLaunch(ctx context.Context, req *connect.Request[pbflagsv1.KillLaunchRequest]) (*connect.Response[pbflagsv1.KillLaunchResponse], error) {
+	if !a.allowRuntimeOverrides {
+		return nil, errRuntimeOverridesDisabled()
+	}
 	if req.Msg.GetLaunchId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
 	}
@@ -194,6 +208,9 @@ func (a *AdminService) KillLaunch(ctx context.Context, req *connect.Request[pbfl
 }
 
 func (a *AdminService) UnkillLaunch(ctx context.Context, req *connect.Request[pbflagsv1.UnkillLaunchRequest]) (*connect.Response[pbflagsv1.UnkillLaunchResponse], error) {
+	if !a.allowRuntimeOverrides {
+		return nil, errRuntimeOverridesDisabled()
+	}
 	if req.Msg.GetLaunchId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
 	}
@@ -208,8 +225,8 @@ func (a *AdminService) UnkillLaunch(ctx context.Context, req *connect.Request[pb
 // ── Sync lock RPCs ──────────────────────────────────────────────────
 
 func (a *AdminService) AcquireSyncLock(ctx context.Context, req *connect.Request[pbflagsv1.AcquireSyncLockRequest]) (*connect.Response[pbflagsv1.AcquireSyncLockResponse], error) {
-	if !a.allowConditionOverrides {
-		return nil, errOverridesDisabled()
+	if !a.allowRuntimeOverrides {
+		return nil, errRuntimeOverridesDisabled()
 	}
 	if req.Msg.GetReason() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("reason is required"))
@@ -232,8 +249,8 @@ func (a *AdminService) AcquireSyncLock(ctx context.Context, req *connect.Request
 }
 
 func (a *AdminService) ReleaseSyncLock(ctx context.Context, req *connect.Request[pbflagsv1.ReleaseSyncLockRequest]) (*connect.Response[pbflagsv1.ReleaseSyncLockResponse], error) {
-	if !a.allowConditionOverrides {
-		return nil, errOverridesDisabled()
+	if !a.allowRuntimeOverrides {
+		return nil, errRuntimeOverridesDisabled()
 	}
 	if req.Msg.GetReason() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("reason is required"))
@@ -253,8 +270,8 @@ func (a *AdminService) ReleaseSyncLock(ctx context.Context, req *connect.Request
 // Acquire/Release: if the feature isn't on, no part of the lock surface is
 // addressable.
 func (a *AdminService) GetSyncLock(ctx context.Context, _ *connect.Request[pbflagsv1.GetSyncLockRequest]) (*connect.Response[pbflagsv1.GetSyncLockResponse], error) {
-	if !a.allowConditionOverrides {
-		return nil, errOverridesDisabled()
+	if !a.allowRuntimeOverrides {
+		return nil, errRuntimeOverridesDisabled()
 	}
 	info, err := a.store.GetSyncLock(ctx)
 	if err != nil {
@@ -273,8 +290,8 @@ func (a *AdminService) GetSyncLock(ctx context.Context, _ *connect.Request[pbfla
 // ── Condition override RPCs ─────────────────────────────────────────
 
 func (a *AdminService) SetConditionOverride(ctx context.Context, req *connect.Request[pbflagsv1.SetConditionOverrideRequest]) (*connect.Response[pbflagsv1.SetConditionOverrideResponse], error) {
-	if !a.allowConditionOverrides {
-		return nil, errOverridesDisabled()
+	if !a.allowRuntimeOverrides {
+		return nil, errRuntimeOverridesDisabled()
 	}
 	if req.Msg.GetFlagId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("flag_id is required"))
@@ -336,8 +353,8 @@ func (a *AdminService) SetConditionOverride(ctx context.Context, req *connect.Re
 }
 
 func (a *AdminService) ClearConditionOverride(ctx context.Context, req *connect.Request[pbflagsv1.ClearConditionOverrideRequest]) (*connect.Response[pbflagsv1.ClearConditionOverrideResponse], error) {
-	if !a.allowConditionOverrides {
-		return nil, errOverridesDisabled()
+	if !a.allowRuntimeOverrides {
+		return nil, errRuntimeOverridesDisabled()
 	}
 	if req.Msg.GetFlagId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("flag_id is required"))
@@ -379,8 +396,8 @@ func (a *AdminService) ClearConditionOverride(ctx context.Context, req *connect.
 }
 
 func (a *AdminService) ClearAllConditionOverrides(ctx context.Context, req *connect.Request[pbflagsv1.ClearAllConditionOverridesRequest]) (*connect.Response[pbflagsv1.ClearAllConditionOverridesResponse], error) {
-	if !a.allowConditionOverrides {
-		return nil, errOverridesDisabled()
+	if !a.allowRuntimeOverrides {
+		return nil, errRuntimeOverridesDisabled()
 	}
 	if req.Msg.GetFlagId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("flag_id is required"))
@@ -398,8 +415,8 @@ func (a *AdminService) ClearAllConditionOverrides(ctx context.Context, req *conn
 }
 
 func (a *AdminService) ListConditionOverrides(ctx context.Context, req *connect.Request[pbflagsv1.ListConditionOverridesRequest]) (*connect.Response[pbflagsv1.ListConditionOverridesResponse], error) {
-	if !a.allowConditionOverrides {
-		return nil, errOverridesDisabled()
+	if !a.allowRuntimeOverrides {
+		return nil, errRuntimeOverridesDisabled()
 	}
 	filter := OverrideListFilter{
 		FlagID: req.Msg.GetFlagId(),
@@ -430,9 +447,9 @@ func (a *AdminService) ListConditionOverrides(ctx context.Context, req *connect.
 	return connect.NewResponse(resp), nil
 }
 
-func errOverridesDisabled() error {
+func errRuntimeOverridesDisabled() error {
 	return connect.NewError(connect.CodePermissionDenied,
-		errors.New("condition overrides are disabled on this server"))
+		errors.New("runtime overrides are disabled on this server (start with --allow-runtime-overrides=true to enable state-changing RPCs)"))
 }
 
 // validateConditionIndex enforces the chain-shape invariants for

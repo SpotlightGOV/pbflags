@@ -35,12 +35,13 @@ type EnvConfig struct {
 	Version      string // build version, e.g. "1.2.3"
 	DevAssetsDir string // if set, read assets from disk for live reload (dev only)
 
-	// AllowConditionOverrides mirrors the --allow-condition-overrides
-	// server flag. When false, the override / lock write controls are
-	// hidden in the UI and the corresponding API endpoints return 403.
-	// Read-only state (lock banner, override badges) still renders so
+	// AllowRuntimeOverrides mirrors the --allow-runtime-overrides
+	// server flag. When false, every state-changing UI control
+	// (overrides, sync lock, flag/launch kill, launch ramp) is hidden
+	// and the corresponding API endpoints return 403. Read-only state
+	// (lock banner, override badges, kill badges) still renders so
 	// operators can see what's happening on a locked-down environment.
-	AllowConditionOverrides bool
+	AllowRuntimeOverrides bool
 }
 
 // Handler serves the admin web UI.
@@ -171,26 +172,26 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	inner.HandleFunc("GET /launches", h.launches)
 	inner.HandleFunc("GET /audit", h.auditLog)
 
-	// htmx API endpoints. Wildcards must be the final path segment (Go 1.22+ ServeMux);
-	// patterns like /api/flags/{flagID...}/state panic at registration.
-	inner.HandleFunc("POST /api/flags/state/{flagID...}", h.updateFlagState)
-	// Override routes removed — overrides are now conditions managed via config files.
+	// htmx API endpoints. All mutating routes are wrapped with
+	// gateRuntimeOverrides; locked-down environments
+	// (--allow-runtime-overrides=false) get a 403 with an operator
+	// pointer rather than a 404 that looks like a bug. Wildcards must
+	// be the final path segment (Go 1.22+ ServeMux); patterns like
+	// /api/flags/{flagID...}/state panic at registration.
+	inner.HandleFunc("POST /api/flags/state/{flagID...}", h.gateRuntimeOverrides(h.updateFlagState))
 
 	// Launch management.
-	inner.HandleFunc("POST /api/launches/ramp/{launchID}", h.updateLaunchRamp)
-	inner.HandleFunc("POST /api/launches/status/{launchID}", h.updateLaunchStatus)
-	inner.HandleFunc("POST /api/launches/kill/{launchID}", h.killLaunch)
-	inner.HandleFunc("POST /api/launches/unkill/{launchID}", h.unkillLaunch)
+	inner.HandleFunc("POST /api/launches/ramp/{launchID}", h.gateRuntimeOverrides(h.updateLaunchRamp))
+	inner.HandleFunc("POST /api/launches/status/{launchID}", h.gateRuntimeOverrides(h.updateLaunchStatus))
+	inner.HandleFunc("POST /api/launches/kill/{launchID}", h.gateRuntimeOverrides(h.killLaunch))
+	inner.HandleFunc("POST /api/launches/unkill/{launchID}", h.gateRuntimeOverrides(h.unkillLaunch))
 
-	// Condition overrides + global sync lock. All gated by
-	// --allow-condition-overrides; the gate handler returns 403 when off
-	// so operators on locked-down environments get a clear signal rather
-	// than 404 (which would look like a bug).
-	inner.HandleFunc("POST /api/conditions/override/{flagID...}", h.gateOverrides(h.setConditionOverride))
-	inner.HandleFunc("POST /api/conditions/clear-override/{flagID...}", h.gateOverrides(h.clearConditionOverride))
-	inner.HandleFunc("POST /api/conditions/clear-all-overrides/{flagID...}", h.gateOverrides(h.clearAllConditionOverrides))
-	inner.HandleFunc("POST /api/lock", h.gateOverrides(h.acquireSyncLock))
-	inner.HandleFunc("POST /api/unlock", h.gateOverrides(h.releaseSyncLock))
+	// Condition overrides + global sync lock.
+	inner.HandleFunc("POST /api/conditions/override/{flagID...}", h.gateRuntimeOverrides(h.setConditionOverride))
+	inner.HandleFunc("POST /api/conditions/clear-override/{flagID...}", h.gateRuntimeOverrides(h.clearConditionOverride))
+	inner.HandleFunc("POST /api/conditions/clear-all-overrides/{flagID...}", h.gateRuntimeOverrides(h.clearAllConditionOverrides))
+	inner.HandleFunc("POST /api/lock", h.gateRuntimeOverrides(h.acquireSyncLock))
+	inner.HandleFunc("POST /api/unlock", h.gateRuntimeOverrides(h.releaseSyncLock))
 
 	mux.Handle("/", h.csrfProtect(inner))
 }
@@ -276,7 +277,7 @@ func (h *Handler) pageData(r *http.Request, page string, extra ...any) map[strin
 		"EnvName":        h.env.Name,
 		"EnvColor":       h.env.Color,
 		"Version":        h.env.Version,
-		"AllowOverrides": h.env.AllowConditionOverrides,
+		"AllowOverrides": h.env.AllowRuntimeOverrides,
 	}
 	if lock, err := h.store.GetSyncLock(r.Context()); err == nil && lock != nil {
 		m["SyncLock"] = lock
@@ -1187,14 +1188,15 @@ func overrideForCond(m map[string]admin.ConditionOverride, idx int) admin.Condit
 	return m[strconv.Itoa(idx)]
 }
 
-// gateOverrides wraps a handler with the --allow-condition-overrides
+// gateRuntimeOverrides wraps a handler with the --allow-runtime-overrides
 // check. Returns 403 (not 404) when off so operators see a clear "this
 // is intentionally disabled" signal rather than thinking the route is
-// missing.
-func (h *Handler) gateOverrides(next http.HandlerFunc) http.HandlerFunc {
+// missing. Applied to every state-changing route: condition overrides,
+// sync lock, flag/launch kill, launch ramp/status.
+func (h *Handler) gateRuntimeOverrides(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !h.env.AllowConditionOverrides {
-			http.Error(w, "condition overrides are disabled on this server (start with --allow-condition-overrides to enable)", http.StatusForbidden)
+		if !h.env.AllowRuntimeOverrides {
+			http.Error(w, "runtime overrides are disabled on this server (start with --allow-runtime-overrides=true to enable state-changing controls)", http.StatusForbidden)
 			return
 		}
 		next(w, r)

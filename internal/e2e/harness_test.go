@@ -43,23 +43,25 @@ func e2eSpecs() []testdb.FlagSpec {
 	}
 }
 
-// envOpt configures setupEnv. Defaults match the original read-only setup
-// so existing tests are unaffected; new tests opt in to override behavior
-// by passing withOverrides().
+// envOpt configures setupEnv. Defaults match the production admin server's
+// default (--allow-runtime-overrides=true) so all state-changing controls
+// render and accept POSTs. Tests that exercise the read-only/gated-off
+// behavior opt out via withoutOverrides().
 type envOpt func(*envOpts)
 
 type envOpts struct {
 	allowOverrides bool
 }
 
-// withOverrides flips on the --allow-condition-overrides web gate so the
-// pb-wff override + sync-lock controls render and POSTs are accepted.
-func withOverrides() envOpt { return func(o *envOpts) { o.allowOverrides = true } }
+// withoutOverrides flips off the --allow-runtime-overrides web gate so
+// state-changing controls (overrides, sync lock, kill, ramp, status) are
+// hidden from the UI and rejected with 403 at the handler layer.
+func withoutOverrides() envOpt { return func(o *envOpts) { o.allowOverrides = false } }
 
 func setupEnv(t *testing.T, opts ...envOpt) *testEnv {
 	t.Helper()
 
-	cfg := envOpts{}
+	cfg := envOpts{allowOverrides: true}
 	for _, o := range opts {
 		o(&cfg)
 	}
@@ -73,8 +75,8 @@ func setupEnv(t *testing.T, opts ...envOpt) *testEnv {
 	store := admin.NewStore(pool, logger)
 
 	handler, err := web.NewHandler(store, logger, web.EnvConfig{
-		Name:                    "e2e-test",
-		AllowConditionOverrides: cfg.allowOverrides,
+		Name:                  "e2e-test",
+		AllowRuntimeOverrides: cfg.allowOverrides,
 	})
 	require.NoError(t, err)
 

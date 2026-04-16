@@ -361,10 +361,10 @@ func TestOverrideKey(t *testing.T) {
 	assert.Equal(t, "42", overrideKey(ptr(int32(42))))
 }
 
-func TestGateOverridesDisabled(t *testing.T) {
-	h := &Handler{env: EnvConfig{AllowConditionOverrides: false}}
+func TestGateRuntimeOverridesDisabled(t *testing.T) {
+	h := &Handler{env: EnvConfig{AllowRuntimeOverrides: false}}
 	called := false
-	gated := h.gateOverrides(func(w http.ResponseWriter, r *http.Request) { called = true })
+	gated := h.gateRuntimeOverrides(func(w http.ResponseWriter, r *http.Request) { called = true })
 
 	req := httptest.NewRequest(http.MethodPost, "/api/lock", nil)
 	w := httptest.NewRecorder()
@@ -372,13 +372,13 @@ func TestGateOverridesDisabled(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
 	assert.False(t, called, "downstream handler should not be invoked when gated off")
-	assert.Contains(t, w.Body.String(), "--allow-condition-overrides")
+	assert.Contains(t, w.Body.String(), "--allow-runtime-overrides")
 }
 
-func TestGateOverridesEnabled(t *testing.T) {
-	h := &Handler{env: EnvConfig{AllowConditionOverrides: true}}
+func TestGateRuntimeOverridesEnabled(t *testing.T) {
+	h := &Handler{env: EnvConfig{AllowRuntimeOverrides: true}}
 	called := false
-	gated := h.gateOverrides(func(w http.ResponseWriter, r *http.Request) {
+	gated := h.gateRuntimeOverrides(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	})
