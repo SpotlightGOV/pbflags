@@ -304,6 +304,75 @@ func TestAdminService_ListConditionOverrides_GatedOff(t *testing.T) {
 	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
 }
 
+// ── validateConditionIndex (pb-wff.20) ──────────────────────────────
+
+func TestValidateConditionIndex_NilAlwaysOK(t *testing.T) {
+	t.Parallel()
+	// Empty chain.
+	require.NoError(t, validateConditionIndex(&pbflagsv1.FlagDetail{}, nil))
+	// With chain.
+	chain := []*pbflagsv1.ConditionDetail{
+		{Index: 0, Cel: "x == 1"},
+		{Index: 1, Cel: ""}, // otherwise
+	}
+	require.NoError(t, validateConditionIndex(&pbflagsv1.FlagDetail{Conditions: chain}, nil))
+}
+
+func TestValidateConditionIndex_OutOfRange(t *testing.T) {
+	t.Parallel()
+	chain := []*pbflagsv1.ConditionDetail{{Index: 0, Cel: "x == 1"}}
+	flag := &pbflagsv1.FlagDetail{Conditions: chain}
+	for _, badIdx := range []int32{-1, 1, 99} {
+		i := badIdx
+		err := validateConditionIndex(flag, &i)
+		require.Error(t, err, "idx=%d", badIdx)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		require.Contains(t, err.Error(), "out of range")
+	}
+}
+
+func TestValidateConditionIndex_RejectsOtherwiseRow(t *testing.T) {
+	t.Parallel()
+	chain := []*pbflagsv1.ConditionDetail{
+		{Index: 0, Cel: "x == 1"},
+		{Index: 1, Cel: ""}, // otherwise — addressing this is forbidden
+	}
+	flag := &pbflagsv1.FlagDetail{Conditions: chain}
+	i := int32(1)
+	err := validateConditionIndex(flag, &i)
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	require.Contains(t, err.Error(), "otherwise")
+}
+
+func TestValidateConditionIndex_AcceptsRealCondition(t *testing.T) {
+	t.Parallel()
+	chain := []*pbflagsv1.ConditionDetail{
+		{Index: 0, Cel: "x == 1"},
+		{Index: 1, Cel: "y == 2"},
+		{Index: 2, Cel: ""}, // otherwise
+	}
+	flag := &pbflagsv1.FlagDetail{Conditions: chain}
+	for _, goodIdx := range []int32{0, 1} {
+		i := goodIdx
+		require.NoError(t, validateConditionIndex(flag, &i), "idx=%d", goodIdx)
+	}
+}
+
+func TestValidateConditionIndex_NoOtherwiseChainAcceptsLast(t *testing.T) {
+	t.Parallel()
+	// A chain whose last entry is a real CEL (no otherwise fallback).
+	// The compiled default IS reachable here, so the last index is a
+	// normal addressable condition — accept it.
+	chain := []*pbflagsv1.ConditionDetail{
+		{Index: 0, Cel: "x == 1"},
+		{Index: 1, Cel: "y == 2"},
+	}
+	flag := &pbflagsv1.FlagDetail{Conditions: chain}
+	i := int32(1)
+	require.NoError(t, validateConditionIndex(flag, &i))
+}
+
 // ── mapStoreErr classification ──────────────────────────────────────
 // Callers always check err != nil before invoking mapStoreErr, so nil
 // passthrough is intentionally not part of the contract.

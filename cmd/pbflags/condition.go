@@ -290,19 +290,35 @@ func runConditionList(args []string) {
 	fmt.Fprintln(tw, "  #\tCEL\tVALUE\tLAUNCH\tOVERRIDE")
 	for _, c := range chain {
 		cel := c.GetCel()
-		if cel == "" {
-			cel = "<otherwise>"
+		// The trailing "otherwise" row IS the fallback at evaluation
+		// time, and the server rejects overrides addressed to its
+		// numeric index (pb-wff.20). Render it without a numeric index
+		// so operators don't reach for `--condition-index=N-1` — the
+		// only way to override the fallback is to omit the index.
+		isOtherwise := cel == ""
+		if isOtherwise {
+			cel = "<otherwise — override via default>"
 		}
 		launch := "—"
 		if c.GetLaunchId() != "" {
 			launch = c.GetLaunchId()
 		}
 		ov := "—"
-		if o, ok := condOverrides[c.GetIndex()]; ok {
+		if isOtherwise {
+			// The static-default override (printed below the table)
+			// supersedes anything that could ever have lived here.
+			if defaultOverride != nil {
+				ov = fmt.Sprintf("%s (default override)", shortValue(defaultOverride.GetOverrideValue()))
+			}
+		} else if o, ok := condOverrides[c.GetIndex()]; ok {
 			ov = fmt.Sprintf("%s (was: %s)", shortValue(o.GetOverrideValue()), shortValue(c.GetValue()))
 		}
-		fmt.Fprintf(tw, "  %d\t%s\t%s\t%s\t%s\n",
-			c.GetIndex(),
+		idxCell := strconv.Itoa(int(c.GetIndex()))
+		if isOtherwise {
+			idxCell = "*"
+		}
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\n",
+			idxCell,
 			cel,
 			shortValue(c.GetValue()),
 			launch,
@@ -321,8 +337,8 @@ func runConditionList(args []string) {
 		if orig == nil {
 			orig = fd.GetDefaultValue()
 		}
-		fmt.Printf("Static default: %s\n", shortValue(orig))
-		fmt.Printf("           ⚠ OVERRIDE: %s  (%s, %s ago) — %s\n",
+		fmt.Printf("Default: %s\n", shortValue(orig))
+		fmt.Printf("    ⚠ OVERRIDE: %s  (%s, %s ago) — %s\n",
 			shortValue(defaultOverride.GetOverrideValue()),
 			defaultOverride.GetActor(),
 			time.Since(defaultOverride.GetCreatedAt().AsTime()).Truncate(time.Second),

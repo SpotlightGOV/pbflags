@@ -379,6 +379,31 @@ When a condition has an active override:
 - Same pattern, but the single "compiled default" row gets the Override button
 - condition_index is NULL (omitted in the API request)
 
+**The "otherwise" row IS the default — addressable only via NULL form:**
+
+Most chains end with a fallthrough `otherwise` row (cond.Program == nil)
+that always matches. At evaluation time it IS the fallback — when an
+otherwise row is present, the compiled-default code path is unreachable.
+
+To prevent two override rows representing the same evaluation effect,
+the server (`validateConditionIndex`) **rejects** SetConditionOverride /
+ClearConditionOverride calls that address an otherwise row by its
+numeric index. The error tells the operator to omit `condition_index`
+and use the NULL/static-default form instead:
+
+> condition[N-1] is the 'otherwise' fallback row; omit condition_index
+> to override the default
+
+Consequences:
+- One canonical row per flag for "the fallback override"
+  (`condition_overrides_flag_default`, condition_index IS NULL).
+- The CLI (`pb condition list`) renders the otherwise row with `*` in
+  the index column and the label `<otherwise — override via default>`
+  to surface the rule without an error round-trip.
+- For chains that do NOT end in `otherwise`, the compiled default is
+  reachable and its NULL-form override is meaningful; the last real
+  condition is just an addressable condition like any other.
+
 ### Banner when ANY overrides are active (flag detail header)
 
 ```html

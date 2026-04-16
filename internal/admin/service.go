@@ -308,14 +308,15 @@ func (a *AdminService) SetConditionOverride(ctx context.Context, req *connect.Re
 	if flag == nil {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("flag %s not found", req.Msg.GetFlagId()))
 	}
+	if vErr := validateConditionIndex(flag, condIdx); vErr != nil {
+		return nil, vErr
+	}
 	var originalValue *pbflagsv1.FlagValue
 	if condIdx == nil {
 		originalValue = flag.GetDefaultValue()
 	} else {
 		idx := int(*condIdx)
-		if idx >= 0 && idx < len(flag.GetConditions()) {
-			originalValue = flag.GetConditions()[idx].GetValue()
-		}
+		originalValue = flag.GetConditions()[idx].GetValue()
 	}
 
 	prev, err := a.store.SetConditionOverride(ctx, req.Msg.GetFlagId(), condIdx, req.Msg.GetValue(), source, actor, req.Msg.GetReason())
@@ -350,6 +351,23 @@ func (a *AdminService) ClearConditionOverride(ctx context.Context, req *connect.
 	if req.Msg.ConditionIndex != nil {
 		v := req.Msg.GetConditionIndex()
 		condIdx = &v
+	}
+
+	// Validate condition_index against the chain shape before touching
+	// the store. Symmetric with SetConditionOverride: callers should not
+	// be able to address an "otherwise" row by index — that override
+	// shape can never have been created in the first place.
+	if condIdx != nil {
+		flag, _, gErr := a.store.GetFlag(ctx, req.Msg.GetFlagId())
+		if gErr != nil {
+			return nil, connect.NewError(connect.CodeInternal, gErr)
+		}
+		if flag == nil {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("flag %s not found", req.Msg.GetFlagId()))
+		}
+		if vErr := validateConditionIndex(flag, condIdx); vErr != nil {
+			return nil, vErr
+		}
 	}
 
 	a.logger.Info("clearing condition override",
@@ -415,6 +433,35 @@ func (a *AdminService) ListConditionOverrides(ctx context.Context, req *connect.
 func errOverridesDisabled() error {
 	return connect.NewError(connect.CodePermissionDenied,
 		errors.New("condition overrides are disabled on this server"))
+}
+
+// validateConditionIndex enforces the chain-shape invariants for
+// override addressing (pb-wff.20):
+//
+//  1. condition_index, if set, must be in [0, len(chain)).
+//  2. condition_index must NOT point at the trailing "otherwise" row
+//     (a cond entry with empty CEL). The otherwise row IS the
+//     fallback at evaluation time, so any override on the compiled
+//     default must use the NULL form (omit condition_index). This
+//     prevents two distinct rows in condition_overrides from
+//     representing the same evaluation effect.
+//
+// nil condIdx is always valid (overrides the static / compiled default).
+func validateConditionIndex(flag *pbflagsv1.FlagDetail, condIdx *int32) error {
+	if condIdx == nil {
+		return nil
+	}
+	chain := flag.GetConditions()
+	idx := int(*condIdx)
+	if idx < 0 || idx >= len(chain) {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("condition_index %d out of range (chain has %d conditions)", idx, len(chain)))
+	}
+	if chain[idx].GetCel() == "" {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("condition[%d] is the 'otherwise' fallback row; omit condition_index to override the default", idx))
+	}
+	return nil
 }
 
 // mapStoreErr translates store-layer sentinel errors to Connect codes.
