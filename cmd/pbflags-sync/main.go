@@ -87,6 +87,12 @@ func main() {
 	}
 
 	if err := run(context.Background(), *database, *descriptors, *configDir, *sha); err != nil {
+		if held, ok := defsync.IsFreezeHeld(err); ok {
+			fmt.Fprintf(os.Stderr,
+				"\nSync is FROZEN.\n  holder: %s\n  reason: %s\n  since:  %s\n\nRelease with: pbflags unlock\n\n",
+				held.Info.Actor, held.Info.Reason, held.Info.CreatedAt.Format("2006-01-02 15:04:05 MST"))
+			os.Exit(2)
+		}
 		slog.Error("sync failed", "error", err)
 		os.Exit(1)
 	}

@@ -19,6 +19,16 @@ type CachedFlagState struct {
 	Conditions []CachedCondition // compiled condition chain (nil for static/unconfigured flags)
 	DimMeta    CachedDimMeta     // dimension classification metadata (nil for flags without conditions)
 	Launches   []CachedLaunch    // active launches (nil when no launches exist for this flag)
+
+	// Per-condition value overrides (key = 0-based condition index). When a
+	// condition matches and an entry exists for that index, the override
+	// value is returned in place of the compiled value (launches still ride
+	// on top per the design doc).
+	ConditionOverrides map[int32]*pbflagsv1.FlagValue
+	// Override of the static/compiled default. Returned when no condition
+	// matches (or the flag has no conditions) before falling back to the
+	// compiled default. Nil = no static-default override.
+	StaticDefaultOverride *pbflagsv1.FlagValue
 }
 
 // KillSet holds the current set of globally killed flags.

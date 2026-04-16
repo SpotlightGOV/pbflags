@@ -186,8 +186,14 @@ type FlagDetail struct {
 	// Metadata from proto descriptors.
 	SupportedValues *pbflags.SupportedValues `protobuf:"bytes,10,opt,name=supported_values,json=supportedValues,proto3" json:"supported_values,omitempty"`
 	Archived        bool                     `protobuf:"varint,11,opt,name=archived,proto3" json:"archived,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Active condition value overrides on this flag.
+	ConditionOverrides []*ConditionOverrideDetail `protobuf:"bytes,12,rep,name=condition_overrides,json=conditionOverrides,proto3" json:"condition_overrides,omitempty"`
+	// True when config-as-code currently manages this flag's conditions
+	// (i.e., the owning feature has a non-empty sync_sha). Operators get
+	// a warning when overriding a config-managed flag.
+	ConfigManaged bool `protobuf:"varint,13,opt,name=config_managed,json=configManaged,proto3" json:"config_managed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FlagDetail) Reset() {
@@ -297,6 +303,116 @@ func (x *FlagDetail) GetArchived() bool {
 	return false
 }
 
+func (x *FlagDetail) GetConditionOverrides() []*ConditionOverrideDetail {
+	if x != nil {
+		return x.ConditionOverrides
+	}
+	return nil
+}
+
+func (x *FlagDetail) GetConfigManaged() bool {
+	if x != nil {
+		return x.ConfigManaged
+	}
+	return false
+}
+
+// ConditionOverrideDetail describes one active override attached to a flag.
+type ConditionOverrideDetail struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Absent = override of the static/compiled default (or "otherwise" row).
+	ConditionIndex *int32     `protobuf:"varint,1,opt,name=condition_index,json=conditionIndex,proto3,oneof" json:"condition_index,omitempty"`
+	OverrideValue  *FlagValue `protobuf:"bytes,2,opt,name=override_value,json=overrideValue,proto3" json:"override_value,omitempty"`
+	// The original value before the override (for confirmation UX). Optional;
+	// not always populated.
+	OriginalValue *FlagValue             `protobuf:"bytes,3,opt,name=original_value,json=originalValue,proto3" json:"original_value,omitempty"`
+	Source        string                 `protobuf:"bytes,4,opt,name=source,proto3" json:"source,omitempty"` // "cli" or "ui"
+	Actor         string                 `protobuf:"bytes,5,opt,name=actor,proto3" json:"actor,omitempty"`
+	Reason        string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConditionOverrideDetail) Reset() {
+	*x = ConditionOverrideDetail{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConditionOverrideDetail) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConditionOverrideDetail) ProtoMessage() {}
+
+func (x *ConditionOverrideDetail) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConditionOverrideDetail.ProtoReflect.Descriptor instead.
+func (*ConditionOverrideDetail) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ConditionOverrideDetail) GetConditionIndex() int32 {
+	if x != nil && x.ConditionIndex != nil {
+		return *x.ConditionIndex
+	}
+	return 0
+}
+
+func (x *ConditionOverrideDetail) GetOverrideValue() *FlagValue {
+	if x != nil {
+		return x.OverrideValue
+	}
+	return nil
+}
+
+func (x *ConditionOverrideDetail) GetOriginalValue() *FlagValue {
+	if x != nil {
+		return x.OriginalValue
+	}
+	return nil
+}
+
+func (x *ConditionOverrideDetail) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *ConditionOverrideDetail) GetActor() string {
+	if x != nil {
+		return x.Actor
+	}
+	return ""
+}
+
+func (x *ConditionOverrideDetail) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *ConditionOverrideDetail) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
 type FlagOverrideDetail struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	EntityId      string                 `protobuf:"bytes,1,opt,name=entity_id,json=entityId,proto3" json:"entity_id,omitempty"`
@@ -308,7 +424,7 @@ type FlagOverrideDetail struct {
 
 func (x *FlagOverrideDetail) Reset() {
 	*x = FlagOverrideDetail{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[4]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -320,7 +436,7 @@ func (x *FlagOverrideDetail) String() string {
 func (*FlagOverrideDetail) ProtoMessage() {}
 
 func (x *FlagOverrideDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[4]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -333,7 +449,7 @@ func (x *FlagOverrideDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlagOverrideDetail.ProtoReflect.Descriptor instead.
 func (*FlagOverrideDetail) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{4}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *FlagOverrideDetail) GetEntityId() string {
@@ -366,7 +482,7 @@ type GetFlagRequest struct {
 
 func (x *GetFlagRequest) Reset() {
 	*x = GetFlagRequest{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[5]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -378,7 +494,7 @@ func (x *GetFlagRequest) String() string {
 func (*GetFlagRequest) ProtoMessage() {}
 
 func (x *GetFlagRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[5]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -391,7 +507,7 @@ func (x *GetFlagRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFlagRequest.ProtoReflect.Descriptor instead.
 func (*GetFlagRequest) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{5}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GetFlagRequest) GetFlagId() string {
@@ -410,7 +526,7 @@ type GetFlagResponse struct {
 
 func (x *GetFlagResponse) Reset() {
 	*x = GetFlagResponse{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[6]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -422,7 +538,7 @@ func (x *GetFlagResponse) String() string {
 func (*GetFlagResponse) ProtoMessage() {}
 
 func (x *GetFlagResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[6]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -435,7 +551,7 @@ func (x *GetFlagResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFlagResponse.ProtoReflect.Descriptor instead.
 func (*GetFlagResponse) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{6}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetFlagResponse) GetFlag() *FlagDetail {
@@ -457,7 +573,7 @@ type UpdateFlagStateRequest struct {
 
 func (x *UpdateFlagStateRequest) Reset() {
 	*x = UpdateFlagStateRequest{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[7]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -469,7 +585,7 @@ func (x *UpdateFlagStateRequest) String() string {
 func (*UpdateFlagStateRequest) ProtoMessage() {}
 
 func (x *UpdateFlagStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[7]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -482,7 +598,7 @@ func (x *UpdateFlagStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateFlagStateRequest.ProtoReflect.Descriptor instead.
 func (*UpdateFlagStateRequest) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{7}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UpdateFlagStateRequest) GetFlagId() string {
@@ -521,7 +637,7 @@ type UpdateFlagStateResponse struct {
 
 func (x *UpdateFlagStateResponse) Reset() {
 	*x = UpdateFlagStateResponse{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[8]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -533,7 +649,7 @@ func (x *UpdateFlagStateResponse) String() string {
 func (*UpdateFlagStateResponse) ProtoMessage() {}
 
 func (x *UpdateFlagStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[8]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -546,7 +662,7 @@ func (x *UpdateFlagStateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateFlagStateResponse.ProtoReflect.Descriptor instead.
 func (*UpdateFlagStateResponse) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{8}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{9}
 }
 
 // Validates: flag must have a non-GLOBAL layer. Value type must match flag type.
@@ -563,7 +679,7 @@ type SetFlagOverrideRequest struct {
 
 func (x *SetFlagOverrideRequest) Reset() {
 	*x = SetFlagOverrideRequest{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[9]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -575,7 +691,7 @@ func (x *SetFlagOverrideRequest) String() string {
 func (*SetFlagOverrideRequest) ProtoMessage() {}
 
 func (x *SetFlagOverrideRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[9]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -588,7 +704,7 @@ func (x *SetFlagOverrideRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetFlagOverrideRequest.ProtoReflect.Descriptor instead.
 func (*SetFlagOverrideRequest) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{9}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SetFlagOverrideRequest) GetFlagId() string {
@@ -634,7 +750,7 @@ type SetFlagOverrideResponse struct {
 
 func (x *SetFlagOverrideResponse) Reset() {
 	*x = SetFlagOverrideResponse{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[10]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -646,7 +762,7 @@ func (x *SetFlagOverrideResponse) String() string {
 func (*SetFlagOverrideResponse) ProtoMessage() {}
 
 func (x *SetFlagOverrideResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[10]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -659,7 +775,7 @@ func (x *SetFlagOverrideResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetFlagOverrideResponse.ProtoReflect.Descriptor instead.
 func (*SetFlagOverrideResponse) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{10}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{11}
 }
 
 type RemoveFlagOverrideRequest struct {
@@ -673,7 +789,7 @@ type RemoveFlagOverrideRequest struct {
 
 func (x *RemoveFlagOverrideRequest) Reset() {
 	*x = RemoveFlagOverrideRequest{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[11]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -685,7 +801,7 @@ func (x *RemoveFlagOverrideRequest) String() string {
 func (*RemoveFlagOverrideRequest) ProtoMessage() {}
 
 func (x *RemoveFlagOverrideRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[11]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -698,7 +814,7 @@ func (x *RemoveFlagOverrideRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveFlagOverrideRequest.ProtoReflect.Descriptor instead.
 func (*RemoveFlagOverrideRequest) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{11}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RemoveFlagOverrideRequest) GetFlagId() string {
@@ -730,7 +846,7 @@ type RemoveFlagOverrideResponse struct {
 
 func (x *RemoveFlagOverrideResponse) Reset() {
 	*x = RemoveFlagOverrideResponse{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[12]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -742,7 +858,7 @@ func (x *RemoveFlagOverrideResponse) String() string {
 func (*RemoveFlagOverrideResponse) ProtoMessage() {}
 
 func (x *RemoveFlagOverrideResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[12]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -755,7 +871,7 @@ func (x *RemoveFlagOverrideResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveFlagOverrideResponse.ProtoReflect.Descriptor instead.
 func (*RemoveFlagOverrideResponse) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{12}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{13}
 }
 
 type GetAuditLogRequest struct {
@@ -768,7 +884,7 @@ type GetAuditLogRequest struct {
 
 func (x *GetAuditLogRequest) Reset() {
 	*x = GetAuditLogRequest{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[13]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -780,7 +896,7 @@ func (x *GetAuditLogRequest) String() string {
 func (*GetAuditLogRequest) ProtoMessage() {}
 
 func (x *GetAuditLogRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[13]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -793,7 +909,7 @@ func (x *GetAuditLogRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAuditLogRequest.ProtoReflect.Descriptor instead.
 func (*GetAuditLogRequest) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{13}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetAuditLogRequest) GetFlagId() string {
@@ -819,7 +935,7 @@ type GetAuditLogResponse struct {
 
 func (x *GetAuditLogResponse) Reset() {
 	*x = GetAuditLogResponse{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[14]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -831,7 +947,7 @@ func (x *GetAuditLogResponse) String() string {
 func (*GetAuditLogResponse) ProtoMessage() {}
 
 func (x *GetAuditLogResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[14]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -844,7 +960,7 @@ func (x *GetAuditLogResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAuditLogResponse.ProtoReflect.Descriptor instead.
 func (*GetAuditLogResponse) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{14}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetAuditLogResponse) GetEntries() []*AuditLogEntry {
@@ -869,7 +985,7 @@ type AuditLogEntry struct {
 
 func (x *AuditLogEntry) Reset() {
 	*x = AuditLogEntry{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[15]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -881,7 +997,7 @@ func (x *AuditLogEntry) String() string {
 func (*AuditLogEntry) ProtoMessage() {}
 
 func (x *AuditLogEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[15]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -894,7 +1010,7 @@ func (x *AuditLogEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditLogEntry.ProtoReflect.Descriptor instead.
 func (*AuditLogEntry) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{15}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *AuditLogEntry) GetId() int64 {
@@ -965,7 +1081,7 @@ type LaunchDetail struct {
 
 func (x *LaunchDetail) Reset() {
 	*x = LaunchDetail{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[16]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -977,7 +1093,7 @@ func (x *LaunchDetail) String() string {
 func (*LaunchDetail) ProtoMessage() {}
 
 func (x *LaunchDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[16]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -990,7 +1106,7 @@ func (x *LaunchDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LaunchDetail.ProtoReflect.Descriptor instead.
 func (*LaunchDetail) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{16}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *LaunchDetail) GetLaunchId() string {
@@ -1079,7 +1195,7 @@ type ListLaunchesRequest struct {
 
 func (x *ListLaunchesRequest) Reset() {
 	*x = ListLaunchesRequest{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[17]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1091,7 +1207,7 @@ func (x *ListLaunchesRequest) String() string {
 func (*ListLaunchesRequest) ProtoMessage() {}
 
 func (x *ListLaunchesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[17]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1104,7 +1220,7 @@ func (x *ListLaunchesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLaunchesRequest.ProtoReflect.Descriptor instead.
 func (*ListLaunchesRequest) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{17}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ListLaunchesRequest) GetFeatureId() string {
@@ -1123,7 +1239,7 @@ type ListLaunchesResponse struct {
 
 func (x *ListLaunchesResponse) Reset() {
 	*x = ListLaunchesResponse{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[18]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1135,7 +1251,7 @@ func (x *ListLaunchesResponse) String() string {
 func (*ListLaunchesResponse) ProtoMessage() {}
 
 func (x *ListLaunchesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[18]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1148,7 +1264,7 @@ func (x *ListLaunchesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLaunchesResponse.ProtoReflect.Descriptor instead.
 func (*ListLaunchesResponse) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{18}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ListLaunchesResponse) GetLaunches() []*LaunchDetail {
@@ -1167,7 +1283,7 @@ type GetLaunchRequest struct {
 
 func (x *GetLaunchRequest) Reset() {
 	*x = GetLaunchRequest{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[19]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1179,7 +1295,7 @@ func (x *GetLaunchRequest) String() string {
 func (*GetLaunchRequest) ProtoMessage() {}
 
 func (x *GetLaunchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[19]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1192,7 +1308,7 @@ func (x *GetLaunchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLaunchRequest.ProtoReflect.Descriptor instead.
 func (*GetLaunchRequest) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{19}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *GetLaunchRequest) GetLaunchId() string {
@@ -1211,7 +1327,7 @@ type GetLaunchResponse struct {
 
 func (x *GetLaunchResponse) Reset() {
 	*x = GetLaunchResponse{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[20]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1223,7 +1339,7 @@ func (x *GetLaunchResponse) String() string {
 func (*GetLaunchResponse) ProtoMessage() {}
 
 func (x *GetLaunchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[20]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1236,7 +1352,7 @@ func (x *GetLaunchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLaunchResponse.ProtoReflect.Descriptor instead.
 func (*GetLaunchResponse) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{20}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetLaunchResponse) GetLaunch() *LaunchDetail {
@@ -1257,7 +1373,7 @@ type UpdateLaunchRampRequest struct {
 
 func (x *UpdateLaunchRampRequest) Reset() {
 	*x = UpdateLaunchRampRequest{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[21]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1269,7 +1385,7 @@ func (x *UpdateLaunchRampRequest) String() string {
 func (*UpdateLaunchRampRequest) ProtoMessage() {}
 
 func (x *UpdateLaunchRampRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[21]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1282,7 +1398,7 @@ func (x *UpdateLaunchRampRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateLaunchRampRequest.ProtoReflect.Descriptor instead.
 func (*UpdateLaunchRampRequest) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{21}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *UpdateLaunchRampRequest) GetLaunchId() string {
@@ -1315,7 +1431,7 @@ type UpdateLaunchRampResponse struct {
 
 func (x *UpdateLaunchRampResponse) Reset() {
 	*x = UpdateLaunchRampResponse{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[22]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1327,7 +1443,7 @@ func (x *UpdateLaunchRampResponse) String() string {
 func (*UpdateLaunchRampResponse) ProtoMessage() {}
 
 func (x *UpdateLaunchRampResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[22]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1340,7 +1456,7 @@ func (x *UpdateLaunchRampResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateLaunchRampResponse.ProtoReflect.Descriptor instead.
 func (*UpdateLaunchRampResponse) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{22}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *UpdateLaunchRampResponse) GetWarning() string {
@@ -1360,7 +1476,7 @@ type UpdateLaunchStatusRequest struct {
 
 func (x *UpdateLaunchStatusRequest) Reset() {
 	*x = UpdateLaunchStatusRequest{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[23]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1372,7 +1488,7 @@ func (x *UpdateLaunchStatusRequest) String() string {
 func (*UpdateLaunchStatusRequest) ProtoMessage() {}
 
 func (x *UpdateLaunchStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[23]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1385,7 +1501,7 @@ func (x *UpdateLaunchStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateLaunchStatusRequest.ProtoReflect.Descriptor instead.
 func (*UpdateLaunchStatusRequest) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{23}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *UpdateLaunchStatusRequest) GetLaunchId() string {
@@ -1410,7 +1526,7 @@ type UpdateLaunchStatusResponse struct {
 
 func (x *UpdateLaunchStatusResponse) Reset() {
 	*x = UpdateLaunchStatusResponse{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[24]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1422,7 +1538,7 @@ func (x *UpdateLaunchStatusResponse) String() string {
 func (*UpdateLaunchStatusResponse) ProtoMessage() {}
 
 func (x *UpdateLaunchStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[24]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1435,7 +1551,7 @@ func (x *UpdateLaunchStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateLaunchStatusResponse.ProtoReflect.Descriptor instead.
 func (*UpdateLaunchStatusResponse) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{24}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{25}
 }
 
 type KillLaunchRequest struct {
@@ -1447,7 +1563,7 @@ type KillLaunchRequest struct {
 
 func (x *KillLaunchRequest) Reset() {
 	*x = KillLaunchRequest{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[25]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1459,7 +1575,7 @@ func (x *KillLaunchRequest) String() string {
 func (*KillLaunchRequest) ProtoMessage() {}
 
 func (x *KillLaunchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[25]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1472,7 +1588,7 @@ func (x *KillLaunchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KillLaunchRequest.ProtoReflect.Descriptor instead.
 func (*KillLaunchRequest) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{25}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *KillLaunchRequest) GetLaunchId() string {
@@ -1490,7 +1606,7 @@ type KillLaunchResponse struct {
 
 func (x *KillLaunchResponse) Reset() {
 	*x = KillLaunchResponse{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[26]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1502,7 +1618,7 @@ func (x *KillLaunchResponse) String() string {
 func (*KillLaunchResponse) ProtoMessage() {}
 
 func (x *KillLaunchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[26]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1515,7 +1631,7 @@ func (x *KillLaunchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KillLaunchResponse.ProtoReflect.Descriptor instead.
 func (*KillLaunchResponse) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{26}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{27}
 }
 
 type UnkillLaunchRequest struct {
@@ -1527,7 +1643,7 @@ type UnkillLaunchRequest struct {
 
 func (x *UnkillLaunchRequest) Reset() {
 	*x = UnkillLaunchRequest{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[27]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1539,7 +1655,7 @@ func (x *UnkillLaunchRequest) String() string {
 func (*UnkillLaunchRequest) ProtoMessage() {}
 
 func (x *UnkillLaunchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[27]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1552,7 +1668,7 @@ func (x *UnkillLaunchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnkillLaunchRequest.ProtoReflect.Descriptor instead.
 func (*UnkillLaunchRequest) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{27}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *UnkillLaunchRequest) GetLaunchId() string {
@@ -1570,7 +1686,7 @@ type UnkillLaunchResponse struct {
 
 func (x *UnkillLaunchResponse) Reset() {
 	*x = UnkillLaunchResponse{}
-	mi := &file_pbflags_v1_admin_proto_msgTypes[28]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1582,7 +1698,7 @@ func (x *UnkillLaunchResponse) String() string {
 func (*UnkillLaunchResponse) ProtoMessage() {}
 
 func (x *UnkillLaunchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pbflags_v1_admin_proto_msgTypes[28]
+	mi := &file_pbflags_v1_admin_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1595,7 +1711,822 @@ func (x *UnkillLaunchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnkillLaunchResponse.ProtoReflect.Descriptor instead.
 func (*UnkillLaunchResponse) Descriptor() ([]byte, []int) {
-	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{28}
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{29}
+}
+
+type AcquireSyncFreezeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Actor         string                 `protobuf:"bytes,1,opt,name=actor,proto3" json:"actor,omitempty"`
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"` // required
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AcquireSyncFreezeRequest) Reset() {
+	*x = AcquireSyncFreezeRequest{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AcquireSyncFreezeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AcquireSyncFreezeRequest) ProtoMessage() {}
+
+func (x *AcquireSyncFreezeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AcquireSyncFreezeRequest.ProtoReflect.Descriptor instead.
+func (*AcquireSyncFreezeRequest) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *AcquireSyncFreezeRequest) GetActor() string {
+	if x != nil {
+		return x.Actor
+	}
+	return ""
+}
+
+func (x *AcquireSyncFreezeRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type AcquireSyncFreezeResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Populated when the freeze was newly acquired.
+	HeldSince     *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=held_since,json=heldSince,proto3" json:"held_since,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AcquireSyncFreezeResponse) Reset() {
+	*x = AcquireSyncFreezeResponse{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AcquireSyncFreezeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AcquireSyncFreezeResponse) ProtoMessage() {}
+
+func (x *AcquireSyncFreezeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AcquireSyncFreezeResponse.ProtoReflect.Descriptor instead.
+func (*AcquireSyncFreezeResponse) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *AcquireSyncFreezeResponse) GetHeldSince() *timestamppb.Timestamp {
+	if x != nil {
+		return x.HeldSince
+	}
+	return nil
+}
+
+type ReleaseSyncFreezeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Actor         string                 `protobuf:"bytes,1,opt,name=actor,proto3" json:"actor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReleaseSyncFreezeRequest) Reset() {
+	*x = ReleaseSyncFreezeRequest{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseSyncFreezeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseSyncFreezeRequest) ProtoMessage() {}
+
+func (x *ReleaseSyncFreezeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseSyncFreezeRequest.ProtoReflect.Descriptor instead.
+func (*ReleaseSyncFreezeRequest) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *ReleaseSyncFreezeRequest) GetActor() string {
+	if x != nil {
+		return x.Actor
+	}
+	return ""
+}
+
+type ReleaseSyncFreezeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReleaseSyncFreezeResponse) Reset() {
+	*x = ReleaseSyncFreezeResponse{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseSyncFreezeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseSyncFreezeResponse) ProtoMessage() {}
+
+func (x *ReleaseSyncFreezeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseSyncFreezeResponse.ProtoReflect.Descriptor instead.
+func (*ReleaseSyncFreezeResponse) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{33}
+}
+
+type GetSyncFreezeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSyncFreezeRequest) Reset() {
+	*x = GetSyncFreezeRequest{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSyncFreezeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSyncFreezeRequest) ProtoMessage() {}
+
+func (x *GetSyncFreezeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSyncFreezeRequest.ProtoReflect.Descriptor instead.
+func (*GetSyncFreezeRequest) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{34}
+}
+
+type GetSyncFreezeResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Populated when the freeze is currently held; absent fields = unlocked.
+	Held          bool                   `protobuf:"varint,1,opt,name=held,proto3" json:"held,omitempty"`
+	Actor         string                 `protobuf:"bytes,2,opt,name=actor,proto3" json:"actor,omitempty"`
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	HeldSince     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=held_since,json=heldSince,proto3" json:"held_since,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSyncFreezeResponse) Reset() {
+	*x = GetSyncFreezeResponse{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSyncFreezeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSyncFreezeResponse) ProtoMessage() {}
+
+func (x *GetSyncFreezeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSyncFreezeResponse.ProtoReflect.Descriptor instead.
+func (*GetSyncFreezeResponse) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *GetSyncFreezeResponse) GetHeld() bool {
+	if x != nil {
+		return x.Held
+	}
+	return false
+}
+
+func (x *GetSyncFreezeResponse) GetActor() string {
+	if x != nil {
+		return x.Actor
+	}
+	return ""
+}
+
+func (x *GetSyncFreezeResponse) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *GetSyncFreezeResponse) GetHeldSince() *timestamppb.Timestamp {
+	if x != nil {
+		return x.HeldSince
+	}
+	return nil
+}
+
+type SetConditionOverrideRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	FlagId string                 `protobuf:"bytes,1,opt,name=flag_id,json=flagId,proto3" json:"flag_id,omitempty"`
+	// 0-based index into the condition chain. Omit (oneof absence) to
+	// override the static/compiled default.
+	ConditionIndex *int32     `protobuf:"varint,2,opt,name=condition_index,json=conditionIndex,proto3,oneof" json:"condition_index,omitempty"`
+	Value          *FlagValue `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	Actor          string     `protobuf:"bytes,4,opt,name=actor,proto3" json:"actor,omitempty"`
+	Reason         string     `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"` // required — incident ticket, explanation
+	Source         string     `protobuf:"bytes,6,opt,name=source,proto3" json:"source,omitempty"` // "cli" or "ui"; defaults to "cli" if empty
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *SetConditionOverrideRequest) Reset() {
+	*x = SetConditionOverrideRequest{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetConditionOverrideRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetConditionOverrideRequest) ProtoMessage() {}
+
+func (x *SetConditionOverrideRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetConditionOverrideRequest.ProtoReflect.Descriptor instead.
+func (*SetConditionOverrideRequest) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *SetConditionOverrideRequest) GetFlagId() string {
+	if x != nil {
+		return x.FlagId
+	}
+	return ""
+}
+
+func (x *SetConditionOverrideRequest) GetConditionIndex() int32 {
+	if x != nil && x.ConditionIndex != nil {
+		return *x.ConditionIndex
+	}
+	return 0
+}
+
+func (x *SetConditionOverrideRequest) GetValue() *FlagValue {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+func (x *SetConditionOverrideRequest) GetActor() string {
+	if x != nil {
+		return x.Actor
+	}
+	return ""
+}
+
+func (x *SetConditionOverrideRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *SetConditionOverrideRequest) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+type SetConditionOverrideResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Non-empty when the flag is managed by config-as-code; the next sync
+	// will clear this override.
+	Warning string `protobuf:"bytes,1,opt,name=warning,proto3" json:"warning,omitempty"`
+	// The value at this condition before the override (for confirmation UX).
+	PreviousValue *FlagValue `protobuf:"bytes,2,opt,name=previous_value,json=previousValue,proto3" json:"previous_value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetConditionOverrideResponse) Reset() {
+	*x = SetConditionOverrideResponse{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetConditionOverrideResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetConditionOverrideResponse) ProtoMessage() {}
+
+func (x *SetConditionOverrideResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetConditionOverrideResponse.ProtoReflect.Descriptor instead.
+func (*SetConditionOverrideResponse) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *SetConditionOverrideResponse) GetWarning() string {
+	if x != nil {
+		return x.Warning
+	}
+	return ""
+}
+
+func (x *SetConditionOverrideResponse) GetPreviousValue() *FlagValue {
+	if x != nil {
+		return x.PreviousValue
+	}
+	return nil
+}
+
+type ClearConditionOverrideRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	FlagId string                 `protobuf:"bytes,1,opt,name=flag_id,json=flagId,proto3" json:"flag_id,omitempty"`
+	// Omit to clear the static-default override.
+	ConditionIndex *int32 `protobuf:"varint,2,opt,name=condition_index,json=conditionIndex,proto3,oneof" json:"condition_index,omitempty"`
+	Actor          string `protobuf:"bytes,3,opt,name=actor,proto3" json:"actor,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ClearConditionOverrideRequest) Reset() {
+	*x = ClearConditionOverrideRequest{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClearConditionOverrideRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClearConditionOverrideRequest) ProtoMessage() {}
+
+func (x *ClearConditionOverrideRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClearConditionOverrideRequest.ProtoReflect.Descriptor instead.
+func (*ClearConditionOverrideRequest) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *ClearConditionOverrideRequest) GetFlagId() string {
+	if x != nil {
+		return x.FlagId
+	}
+	return ""
+}
+
+func (x *ClearConditionOverrideRequest) GetConditionIndex() int32 {
+	if x != nil && x.ConditionIndex != nil {
+		return *x.ConditionIndex
+	}
+	return 0
+}
+
+func (x *ClearConditionOverrideRequest) GetActor() string {
+	if x != nil {
+		return x.Actor
+	}
+	return ""
+}
+
+type ClearConditionOverrideResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClearConditionOverrideResponse) Reset() {
+	*x = ClearConditionOverrideResponse{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClearConditionOverrideResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClearConditionOverrideResponse) ProtoMessage() {}
+
+func (x *ClearConditionOverrideResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClearConditionOverrideResponse.ProtoReflect.Descriptor instead.
+func (*ClearConditionOverrideResponse) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{39}
+}
+
+type ClearAllConditionOverridesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FlagId        string                 `protobuf:"bytes,1,opt,name=flag_id,json=flagId,proto3" json:"flag_id,omitempty"`
+	Actor         string                 `protobuf:"bytes,2,opt,name=actor,proto3" json:"actor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClearAllConditionOverridesRequest) Reset() {
+	*x = ClearAllConditionOverridesRequest{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClearAllConditionOverridesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClearAllConditionOverridesRequest) ProtoMessage() {}
+
+func (x *ClearAllConditionOverridesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClearAllConditionOverridesRequest.ProtoReflect.Descriptor instead.
+func (*ClearAllConditionOverridesRequest) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *ClearAllConditionOverridesRequest) GetFlagId() string {
+	if x != nil {
+		return x.FlagId
+	}
+	return ""
+}
+
+func (x *ClearAllConditionOverridesRequest) GetActor() string {
+	if x != nil {
+		return x.Actor
+	}
+	return ""
+}
+
+type ClearAllConditionOverridesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ClearedCount  int32                  `protobuf:"varint,1,opt,name=cleared_count,json=clearedCount,proto3" json:"cleared_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClearAllConditionOverridesResponse) Reset() {
+	*x = ClearAllConditionOverridesResponse{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClearAllConditionOverridesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClearAllConditionOverridesResponse) ProtoMessage() {}
+
+func (x *ClearAllConditionOverridesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClearAllConditionOverridesResponse.ProtoReflect.Descriptor instead.
+func (*ClearAllConditionOverridesResponse) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *ClearAllConditionOverridesResponse) GetClearedCount() int32 {
+	if x != nil {
+		return x.ClearedCount
+	}
+	return 0
+}
+
+type ListConditionOverridesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Optional: filter by flag.
+	FlagId string `protobuf:"bytes,1,opt,name=flag_id,json=flagId,proto3" json:"flag_id,omitempty"`
+	// Optional: only show overrides older than this many seconds.
+	MinAgeSeconds int64 `protobuf:"varint,2,opt,name=min_age_seconds,json=minAgeSeconds,proto3" json:"min_age_seconds,omitempty"`
+	// Optional: filter by actor (case-insensitive substring).
+	Actor         string `protobuf:"bytes,3,opt,name=actor,proto3" json:"actor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListConditionOverridesRequest) Reset() {
+	*x = ListConditionOverridesRequest{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListConditionOverridesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListConditionOverridesRequest) ProtoMessage() {}
+
+func (x *ListConditionOverridesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListConditionOverridesRequest.ProtoReflect.Descriptor instead.
+func (*ListConditionOverridesRequest) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *ListConditionOverridesRequest) GetFlagId() string {
+	if x != nil {
+		return x.FlagId
+	}
+	return ""
+}
+
+func (x *ListConditionOverridesRequest) GetMinAgeSeconds() int64 {
+	if x != nil {
+		return x.MinAgeSeconds
+	}
+	return 0
+}
+
+func (x *ListConditionOverridesRequest) GetActor() string {
+	if x != nil {
+		return x.Actor
+	}
+	return ""
+}
+
+type ListConditionOverridesResponse struct {
+	state         protoimpl.MessageState        `protogen:"open.v1"`
+	Entries       []*ConditionOverrideListEntry `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListConditionOverridesResponse) Reset() {
+	*x = ListConditionOverridesResponse{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListConditionOverridesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListConditionOverridesResponse) ProtoMessage() {}
+
+func (x *ListConditionOverridesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListConditionOverridesResponse.ProtoReflect.Descriptor instead.
+func (*ListConditionOverridesResponse) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *ListConditionOverridesResponse) GetEntries() []*ConditionOverrideListEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+type ConditionOverrideListEntry struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	FlagId         string                 `protobuf:"bytes,1,opt,name=flag_id,json=flagId,proto3" json:"flag_id,omitempty"`
+	ConditionIndex *int32                 `protobuf:"varint,2,opt,name=condition_index,json=conditionIndex,proto3,oneof" json:"condition_index,omitempty"`
+	OverrideValue  *FlagValue             `protobuf:"bytes,3,opt,name=override_value,json=overrideValue,proto3" json:"override_value,omitempty"`
+	Source         string                 `protobuf:"bytes,4,opt,name=source,proto3" json:"source,omitempty"`
+	Actor          string                 `protobuf:"bytes,5,opt,name=actor,proto3" json:"actor,omitempty"`
+	Reason         string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
+	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ConditionOverrideListEntry) Reset() {
+	*x = ConditionOverrideListEntry{}
+	mi := &file_pbflags_v1_admin_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConditionOverrideListEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConditionOverrideListEntry) ProtoMessage() {}
+
+func (x *ConditionOverrideListEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_pbflags_v1_admin_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConditionOverrideListEntry.ProtoReflect.Descriptor instead.
+func (*ConditionOverrideListEntry) Descriptor() ([]byte, []int) {
+	return file_pbflags_v1_admin_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *ConditionOverrideListEntry) GetFlagId() string {
+	if x != nil {
+		return x.FlagId
+	}
+	return ""
+}
+
+func (x *ConditionOverrideListEntry) GetConditionIndex() int32 {
+	if x != nil && x.ConditionIndex != nil {
+		return *x.ConditionIndex
+	}
+	return 0
+}
+
+func (x *ConditionOverrideListEntry) GetOverrideValue() *FlagValue {
+	if x != nil {
+		return x.OverrideValue
+	}
+	return nil
+}
+
+func (x *ConditionOverrideListEntry) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *ConditionOverrideListEntry) GetActor() string {
+	if x != nil {
+		return x.Actor
+	}
+	return ""
+}
+
+func (x *ConditionOverrideListEntry) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *ConditionOverrideListEntry) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
 }
 
 var File_pbflags_v1_admin_proto protoreflect.FileDescriptor
@@ -1612,7 +2543,7 @@ const file_pbflags_v1_admin_proto_rawDesc = "" +
 	"feature_id\x18\x01 \x01(\tR\tfeatureId\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x14\n" +
 	"\x05owner\x18\x03 \x01(\tR\x05owner\x12,\n" +
-	"\x05flags\x18\x04 \x03(\v2\x16.pbflags.v1.FlagDetailR\x05flags\"\xf3\x03\n" +
+	"\x05flags\x18\x04 \x03(\v2\x16.pbflags.v1.FlagDetailR\x05flags\"\xf0\x04\n" +
 	"\n" +
 	"FlagDetail\x12\x17\n" +
 	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12!\n" +
@@ -1626,7 +2557,19 @@ const file_pbflags_v1_admin_proto_rawDesc = "" +
 	"\toverrides\x18\t \x03(\v2\x1e.pbflags.v1.FlagOverrideDetailR\toverrides\x12C\n" +
 	"\x10supported_values\x18\n" +
 	" \x01(\v2\x18.pbflags.SupportedValuesR\x0fsupportedValues\x12\x1a\n" +
-	"\barchived\x18\v \x01(\bR\barchived\"\x87\x01\n" +
+	"\barchived\x18\v \x01(\bR\barchived\x12T\n" +
+	"\x13condition_overrides\x18\f \x03(\v2#.pbflags.v1.ConditionOverrideDetailR\x12conditionOverrides\x12%\n" +
+	"\x0econfig_managed\x18\r \x01(\bR\rconfigManaged\"\xd8\x02\n" +
+	"\x17ConditionOverrideDetail\x12,\n" +
+	"\x0fcondition_index\x18\x01 \x01(\x05H\x00R\x0econditionIndex\x88\x01\x01\x12<\n" +
+	"\x0eoverride_value\x18\x02 \x01(\v2\x15.pbflags.v1.FlagValueR\roverrideValue\x12<\n" +
+	"\x0eoriginal_value\x18\x03 \x01(\v2\x15.pbflags.v1.FlagValueR\roriginalValue\x12\x16\n" +
+	"\x06source\x18\x04 \x01(\tR\x06source\x12\x14\n" +
+	"\x05actor\x18\x05 \x01(\tR\x05actor\x12\x16\n" +
+	"\x06reason\x18\x06 \x01(\tR\x06reason\x129\n" +
+	"\n" +
+	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAtB\x12\n" +
+	"\x10_condition_index\"\x87\x01\n" +
 	"\x12FlagOverrideDetail\x12\x1b\n" +
 	"\tentity_id\x18\x01 \x01(\tR\bentityId\x12'\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x11.pbflags.v1.StateR\x05state\x12+\n" +
@@ -1707,7 +2650,61 @@ const file_pbflags_v1_admin_proto_rawDesc = "" +
 	"\x12KillLaunchResponse\"2\n" +
 	"\x13UnkillLaunchRequest\x12\x1b\n" +
 	"\tlaunch_id\x18\x01 \x01(\tR\blaunchId\"\x16\n" +
-	"\x14UnkillLaunchResponse2\x97\b\n" +
+	"\x14UnkillLaunchResponse\"H\n" +
+	"\x18AcquireSyncFreezeRequest\x12\x14\n" +
+	"\x05actor\x18\x01 \x01(\tR\x05actor\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"V\n" +
+	"\x19AcquireSyncFreezeResponse\x129\n" +
+	"\n" +
+	"held_since\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\theldSince\"0\n" +
+	"\x18ReleaseSyncFreezeRequest\x12\x14\n" +
+	"\x05actor\x18\x01 \x01(\tR\x05actor\"\x1b\n" +
+	"\x19ReleaseSyncFreezeResponse\"\x16\n" +
+	"\x14GetSyncFreezeRequest\"\x94\x01\n" +
+	"\x15GetSyncFreezeResponse\x12\x12\n" +
+	"\x04held\x18\x01 \x01(\bR\x04held\x12\x14\n" +
+	"\x05actor\x18\x02 \x01(\tR\x05actor\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x129\n" +
+	"\n" +
+	"held_since\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\theldSince\"\xeb\x01\n" +
+	"\x1bSetConditionOverrideRequest\x12\x17\n" +
+	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12,\n" +
+	"\x0fcondition_index\x18\x02 \x01(\x05H\x00R\x0econditionIndex\x88\x01\x01\x12+\n" +
+	"\x05value\x18\x03 \x01(\v2\x15.pbflags.v1.FlagValueR\x05value\x12\x14\n" +
+	"\x05actor\x18\x04 \x01(\tR\x05actor\x12\x16\n" +
+	"\x06reason\x18\x05 \x01(\tR\x06reason\x12\x16\n" +
+	"\x06source\x18\x06 \x01(\tR\x06sourceB\x12\n" +
+	"\x10_condition_index\"v\n" +
+	"\x1cSetConditionOverrideResponse\x12\x18\n" +
+	"\awarning\x18\x01 \x01(\tR\awarning\x12<\n" +
+	"\x0eprevious_value\x18\x02 \x01(\v2\x15.pbflags.v1.FlagValueR\rpreviousValue\"\x90\x01\n" +
+	"\x1dClearConditionOverrideRequest\x12\x17\n" +
+	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12,\n" +
+	"\x0fcondition_index\x18\x02 \x01(\x05H\x00R\x0econditionIndex\x88\x01\x01\x12\x14\n" +
+	"\x05actor\x18\x03 \x01(\tR\x05actorB\x12\n" +
+	"\x10_condition_index\" \n" +
+	"\x1eClearConditionOverrideResponse\"R\n" +
+	"!ClearAllConditionOverridesRequest\x12\x17\n" +
+	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12\x14\n" +
+	"\x05actor\x18\x02 \x01(\tR\x05actor\"I\n" +
+	"\"ClearAllConditionOverridesResponse\x12#\n" +
+	"\rcleared_count\x18\x01 \x01(\x05R\fclearedCount\"v\n" +
+	"\x1dListConditionOverridesRequest\x12\x17\n" +
+	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12&\n" +
+	"\x0fmin_age_seconds\x18\x02 \x01(\x03R\rminAgeSeconds\x12\x14\n" +
+	"\x05actor\x18\x03 \x01(\tR\x05actor\"b\n" +
+	"\x1eListConditionOverridesResponse\x12@\n" +
+	"\aentries\x18\x01 \x03(\v2&.pbflags.v1.ConditionOverrideListEntryR\aentries\"\xb6\x02\n" +
+	"\x1aConditionOverrideListEntry\x12\x17\n" +
+	"\aflag_id\x18\x01 \x01(\tR\x06flagId\x12,\n" +
+	"\x0fcondition_index\x18\x02 \x01(\x05H\x00R\x0econditionIndex\x88\x01\x01\x12<\n" +
+	"\x0eoverride_value\x18\x03 \x01(\v2\x15.pbflags.v1.FlagValueR\roverrideValue\x12\x16\n" +
+	"\x06source\x18\x04 \x01(\tR\x06source\x12\x14\n" +
+	"\x05actor\x18\x05 \x01(\tR\x05actor\x12\x16\n" +
+	"\x06reason\x18\x06 \x01(\tR\x06reason\x129\n" +
+	"\n" +
+	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAtB\x12\n" +
+	"\x10_condition_index2\xfb\r\n" +
 	"\x10FlagAdminService\x12Q\n" +
 	"\fListFeatures\x12\x1f.pbflags.v1.ListFeaturesRequest\x1a .pbflags.v1.ListFeaturesResponse\x12B\n" +
 	"\aGetFlag\x12\x1a.pbflags.v1.GetFlagRequest\x1a\x1b.pbflags.v1.GetFlagResponse\x12Z\n" +
@@ -1721,7 +2718,14 @@ const file_pbflags_v1_admin_proto_rawDesc = "" +
 	"\x12UpdateLaunchStatus\x12%.pbflags.v1.UpdateLaunchStatusRequest\x1a&.pbflags.v1.UpdateLaunchStatusResponse\x12K\n" +
 	"\n" +
 	"KillLaunch\x12\x1d.pbflags.v1.KillLaunchRequest\x1a\x1e.pbflags.v1.KillLaunchResponse\x12Q\n" +
-	"\fUnkillLaunch\x12\x1f.pbflags.v1.UnkillLaunchRequest\x1a .pbflags.v1.UnkillLaunchResponseB_\n" +
+	"\fUnkillLaunch\x12\x1f.pbflags.v1.UnkillLaunchRequest\x1a .pbflags.v1.UnkillLaunchResponse\x12`\n" +
+	"\x11AcquireSyncFreeze\x12$.pbflags.v1.AcquireSyncFreezeRequest\x1a%.pbflags.v1.AcquireSyncFreezeResponse\x12`\n" +
+	"\x11ReleaseSyncFreeze\x12$.pbflags.v1.ReleaseSyncFreezeRequest\x1a%.pbflags.v1.ReleaseSyncFreezeResponse\x12T\n" +
+	"\rGetSyncFreeze\x12 .pbflags.v1.GetSyncFreezeRequest\x1a!.pbflags.v1.GetSyncFreezeResponse\x12i\n" +
+	"\x14SetConditionOverride\x12'.pbflags.v1.SetConditionOverrideRequest\x1a(.pbflags.v1.SetConditionOverrideResponse\x12o\n" +
+	"\x16ClearConditionOverride\x12).pbflags.v1.ClearConditionOverrideRequest\x1a*.pbflags.v1.ClearConditionOverrideResponse\x12{\n" +
+	"\x1aClearAllConditionOverrides\x12-.pbflags.v1.ClearAllConditionOverridesRequest\x1a..pbflags.v1.ClearAllConditionOverridesResponse\x12o\n" +
+	"\x16ListConditionOverrides\x12).pbflags.v1.ListConditionOverridesRequest\x1a*.pbflags.v1.ListConditionOverridesResponseB_\n" +
 	"!org.spotlightgov.pbflags.v1.protoP\x01Z8github.com/SpotlightGOV/pbflags/gen/pbflags/v1;pbflagsv1b\x06proto3"
 
 var (
@@ -1736,97 +2740,138 @@ func file_pbflags_v1_admin_proto_rawDescGZIP() []byte {
 	return file_pbflags_v1_admin_proto_rawDescData
 }
 
-var file_pbflags_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
+var file_pbflags_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 45)
 var file_pbflags_v1_admin_proto_goTypes = []any{
-	(*ListFeaturesRequest)(nil),        // 0: pbflags.v1.ListFeaturesRequest
-	(*ListFeaturesResponse)(nil),       // 1: pbflags.v1.ListFeaturesResponse
-	(*FeatureDetail)(nil),              // 2: pbflags.v1.FeatureDetail
-	(*FlagDetail)(nil),                 // 3: pbflags.v1.FlagDetail
-	(*FlagOverrideDetail)(nil),         // 4: pbflags.v1.FlagOverrideDetail
-	(*GetFlagRequest)(nil),             // 5: pbflags.v1.GetFlagRequest
-	(*GetFlagResponse)(nil),            // 6: pbflags.v1.GetFlagResponse
-	(*UpdateFlagStateRequest)(nil),     // 7: pbflags.v1.UpdateFlagStateRequest
-	(*UpdateFlagStateResponse)(nil),    // 8: pbflags.v1.UpdateFlagStateResponse
-	(*SetFlagOverrideRequest)(nil),     // 9: pbflags.v1.SetFlagOverrideRequest
-	(*SetFlagOverrideResponse)(nil),    // 10: pbflags.v1.SetFlagOverrideResponse
-	(*RemoveFlagOverrideRequest)(nil),  // 11: pbflags.v1.RemoveFlagOverrideRequest
-	(*RemoveFlagOverrideResponse)(nil), // 12: pbflags.v1.RemoveFlagOverrideResponse
-	(*GetAuditLogRequest)(nil),         // 13: pbflags.v1.GetAuditLogRequest
-	(*GetAuditLogResponse)(nil),        // 14: pbflags.v1.GetAuditLogResponse
-	(*AuditLogEntry)(nil),              // 15: pbflags.v1.AuditLogEntry
-	(*LaunchDetail)(nil),               // 16: pbflags.v1.LaunchDetail
-	(*ListLaunchesRequest)(nil),        // 17: pbflags.v1.ListLaunchesRequest
-	(*ListLaunchesResponse)(nil),       // 18: pbflags.v1.ListLaunchesResponse
-	(*GetLaunchRequest)(nil),           // 19: pbflags.v1.GetLaunchRequest
-	(*GetLaunchResponse)(nil),          // 20: pbflags.v1.GetLaunchResponse
-	(*UpdateLaunchRampRequest)(nil),    // 21: pbflags.v1.UpdateLaunchRampRequest
-	(*UpdateLaunchRampResponse)(nil),   // 22: pbflags.v1.UpdateLaunchRampResponse
-	(*UpdateLaunchStatusRequest)(nil),  // 23: pbflags.v1.UpdateLaunchStatusRequest
-	(*UpdateLaunchStatusResponse)(nil), // 24: pbflags.v1.UpdateLaunchStatusResponse
-	(*KillLaunchRequest)(nil),          // 25: pbflags.v1.KillLaunchRequest
-	(*KillLaunchResponse)(nil),         // 26: pbflags.v1.KillLaunchResponse
-	(*UnkillLaunchRequest)(nil),        // 27: pbflags.v1.UnkillLaunchRequest
-	(*UnkillLaunchResponse)(nil),       // 28: pbflags.v1.UnkillLaunchResponse
-	(FlagType)(0),                      // 29: pbflags.v1.FlagType
-	(State)(0),                         // 30: pbflags.v1.State
-	(*FlagValue)(nil),                  // 31: pbflags.v1.FlagValue
-	(*pbflags.SupportedValues)(nil),    // 32: pbflags.SupportedValues
-	(*timestamppb.Timestamp)(nil),      // 33: google.protobuf.Timestamp
+	(*ListFeaturesRequest)(nil),                // 0: pbflags.v1.ListFeaturesRequest
+	(*ListFeaturesResponse)(nil),               // 1: pbflags.v1.ListFeaturesResponse
+	(*FeatureDetail)(nil),                      // 2: pbflags.v1.FeatureDetail
+	(*FlagDetail)(nil),                         // 3: pbflags.v1.FlagDetail
+	(*ConditionOverrideDetail)(nil),            // 4: pbflags.v1.ConditionOverrideDetail
+	(*FlagOverrideDetail)(nil),                 // 5: pbflags.v1.FlagOverrideDetail
+	(*GetFlagRequest)(nil),                     // 6: pbflags.v1.GetFlagRequest
+	(*GetFlagResponse)(nil),                    // 7: pbflags.v1.GetFlagResponse
+	(*UpdateFlagStateRequest)(nil),             // 8: pbflags.v1.UpdateFlagStateRequest
+	(*UpdateFlagStateResponse)(nil),            // 9: pbflags.v1.UpdateFlagStateResponse
+	(*SetFlagOverrideRequest)(nil),             // 10: pbflags.v1.SetFlagOverrideRequest
+	(*SetFlagOverrideResponse)(nil),            // 11: pbflags.v1.SetFlagOverrideResponse
+	(*RemoveFlagOverrideRequest)(nil),          // 12: pbflags.v1.RemoveFlagOverrideRequest
+	(*RemoveFlagOverrideResponse)(nil),         // 13: pbflags.v1.RemoveFlagOverrideResponse
+	(*GetAuditLogRequest)(nil),                 // 14: pbflags.v1.GetAuditLogRequest
+	(*GetAuditLogResponse)(nil),                // 15: pbflags.v1.GetAuditLogResponse
+	(*AuditLogEntry)(nil),                      // 16: pbflags.v1.AuditLogEntry
+	(*LaunchDetail)(nil),                       // 17: pbflags.v1.LaunchDetail
+	(*ListLaunchesRequest)(nil),                // 18: pbflags.v1.ListLaunchesRequest
+	(*ListLaunchesResponse)(nil),               // 19: pbflags.v1.ListLaunchesResponse
+	(*GetLaunchRequest)(nil),                   // 20: pbflags.v1.GetLaunchRequest
+	(*GetLaunchResponse)(nil),                  // 21: pbflags.v1.GetLaunchResponse
+	(*UpdateLaunchRampRequest)(nil),            // 22: pbflags.v1.UpdateLaunchRampRequest
+	(*UpdateLaunchRampResponse)(nil),           // 23: pbflags.v1.UpdateLaunchRampResponse
+	(*UpdateLaunchStatusRequest)(nil),          // 24: pbflags.v1.UpdateLaunchStatusRequest
+	(*UpdateLaunchStatusResponse)(nil),         // 25: pbflags.v1.UpdateLaunchStatusResponse
+	(*KillLaunchRequest)(nil),                  // 26: pbflags.v1.KillLaunchRequest
+	(*KillLaunchResponse)(nil),                 // 27: pbflags.v1.KillLaunchResponse
+	(*UnkillLaunchRequest)(nil),                // 28: pbflags.v1.UnkillLaunchRequest
+	(*UnkillLaunchResponse)(nil),               // 29: pbflags.v1.UnkillLaunchResponse
+	(*AcquireSyncFreezeRequest)(nil),           // 30: pbflags.v1.AcquireSyncFreezeRequest
+	(*AcquireSyncFreezeResponse)(nil),          // 31: pbflags.v1.AcquireSyncFreezeResponse
+	(*ReleaseSyncFreezeRequest)(nil),           // 32: pbflags.v1.ReleaseSyncFreezeRequest
+	(*ReleaseSyncFreezeResponse)(nil),          // 33: pbflags.v1.ReleaseSyncFreezeResponse
+	(*GetSyncFreezeRequest)(nil),               // 34: pbflags.v1.GetSyncFreezeRequest
+	(*GetSyncFreezeResponse)(nil),              // 35: pbflags.v1.GetSyncFreezeResponse
+	(*SetConditionOverrideRequest)(nil),        // 36: pbflags.v1.SetConditionOverrideRequest
+	(*SetConditionOverrideResponse)(nil),       // 37: pbflags.v1.SetConditionOverrideResponse
+	(*ClearConditionOverrideRequest)(nil),      // 38: pbflags.v1.ClearConditionOverrideRequest
+	(*ClearConditionOverrideResponse)(nil),     // 39: pbflags.v1.ClearConditionOverrideResponse
+	(*ClearAllConditionOverridesRequest)(nil),  // 40: pbflags.v1.ClearAllConditionOverridesRequest
+	(*ClearAllConditionOverridesResponse)(nil), // 41: pbflags.v1.ClearAllConditionOverridesResponse
+	(*ListConditionOverridesRequest)(nil),      // 42: pbflags.v1.ListConditionOverridesRequest
+	(*ListConditionOverridesResponse)(nil),     // 43: pbflags.v1.ListConditionOverridesResponse
+	(*ConditionOverrideListEntry)(nil),         // 44: pbflags.v1.ConditionOverrideListEntry
+	(FlagType)(0),                              // 45: pbflags.v1.FlagType
+	(State)(0),                                 // 46: pbflags.v1.State
+	(*FlagValue)(nil),                          // 47: pbflags.v1.FlagValue
+	(*pbflags.SupportedValues)(nil),            // 48: pbflags.SupportedValues
+	(*timestamppb.Timestamp)(nil),              // 49: google.protobuf.Timestamp
 }
 var file_pbflags_v1_admin_proto_depIdxs = []int32{
 	2,  // 0: pbflags.v1.ListFeaturesResponse.features:type_name -> pbflags.v1.FeatureDetail
 	3,  // 1: pbflags.v1.FeatureDetail.flags:type_name -> pbflags.v1.FlagDetail
-	29, // 2: pbflags.v1.FlagDetail.flag_type:type_name -> pbflags.v1.FlagType
-	30, // 3: pbflags.v1.FlagDetail.state:type_name -> pbflags.v1.State
-	31, // 4: pbflags.v1.FlagDetail.default_value:type_name -> pbflags.v1.FlagValue
-	31, // 5: pbflags.v1.FlagDetail.current_value:type_name -> pbflags.v1.FlagValue
-	4,  // 6: pbflags.v1.FlagDetail.overrides:type_name -> pbflags.v1.FlagOverrideDetail
-	32, // 7: pbflags.v1.FlagDetail.supported_values:type_name -> pbflags.SupportedValues
-	30, // 8: pbflags.v1.FlagOverrideDetail.state:type_name -> pbflags.v1.State
-	31, // 9: pbflags.v1.FlagOverrideDetail.value:type_name -> pbflags.v1.FlagValue
-	3,  // 10: pbflags.v1.GetFlagResponse.flag:type_name -> pbflags.v1.FlagDetail
-	30, // 11: pbflags.v1.UpdateFlagStateRequest.state:type_name -> pbflags.v1.State
-	31, // 12: pbflags.v1.UpdateFlagStateRequest.value:type_name -> pbflags.v1.FlagValue
-	30, // 13: pbflags.v1.SetFlagOverrideRequest.state:type_name -> pbflags.v1.State
-	31, // 14: pbflags.v1.SetFlagOverrideRequest.value:type_name -> pbflags.v1.FlagValue
-	15, // 15: pbflags.v1.GetAuditLogResponse.entries:type_name -> pbflags.v1.AuditLogEntry
-	31, // 16: pbflags.v1.AuditLogEntry.old_value:type_name -> pbflags.v1.FlagValue
-	31, // 17: pbflags.v1.AuditLogEntry.new_value:type_name -> pbflags.v1.FlagValue
-	33, // 18: pbflags.v1.AuditLogEntry.created_at:type_name -> google.protobuf.Timestamp
-	33, // 19: pbflags.v1.LaunchDetail.killed_at:type_name -> google.protobuf.Timestamp
-	33, // 20: pbflags.v1.LaunchDetail.created_at:type_name -> google.protobuf.Timestamp
-	33, // 21: pbflags.v1.LaunchDetail.updated_at:type_name -> google.protobuf.Timestamp
-	16, // 22: pbflags.v1.ListLaunchesResponse.launches:type_name -> pbflags.v1.LaunchDetail
-	16, // 23: pbflags.v1.GetLaunchResponse.launch:type_name -> pbflags.v1.LaunchDetail
-	0,  // 24: pbflags.v1.FlagAdminService.ListFeatures:input_type -> pbflags.v1.ListFeaturesRequest
-	5,  // 25: pbflags.v1.FlagAdminService.GetFlag:input_type -> pbflags.v1.GetFlagRequest
-	7,  // 26: pbflags.v1.FlagAdminService.UpdateFlagState:input_type -> pbflags.v1.UpdateFlagStateRequest
-	9,  // 27: pbflags.v1.FlagAdminService.SetFlagOverride:input_type -> pbflags.v1.SetFlagOverrideRequest
-	11, // 28: pbflags.v1.FlagAdminService.RemoveFlagOverride:input_type -> pbflags.v1.RemoveFlagOverrideRequest
-	13, // 29: pbflags.v1.FlagAdminService.GetAuditLog:input_type -> pbflags.v1.GetAuditLogRequest
-	17, // 30: pbflags.v1.FlagAdminService.ListLaunches:input_type -> pbflags.v1.ListLaunchesRequest
-	19, // 31: pbflags.v1.FlagAdminService.GetLaunch:input_type -> pbflags.v1.GetLaunchRequest
-	21, // 32: pbflags.v1.FlagAdminService.UpdateLaunchRamp:input_type -> pbflags.v1.UpdateLaunchRampRequest
-	23, // 33: pbflags.v1.FlagAdminService.UpdateLaunchStatus:input_type -> pbflags.v1.UpdateLaunchStatusRequest
-	25, // 34: pbflags.v1.FlagAdminService.KillLaunch:input_type -> pbflags.v1.KillLaunchRequest
-	27, // 35: pbflags.v1.FlagAdminService.UnkillLaunch:input_type -> pbflags.v1.UnkillLaunchRequest
-	1,  // 36: pbflags.v1.FlagAdminService.ListFeatures:output_type -> pbflags.v1.ListFeaturesResponse
-	6,  // 37: pbflags.v1.FlagAdminService.GetFlag:output_type -> pbflags.v1.GetFlagResponse
-	8,  // 38: pbflags.v1.FlagAdminService.UpdateFlagState:output_type -> pbflags.v1.UpdateFlagStateResponse
-	10, // 39: pbflags.v1.FlagAdminService.SetFlagOverride:output_type -> pbflags.v1.SetFlagOverrideResponse
-	12, // 40: pbflags.v1.FlagAdminService.RemoveFlagOverride:output_type -> pbflags.v1.RemoveFlagOverrideResponse
-	14, // 41: pbflags.v1.FlagAdminService.GetAuditLog:output_type -> pbflags.v1.GetAuditLogResponse
-	18, // 42: pbflags.v1.FlagAdminService.ListLaunches:output_type -> pbflags.v1.ListLaunchesResponse
-	20, // 43: pbflags.v1.FlagAdminService.GetLaunch:output_type -> pbflags.v1.GetLaunchResponse
-	22, // 44: pbflags.v1.FlagAdminService.UpdateLaunchRamp:output_type -> pbflags.v1.UpdateLaunchRampResponse
-	24, // 45: pbflags.v1.FlagAdminService.UpdateLaunchStatus:output_type -> pbflags.v1.UpdateLaunchStatusResponse
-	26, // 46: pbflags.v1.FlagAdminService.KillLaunch:output_type -> pbflags.v1.KillLaunchResponse
-	28, // 47: pbflags.v1.FlagAdminService.UnkillLaunch:output_type -> pbflags.v1.UnkillLaunchResponse
-	36, // [36:48] is the sub-list for method output_type
-	24, // [24:36] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	45, // 2: pbflags.v1.FlagDetail.flag_type:type_name -> pbflags.v1.FlagType
+	46, // 3: pbflags.v1.FlagDetail.state:type_name -> pbflags.v1.State
+	47, // 4: pbflags.v1.FlagDetail.default_value:type_name -> pbflags.v1.FlagValue
+	47, // 5: pbflags.v1.FlagDetail.current_value:type_name -> pbflags.v1.FlagValue
+	5,  // 6: pbflags.v1.FlagDetail.overrides:type_name -> pbflags.v1.FlagOverrideDetail
+	48, // 7: pbflags.v1.FlagDetail.supported_values:type_name -> pbflags.SupportedValues
+	4,  // 8: pbflags.v1.FlagDetail.condition_overrides:type_name -> pbflags.v1.ConditionOverrideDetail
+	47, // 9: pbflags.v1.ConditionOverrideDetail.override_value:type_name -> pbflags.v1.FlagValue
+	47, // 10: pbflags.v1.ConditionOverrideDetail.original_value:type_name -> pbflags.v1.FlagValue
+	49, // 11: pbflags.v1.ConditionOverrideDetail.created_at:type_name -> google.protobuf.Timestamp
+	46, // 12: pbflags.v1.FlagOverrideDetail.state:type_name -> pbflags.v1.State
+	47, // 13: pbflags.v1.FlagOverrideDetail.value:type_name -> pbflags.v1.FlagValue
+	3,  // 14: pbflags.v1.GetFlagResponse.flag:type_name -> pbflags.v1.FlagDetail
+	46, // 15: pbflags.v1.UpdateFlagStateRequest.state:type_name -> pbflags.v1.State
+	47, // 16: pbflags.v1.UpdateFlagStateRequest.value:type_name -> pbflags.v1.FlagValue
+	46, // 17: pbflags.v1.SetFlagOverrideRequest.state:type_name -> pbflags.v1.State
+	47, // 18: pbflags.v1.SetFlagOverrideRequest.value:type_name -> pbflags.v1.FlagValue
+	16, // 19: pbflags.v1.GetAuditLogResponse.entries:type_name -> pbflags.v1.AuditLogEntry
+	47, // 20: pbflags.v1.AuditLogEntry.old_value:type_name -> pbflags.v1.FlagValue
+	47, // 21: pbflags.v1.AuditLogEntry.new_value:type_name -> pbflags.v1.FlagValue
+	49, // 22: pbflags.v1.AuditLogEntry.created_at:type_name -> google.protobuf.Timestamp
+	49, // 23: pbflags.v1.LaunchDetail.killed_at:type_name -> google.protobuf.Timestamp
+	49, // 24: pbflags.v1.LaunchDetail.created_at:type_name -> google.protobuf.Timestamp
+	49, // 25: pbflags.v1.LaunchDetail.updated_at:type_name -> google.protobuf.Timestamp
+	17, // 26: pbflags.v1.ListLaunchesResponse.launches:type_name -> pbflags.v1.LaunchDetail
+	17, // 27: pbflags.v1.GetLaunchResponse.launch:type_name -> pbflags.v1.LaunchDetail
+	49, // 28: pbflags.v1.AcquireSyncFreezeResponse.held_since:type_name -> google.protobuf.Timestamp
+	49, // 29: pbflags.v1.GetSyncFreezeResponse.held_since:type_name -> google.protobuf.Timestamp
+	47, // 30: pbflags.v1.SetConditionOverrideRequest.value:type_name -> pbflags.v1.FlagValue
+	47, // 31: pbflags.v1.SetConditionOverrideResponse.previous_value:type_name -> pbflags.v1.FlagValue
+	44, // 32: pbflags.v1.ListConditionOverridesResponse.entries:type_name -> pbflags.v1.ConditionOverrideListEntry
+	47, // 33: pbflags.v1.ConditionOverrideListEntry.override_value:type_name -> pbflags.v1.FlagValue
+	49, // 34: pbflags.v1.ConditionOverrideListEntry.created_at:type_name -> google.protobuf.Timestamp
+	0,  // 35: pbflags.v1.FlagAdminService.ListFeatures:input_type -> pbflags.v1.ListFeaturesRequest
+	6,  // 36: pbflags.v1.FlagAdminService.GetFlag:input_type -> pbflags.v1.GetFlagRequest
+	8,  // 37: pbflags.v1.FlagAdminService.UpdateFlagState:input_type -> pbflags.v1.UpdateFlagStateRequest
+	10, // 38: pbflags.v1.FlagAdminService.SetFlagOverride:input_type -> pbflags.v1.SetFlagOverrideRequest
+	12, // 39: pbflags.v1.FlagAdminService.RemoveFlagOverride:input_type -> pbflags.v1.RemoveFlagOverrideRequest
+	14, // 40: pbflags.v1.FlagAdminService.GetAuditLog:input_type -> pbflags.v1.GetAuditLogRequest
+	18, // 41: pbflags.v1.FlagAdminService.ListLaunches:input_type -> pbflags.v1.ListLaunchesRequest
+	20, // 42: pbflags.v1.FlagAdminService.GetLaunch:input_type -> pbflags.v1.GetLaunchRequest
+	22, // 43: pbflags.v1.FlagAdminService.UpdateLaunchRamp:input_type -> pbflags.v1.UpdateLaunchRampRequest
+	24, // 44: pbflags.v1.FlagAdminService.UpdateLaunchStatus:input_type -> pbflags.v1.UpdateLaunchStatusRequest
+	26, // 45: pbflags.v1.FlagAdminService.KillLaunch:input_type -> pbflags.v1.KillLaunchRequest
+	28, // 46: pbflags.v1.FlagAdminService.UnkillLaunch:input_type -> pbflags.v1.UnkillLaunchRequest
+	30, // 47: pbflags.v1.FlagAdminService.AcquireSyncFreeze:input_type -> pbflags.v1.AcquireSyncFreezeRequest
+	32, // 48: pbflags.v1.FlagAdminService.ReleaseSyncFreeze:input_type -> pbflags.v1.ReleaseSyncFreezeRequest
+	34, // 49: pbflags.v1.FlagAdminService.GetSyncFreeze:input_type -> pbflags.v1.GetSyncFreezeRequest
+	36, // 50: pbflags.v1.FlagAdminService.SetConditionOverride:input_type -> pbflags.v1.SetConditionOverrideRequest
+	38, // 51: pbflags.v1.FlagAdminService.ClearConditionOverride:input_type -> pbflags.v1.ClearConditionOverrideRequest
+	40, // 52: pbflags.v1.FlagAdminService.ClearAllConditionOverrides:input_type -> pbflags.v1.ClearAllConditionOverridesRequest
+	42, // 53: pbflags.v1.FlagAdminService.ListConditionOverrides:input_type -> pbflags.v1.ListConditionOverridesRequest
+	1,  // 54: pbflags.v1.FlagAdminService.ListFeatures:output_type -> pbflags.v1.ListFeaturesResponse
+	7,  // 55: pbflags.v1.FlagAdminService.GetFlag:output_type -> pbflags.v1.GetFlagResponse
+	9,  // 56: pbflags.v1.FlagAdminService.UpdateFlagState:output_type -> pbflags.v1.UpdateFlagStateResponse
+	11, // 57: pbflags.v1.FlagAdminService.SetFlagOverride:output_type -> pbflags.v1.SetFlagOverrideResponse
+	13, // 58: pbflags.v1.FlagAdminService.RemoveFlagOverride:output_type -> pbflags.v1.RemoveFlagOverrideResponse
+	15, // 59: pbflags.v1.FlagAdminService.GetAuditLog:output_type -> pbflags.v1.GetAuditLogResponse
+	19, // 60: pbflags.v1.FlagAdminService.ListLaunches:output_type -> pbflags.v1.ListLaunchesResponse
+	21, // 61: pbflags.v1.FlagAdminService.GetLaunch:output_type -> pbflags.v1.GetLaunchResponse
+	23, // 62: pbflags.v1.FlagAdminService.UpdateLaunchRamp:output_type -> pbflags.v1.UpdateLaunchRampResponse
+	25, // 63: pbflags.v1.FlagAdminService.UpdateLaunchStatus:output_type -> pbflags.v1.UpdateLaunchStatusResponse
+	27, // 64: pbflags.v1.FlagAdminService.KillLaunch:output_type -> pbflags.v1.KillLaunchResponse
+	29, // 65: pbflags.v1.FlagAdminService.UnkillLaunch:output_type -> pbflags.v1.UnkillLaunchResponse
+	31, // 66: pbflags.v1.FlagAdminService.AcquireSyncFreeze:output_type -> pbflags.v1.AcquireSyncFreezeResponse
+	33, // 67: pbflags.v1.FlagAdminService.ReleaseSyncFreeze:output_type -> pbflags.v1.ReleaseSyncFreezeResponse
+	35, // 68: pbflags.v1.FlagAdminService.GetSyncFreeze:output_type -> pbflags.v1.GetSyncFreezeResponse
+	37, // 69: pbflags.v1.FlagAdminService.SetConditionOverride:output_type -> pbflags.v1.SetConditionOverrideResponse
+	39, // 70: pbflags.v1.FlagAdminService.ClearConditionOverride:output_type -> pbflags.v1.ClearConditionOverrideResponse
+	41, // 71: pbflags.v1.FlagAdminService.ClearAllConditionOverrides:output_type -> pbflags.v1.ClearAllConditionOverridesResponse
+	43, // 72: pbflags.v1.FlagAdminService.ListConditionOverrides:output_type -> pbflags.v1.ListConditionOverridesResponse
+	54, // [54:73] is the sub-list for method output_type
+	35, // [35:54] is the sub-list for method input_type
+	35, // [35:35] is the sub-list for extension type_name
+	35, // [35:35] is the sub-list for extension extendee
+	0,  // [0:35] is the sub-list for field type_name
 }
 
 func init() { file_pbflags_v1_admin_proto_init() }
@@ -1835,13 +2880,17 @@ func file_pbflags_v1_admin_proto_init() {
 		return
 	}
 	file_pbflags_v1_types_proto_init()
+	file_pbflags_v1_admin_proto_msgTypes[4].OneofWrappers = []any{}
+	file_pbflags_v1_admin_proto_msgTypes[36].OneofWrappers = []any{}
+	file_pbflags_v1_admin_proto_msgTypes[38].OneofWrappers = []any{}
+	file_pbflags_v1_admin_proto_msgTypes[44].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pbflags_v1_admin_proto_rawDesc), len(file_pbflags_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   29,
+			NumMessages:   45,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

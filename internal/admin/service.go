@@ -2,8 +2,10 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -14,13 +16,28 @@ import (
 
 // AdminService implements the FlagAdminService Connect handler.
 type AdminService struct {
-	store  *Store
-	logger *slog.Logger
+	store                   *Store
+	logger                  *slog.Logger
+	allowConditionOverrides bool
+}
+
+// AdminServiceOption configures optional AdminService behavior.
+type AdminServiceOption func(*AdminService)
+
+// WithAllowConditionOverrides enables the SetConditionOverride / Clear* /
+// freeze RPCs. Default is disabled — operators must explicitly opt in via
+// the --allow-condition-overrides server flag.
+func WithAllowConditionOverrides() AdminServiceOption {
+	return func(a *AdminService) { a.allowConditionOverrides = true }
 }
 
 // NewAdminService creates a FlagAdminService handler.
-func NewAdminService(store *Store, logger *slog.Logger) *AdminService {
-	return &AdminService{store: store, logger: logger}
+func NewAdminService(store *Store, logger *slog.Logger, opts ...AdminServiceOption) *AdminService {
+	a := &AdminService{store: store, logger: logger}
+	for _, opt := range opts {
+		opt(a)
+	}
+	return a
 }
 
 func (a *AdminService) ListFeatures(ctx context.Context, _ *connect.Request[pbflagsv1.ListFeaturesRequest]) (*connect.Response[pbflagsv1.ListFeaturesResponse], error) {
@@ -186,6 +203,207 @@ func (a *AdminService) UnkillLaunch(ctx context.Context, req *connect.Request[pb
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&pbflagsv1.UnkillLaunchResponse{}), nil
+}
+
+// ── Sync freeze RPCs ────────────────────────────────────────────────
+
+func (a *AdminService) AcquireSyncFreeze(ctx context.Context, req *connect.Request[pbflagsv1.AcquireSyncFreezeRequest]) (*connect.Response[pbflagsv1.AcquireSyncFreezeResponse], error) {
+	if !a.allowConditionOverrides {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("condition overrides are disabled on this server"))
+	}
+	if req.Msg.GetReason() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("reason is required"))
+	}
+	actor := authn.SubjectFromContext(ctx, req.Msg.GetActor())
+	a.logger.Info("acquiring sync freeze", "actor", actor, "reason", req.Msg.GetReason())
+	info, err := a.store.AcquireSyncFreeze(ctx, actor, req.Msg.GetReason())
+	if err != nil {
+		var held *SyncFreezeHeldError
+		if errors.As(err, &held) {
+			return nil, connect.NewError(connect.CodeFailedPrecondition,
+				fmt.Errorf("sync freeze already held by %s since %s: %s",
+					held.Info.Actor, held.Info.CreatedAt.Format(time.RFC3339), held.Info.Reason))
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&pbflagsv1.AcquireSyncFreezeResponse{
+		HeldSince: timestamppb.New(info.CreatedAt),
+	}), nil
+}
+
+func (a *AdminService) ReleaseSyncFreeze(ctx context.Context, req *connect.Request[pbflagsv1.ReleaseSyncFreezeRequest]) (*connect.Response[pbflagsv1.ReleaseSyncFreezeResponse], error) {
+	if !a.allowConditionOverrides {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("condition overrides are disabled on this server"))
+	}
+	actor := authn.SubjectFromContext(ctx, req.Msg.GetActor())
+	a.logger.Info("releasing sync freeze", "actor", actor)
+	if err := a.store.ReleaseSyncFreeze(ctx, actor); err != nil {
+		if errors.Is(err, ErrSyncFreezeNotHeld) {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&pbflagsv1.ReleaseSyncFreezeResponse{}), nil
+}
+
+func (a *AdminService) GetSyncFreeze(ctx context.Context, _ *connect.Request[pbflagsv1.GetSyncFreezeRequest]) (*connect.Response[pbflagsv1.GetSyncFreezeResponse], error) {
+	info, err := a.store.GetSyncFreeze(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	resp := &pbflagsv1.GetSyncFreezeResponse{}
+	if info != nil {
+		resp.Held = true
+		resp.Actor = info.Actor
+		resp.Reason = info.Reason
+		resp.HeldSince = timestamppb.New(info.CreatedAt)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// ── Condition override RPCs ─────────────────────────────────────────
+
+func (a *AdminService) SetConditionOverride(ctx context.Context, req *connect.Request[pbflagsv1.SetConditionOverrideRequest]) (*connect.Response[pbflagsv1.SetConditionOverrideResponse], error) {
+	if !a.allowConditionOverrides {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("condition overrides are disabled on this server"))
+	}
+	if req.Msg.GetFlagId() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("flag_id is required"))
+	}
+	if req.Msg.GetValue() == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("value is required"))
+	}
+	if req.Msg.GetReason() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("reason is required"))
+	}
+	source := req.Msg.GetSource()
+	if source == "" {
+		source = "cli"
+	}
+	if source != "cli" && source != "ui" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("source must be 'cli' or 'ui'"))
+	}
+	actor := authn.SubjectFromContext(ctx, req.Msg.GetActor())
+
+	var condIdx *int32
+	if req.Msg.ConditionIndex != nil {
+		v := req.Msg.GetConditionIndex()
+		condIdx = &v
+	}
+
+	a.logger.Info("setting condition override",
+		"flag_id", req.Msg.GetFlagId(), "cond_index", formatCondIndex(condIdx),
+		"actor", actor, "source", source)
+
+	prev, err := a.store.SetConditionOverride(ctx, req.Msg.GetFlagId(), condIdx, req.Msg.GetValue(), source, actor, req.Msg.GetReason())
+	if err != nil {
+		return nil, mapStoreErr(err)
+	}
+
+	resp := &pbflagsv1.SetConditionOverrideResponse{PreviousValue: prev}
+	managed, mgErr := a.store.IsConfigManaged(ctx, req.Msg.GetFlagId())
+	if mgErr == nil && managed {
+		resp.Warning = "this flag is managed by config-as-code; the next successful sync will clear this override"
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (a *AdminService) ClearConditionOverride(ctx context.Context, req *connect.Request[pbflagsv1.ClearConditionOverrideRequest]) (*connect.Response[pbflagsv1.ClearConditionOverrideResponse], error) {
+	if !a.allowConditionOverrides {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("condition overrides are disabled on this server"))
+	}
+	if req.Msg.GetFlagId() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("flag_id is required"))
+	}
+	actor := authn.SubjectFromContext(ctx, req.Msg.GetActor())
+
+	var condIdx *int32
+	if req.Msg.ConditionIndex != nil {
+		v := req.Msg.GetConditionIndex()
+		condIdx = &v
+	}
+
+	a.logger.Info("clearing condition override",
+		"flag_id", req.Msg.GetFlagId(), "cond_index", formatCondIndex(condIdx), "actor", actor)
+	if err := a.store.ClearConditionOverride(ctx, req.Msg.GetFlagId(), condIdx, actor); err != nil {
+		return nil, mapStoreErr(err)
+	}
+	return connect.NewResponse(&pbflagsv1.ClearConditionOverrideResponse{}), nil
+}
+
+func (a *AdminService) ClearAllConditionOverrides(ctx context.Context, req *connect.Request[pbflagsv1.ClearAllConditionOverridesRequest]) (*connect.Response[pbflagsv1.ClearAllConditionOverridesResponse], error) {
+	if !a.allowConditionOverrides {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("condition overrides are disabled on this server"))
+	}
+	if req.Msg.GetFlagId() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("flag_id is required"))
+	}
+	actor := authn.SubjectFromContext(ctx, req.Msg.GetActor())
+	a.logger.Info("clearing all condition overrides", "flag_id", req.Msg.GetFlagId(), "actor", actor)
+	count, err := a.store.ClearAllConditionOverrides(ctx, req.Msg.GetFlagId(), actor)
+	if err != nil {
+		return nil, mapStoreErr(err)
+	}
+	return connect.NewResponse(&pbflagsv1.ClearAllConditionOverridesResponse{ClearedCount: int32(count)}), nil
+}
+
+func (a *AdminService) ListConditionOverrides(ctx context.Context, req *connect.Request[pbflagsv1.ListConditionOverridesRequest]) (*connect.Response[pbflagsv1.ListConditionOverridesResponse], error) {
+	if !a.allowConditionOverrides {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("condition overrides are disabled on this server"))
+	}
+	filter := OverrideListFilter{
+		FlagID: req.Msg.GetFlagId(),
+		Actor:  req.Msg.GetActor(),
+	}
+	if s := req.Msg.GetMinAgeSeconds(); s > 0 {
+		filter.MinAge = time.Duration(s) * time.Second
+	}
+	overrides, err := a.store.ListAllOverrides(ctx, filter)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	resp := &pbflagsv1.ListConditionOverridesResponse{}
+	for _, o := range overrides {
+		entry := &pbflagsv1.ConditionOverrideListEntry{
+			FlagId:        o.FlagID,
+			OverrideValue: o.Value,
+			Source:        o.Source,
+			Actor:         o.Actor,
+			Reason:        o.Reason,
+			CreatedAt:     timestamppb.New(o.CreatedAt),
+		}
+		if o.ConditionIndex != nil {
+			entry.ConditionIndex = o.ConditionIndex
+		}
+		resp.Entries = append(resp.Entries, entry)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// mapStoreErr translates store-layer errors to Connect codes.
+func mapStoreErr(err error) error {
+	msg := err.Error()
+	// Heuristic: NotFound when the store reports a missing flag/override.
+	if containsAny(msg, "not found", "no override exists") {
+		return connect.NewError(connect.CodeNotFound, err)
+	}
+	if containsAny(msg, "is required", "must be") {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return connect.NewError(connect.CodeInternal, err)
+}
+
+func containsAny(s string, subs ...string) bool {
+	for _, sub := range subs {
+		if len(sub) > 0 && len(s) >= len(sub) {
+			for i := 0; i+len(sub) <= len(s); i++ {
+				if s[i:i+len(sub)] == sub {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // ── Launch conversion helpers ───────────────────────────────────────

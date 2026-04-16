@@ -27,6 +27,17 @@ service FlagAdminService {
   rpc UpdateLaunchStatus(UpdateLaunchStatusRequest) returns (UpdateLaunchStatusResponse);
   rpc KillLaunch(KillLaunchRequest) returns (KillLaunchResponse);
   rpc UnkillLaunch(UnkillLaunchRequest) returns (UnkillLaunchResponse);
+
+  // Global config-sync freeze RPCs.
+  rpc AcquireSyncFreeze(AcquireSyncFreezeRequest) returns (AcquireSyncFreezeResponse);
+  rpc ReleaseSyncFreeze(ReleaseSyncFreezeRequest) returns (ReleaseSyncFreezeResponse);
+  rpc GetSyncFreeze(GetSyncFreezeRequest) returns (GetSyncFreezeResponse);
+
+  // Per-condition value override RPCs.
+  rpc SetConditionOverride(SetConditionOverrideRequest) returns (SetConditionOverrideResponse);
+  rpc ClearConditionOverride(ClearConditionOverrideRequest) returns (ClearConditionOverrideResponse);
+  rpc ClearAllConditionOverrides(ClearAllConditionOverridesRequest) returns (ClearAllConditionOverridesResponse);
+  rpc ListConditionOverrides(ListConditionOverridesRequest) returns (ListConditionOverridesResponse);
 }
 
 message ListFeaturesRequest {}
@@ -56,6 +67,27 @@ message FlagDetail {
   // Metadata from proto descriptors.
   pbflags.SupportedValues supported_values = 10;
   bool archived = 11;
+
+  // Active condition value overrides on this flag.
+  repeated ConditionOverrideDetail condition_overrides = 12;
+  // True when config-as-code currently manages this flag's conditions
+  // (i.e., the owning feature has a non-empty sync_sha). Operators get
+  // a warning when overriding a config-managed flag.
+  bool config_managed = 13;
+}
+
+// ConditionOverrideDetail describes one active override attached to a flag.
+message ConditionOverrideDetail {
+  // Absent = override of the static/compiled default (or "otherwise" row).
+  optional int32 condition_index = 1;
+  FlagValue override_value = 2;
+  // The original value before the override (for confirmation UX). Optional;
+  // not always populated.
+  FlagValue original_value = 3;
+  string source = 4; // "cli" or "ui"
+  string actor = 5;
+  string reason = 6;
+  google.protobuf.Timestamp created_at = 7;
 }
 
 message FlagOverrideDetail {
@@ -179,3 +211,93 @@ message UnkillLaunchRequest {
 }
 
 message UnkillLaunchResponse {}
+
+// ── Sync freeze messages ────────────────────────────────────────────
+
+message AcquireSyncFreezeRequest {
+  string actor = 1;
+  string reason = 2; // required
+}
+
+message AcquireSyncFreezeResponse {
+  // Populated when the freeze was newly acquired.
+  google.protobuf.Timestamp held_since = 1;
+}
+
+message ReleaseSyncFreezeRequest {
+  string actor = 1;
+}
+
+message ReleaseSyncFreezeResponse {}
+
+message GetSyncFreezeRequest {}
+
+message GetSyncFreezeResponse {
+  // Populated when the freeze is currently held; absent fields = unlocked.
+  bool held = 1;
+  string actor = 2;
+  string reason = 3;
+  google.protobuf.Timestamp held_since = 4;
+}
+
+// ── Condition override messages ─────────────────────────────────────
+
+message SetConditionOverrideRequest {
+  string flag_id = 1;
+  // 0-based index into the condition chain. Omit (oneof absence) to
+  // override the static/compiled default.
+  optional int32 condition_index = 2;
+  FlagValue value = 3;
+  string actor = 4;
+  string reason = 5; // required — incident ticket, explanation
+  string source = 6; // "cli" or "ui"; defaults to "cli" if empty
+}
+
+message SetConditionOverrideResponse {
+  // Non-empty when the flag is managed by config-as-code; the next sync
+  // will clear this override.
+  string warning = 1;
+  // The value at this condition before the override (for confirmation UX).
+  FlagValue previous_value = 2;
+}
+
+message ClearConditionOverrideRequest {
+  string flag_id = 1;
+  // Omit to clear the static-default override.
+  optional int32 condition_index = 2;
+  string actor = 3;
+}
+
+message ClearConditionOverrideResponse {}
+
+message ClearAllConditionOverridesRequest {
+  string flag_id = 1;
+  string actor = 2;
+}
+
+message ClearAllConditionOverridesResponse {
+  int32 cleared_count = 1;
+}
+
+message ListConditionOverridesRequest {
+  // Optional: filter by flag.
+  string flag_id = 1;
+  // Optional: only show overrides older than this many seconds.
+  int64 min_age_seconds = 2;
+  // Optional: filter by actor (case-insensitive substring).
+  string actor = 3;
+}
+
+message ListConditionOverridesResponse {
+  repeated ConditionOverrideListEntry entries = 1;
+}
+
+message ConditionOverrideListEntry {
+  string flag_id = 1;
+  optional int32 condition_index = 2;
+  FlagValue override_value = 3;
+  string source = 4;
+  string actor = 5;
+  string reason = 6;
+  google.protobuf.Timestamp created_at = 7;
+}

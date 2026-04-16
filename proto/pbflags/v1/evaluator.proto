@@ -54,6 +54,7 @@ enum EvaluationSource {
   EVALUATION_SOURCE_STALE = 7; // Stale value returned while background refresh in flight
   EVALUATION_SOURCE_CONDITION = 8; // Matched a CEL condition from config
   EVALUATION_SOURCE_LAUNCH = 9; // Matched a percentage-based launch ramp
+  EVALUATION_SOURCE_CONDITION_OVERRIDE = 10; // Live admin/CLI override on a condition value
 }
 
 message BulkEvaluateRequest {

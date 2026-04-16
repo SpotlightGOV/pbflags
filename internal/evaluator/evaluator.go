@@ -149,14 +149,19 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 		if e.condCache != nil {
 			version = e.condCache.FlagVersion(flagID)
 		}
+		// Skip the condition cache when live overrides are present. Overrides
+		// can change the resolved value without bumping the flag version,
+		// and conflating two callers (one before, one after an override edit)
+		// would serve stale results until the next flag refresh.
+		useCondCache := e.condCache != nil && len(state.ConditionOverrides) == 0
 		cacheKey := BuildCacheKey(flagID, version, state.DimMeta, evalCtx, state.Launches...)
 
-		if e.condCache != nil {
+		if useCondCache {
 			if cached, noMatch, ok := e.condCache.Get(cacheKey); ok {
 				e.metrics.cacheHitConditions.Inc()
 				if noMatch {
-					e.metrics.incEval(src)
-					return val, src // no-match sentinel → fall through to static/default
+					// Fall through to static-default override / default below.
+					return e.applyStaticDefaultOverride(state, val, src)
 				}
 				e.metrics.evalCached.Inc()
 				return cached, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED
@@ -164,26 +169,46 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 			e.metrics.cacheMissConditions.Inc()
 		}
 
-		result := e.condEval.EvaluateConditions(flagID, state.Conditions, evalCtx, state.Launches...)
+		result := e.condEval.EvaluateConditionsWithOverrides(flagID, state.Conditions, evalCtx, state.ConditionOverrides, state.Launches...)
 
 		if result.Value != nil {
-			if e.condCache != nil {
+			if useCondCache {
 				e.condCache.Set(cacheKey, result.Value)
 			}
 			if result.LaunchHit {
 				e.metrics.evalLaunch.Inc()
 				return result.Value, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_LAUNCH
 			}
+			if result.OverrideHit {
+				e.metrics.evalConditionOverride.Inc()
+				return result.Value, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CONDITION_OVERRIDE
+			}
 			e.metrics.evalCondition.Inc()
 			return result.Value, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CONDITION
 		}
 		// No condition matched — cache the no-match to avoid re-evaluation.
-		if e.condCache != nil {
+		if useCondCache {
 			e.condCache.SetNoMatch(cacheKey)
 		}
 	}
 
-	// 4. Return whatever resolveGlobal determined (static value or default).
+	// 4. Static-default override (live), then whatever resolveGlobal determined.
+	return e.applyStaticDefaultOverride(state, val, src)
+}
+
+// applyStaticDefaultOverride returns the live static-default override (when
+// set) in preference to the compiled default. When no override is set, the
+// caller-provided (val, src) pair is returned and the eval counter is
+// incremented with that source.
+func (e *Evaluator) applyStaticDefaultOverride(
+	state *CachedFlagState,
+	val *pbflagsv1.FlagValue,
+	src pbflagsv1.EvaluationSource,
+) (*pbflagsv1.FlagValue, pbflagsv1.EvaluationSource) {
+	if state != nil && state.StaticDefaultOverride != nil {
+		e.metrics.evalConditionOverride.Inc()
+		return state.StaticDefaultOverride, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CONDITION_OVERRIDE
+	}
 	e.metrics.incEval(src)
 	return val, src
 }

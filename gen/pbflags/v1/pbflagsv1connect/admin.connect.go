@@ -70,6 +70,27 @@ const (
 	// FlagAdminServiceUnkillLaunchProcedure is the fully-qualified name of the FlagAdminService's
 	// UnkillLaunch RPC.
 	FlagAdminServiceUnkillLaunchProcedure = "/pbflags.v1.FlagAdminService/UnkillLaunch"
+	// FlagAdminServiceAcquireSyncFreezeProcedure is the fully-qualified name of the FlagAdminService's
+	// AcquireSyncFreeze RPC.
+	FlagAdminServiceAcquireSyncFreezeProcedure = "/pbflags.v1.FlagAdminService/AcquireSyncFreeze"
+	// FlagAdminServiceReleaseSyncFreezeProcedure is the fully-qualified name of the FlagAdminService's
+	// ReleaseSyncFreeze RPC.
+	FlagAdminServiceReleaseSyncFreezeProcedure = "/pbflags.v1.FlagAdminService/ReleaseSyncFreeze"
+	// FlagAdminServiceGetSyncFreezeProcedure is the fully-qualified name of the FlagAdminService's
+	// GetSyncFreeze RPC.
+	FlagAdminServiceGetSyncFreezeProcedure = "/pbflags.v1.FlagAdminService/GetSyncFreeze"
+	// FlagAdminServiceSetConditionOverrideProcedure is the fully-qualified name of the
+	// FlagAdminService's SetConditionOverride RPC.
+	FlagAdminServiceSetConditionOverrideProcedure = "/pbflags.v1.FlagAdminService/SetConditionOverride"
+	// FlagAdminServiceClearConditionOverrideProcedure is the fully-qualified name of the
+	// FlagAdminService's ClearConditionOverride RPC.
+	FlagAdminServiceClearConditionOverrideProcedure = "/pbflags.v1.FlagAdminService/ClearConditionOverride"
+	// FlagAdminServiceClearAllConditionOverridesProcedure is the fully-qualified name of the
+	// FlagAdminService's ClearAllConditionOverrides RPC.
+	FlagAdminServiceClearAllConditionOverridesProcedure = "/pbflags.v1.FlagAdminService/ClearAllConditionOverrides"
+	// FlagAdminServiceListConditionOverridesProcedure is the fully-qualified name of the
+	// FlagAdminService's ListConditionOverrides RPC.
+	FlagAdminServiceListConditionOverridesProcedure = "/pbflags.v1.FlagAdminService/ListConditionOverrides"
 )
 
 // FlagAdminServiceClient is a client for the pbflags.v1.FlagAdminService service.
@@ -87,6 +108,15 @@ type FlagAdminServiceClient interface {
 	UpdateLaunchStatus(context.Context, *connect.Request[v1.UpdateLaunchStatusRequest]) (*connect.Response[v1.UpdateLaunchStatusResponse], error)
 	KillLaunch(context.Context, *connect.Request[v1.KillLaunchRequest]) (*connect.Response[v1.KillLaunchResponse], error)
 	UnkillLaunch(context.Context, *connect.Request[v1.UnkillLaunchRequest]) (*connect.Response[v1.UnkillLaunchResponse], error)
+	// Global config-sync freeze RPCs.
+	AcquireSyncFreeze(context.Context, *connect.Request[v1.AcquireSyncFreezeRequest]) (*connect.Response[v1.AcquireSyncFreezeResponse], error)
+	ReleaseSyncFreeze(context.Context, *connect.Request[v1.ReleaseSyncFreezeRequest]) (*connect.Response[v1.ReleaseSyncFreezeResponse], error)
+	GetSyncFreeze(context.Context, *connect.Request[v1.GetSyncFreezeRequest]) (*connect.Response[v1.GetSyncFreezeResponse], error)
+	// Per-condition value override RPCs.
+	SetConditionOverride(context.Context, *connect.Request[v1.SetConditionOverrideRequest]) (*connect.Response[v1.SetConditionOverrideResponse], error)
+	ClearConditionOverride(context.Context, *connect.Request[v1.ClearConditionOverrideRequest]) (*connect.Response[v1.ClearConditionOverrideResponse], error)
+	ClearAllConditionOverrides(context.Context, *connect.Request[v1.ClearAllConditionOverridesRequest]) (*connect.Response[v1.ClearAllConditionOverridesResponse], error)
+	ListConditionOverrides(context.Context, *connect.Request[v1.ListConditionOverridesRequest]) (*connect.Response[v1.ListConditionOverridesResponse], error)
 }
 
 // NewFlagAdminServiceClient constructs a client for the pbflags.v1.FlagAdminService service. By
@@ -172,23 +202,72 @@ func NewFlagAdminServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(flagAdminServiceMethods.ByName("UnkillLaunch")),
 			connect.WithClientOptions(opts...),
 		),
+		acquireSyncFreeze: connect.NewClient[v1.AcquireSyncFreezeRequest, v1.AcquireSyncFreezeResponse](
+			httpClient,
+			baseURL+FlagAdminServiceAcquireSyncFreezeProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("AcquireSyncFreeze")),
+			connect.WithClientOptions(opts...),
+		),
+		releaseSyncFreeze: connect.NewClient[v1.ReleaseSyncFreezeRequest, v1.ReleaseSyncFreezeResponse](
+			httpClient,
+			baseURL+FlagAdminServiceReleaseSyncFreezeProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("ReleaseSyncFreeze")),
+			connect.WithClientOptions(opts...),
+		),
+		getSyncFreeze: connect.NewClient[v1.GetSyncFreezeRequest, v1.GetSyncFreezeResponse](
+			httpClient,
+			baseURL+FlagAdminServiceGetSyncFreezeProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("GetSyncFreeze")),
+			connect.WithClientOptions(opts...),
+		),
+		setConditionOverride: connect.NewClient[v1.SetConditionOverrideRequest, v1.SetConditionOverrideResponse](
+			httpClient,
+			baseURL+FlagAdminServiceSetConditionOverrideProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("SetConditionOverride")),
+			connect.WithClientOptions(opts...),
+		),
+		clearConditionOverride: connect.NewClient[v1.ClearConditionOverrideRequest, v1.ClearConditionOverrideResponse](
+			httpClient,
+			baseURL+FlagAdminServiceClearConditionOverrideProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("ClearConditionOverride")),
+			connect.WithClientOptions(opts...),
+		),
+		clearAllConditionOverrides: connect.NewClient[v1.ClearAllConditionOverridesRequest, v1.ClearAllConditionOverridesResponse](
+			httpClient,
+			baseURL+FlagAdminServiceClearAllConditionOverridesProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("ClearAllConditionOverrides")),
+			connect.WithClientOptions(opts...),
+		),
+		listConditionOverrides: connect.NewClient[v1.ListConditionOverridesRequest, v1.ListConditionOverridesResponse](
+			httpClient,
+			baseURL+FlagAdminServiceListConditionOverridesProcedure,
+			connect.WithSchema(flagAdminServiceMethods.ByName("ListConditionOverrides")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // flagAdminServiceClient implements FlagAdminServiceClient.
 type flagAdminServiceClient struct {
-	listFeatures       *connect.Client[v1.ListFeaturesRequest, v1.ListFeaturesResponse]
-	getFlag            *connect.Client[v1.GetFlagRequest, v1.GetFlagResponse]
-	updateFlagState    *connect.Client[v1.UpdateFlagStateRequest, v1.UpdateFlagStateResponse]
-	setFlagOverride    *connect.Client[v1.SetFlagOverrideRequest, v1.SetFlagOverrideResponse]
-	removeFlagOverride *connect.Client[v1.RemoveFlagOverrideRequest, v1.RemoveFlagOverrideResponse]
-	getAuditLog        *connect.Client[v1.GetAuditLogRequest, v1.GetAuditLogResponse]
-	listLaunches       *connect.Client[v1.ListLaunchesRequest, v1.ListLaunchesResponse]
-	getLaunch          *connect.Client[v1.GetLaunchRequest, v1.GetLaunchResponse]
-	updateLaunchRamp   *connect.Client[v1.UpdateLaunchRampRequest, v1.UpdateLaunchRampResponse]
-	updateLaunchStatus *connect.Client[v1.UpdateLaunchStatusRequest, v1.UpdateLaunchStatusResponse]
-	killLaunch         *connect.Client[v1.KillLaunchRequest, v1.KillLaunchResponse]
-	unkillLaunch       *connect.Client[v1.UnkillLaunchRequest, v1.UnkillLaunchResponse]
+	listFeatures               *connect.Client[v1.ListFeaturesRequest, v1.ListFeaturesResponse]
+	getFlag                    *connect.Client[v1.GetFlagRequest, v1.GetFlagResponse]
+	updateFlagState            *connect.Client[v1.UpdateFlagStateRequest, v1.UpdateFlagStateResponse]
+	setFlagOverride            *connect.Client[v1.SetFlagOverrideRequest, v1.SetFlagOverrideResponse]
+	removeFlagOverride         *connect.Client[v1.RemoveFlagOverrideRequest, v1.RemoveFlagOverrideResponse]
+	getAuditLog                *connect.Client[v1.GetAuditLogRequest, v1.GetAuditLogResponse]
+	listLaunches               *connect.Client[v1.ListLaunchesRequest, v1.ListLaunchesResponse]
+	getLaunch                  *connect.Client[v1.GetLaunchRequest, v1.GetLaunchResponse]
+	updateLaunchRamp           *connect.Client[v1.UpdateLaunchRampRequest, v1.UpdateLaunchRampResponse]
+	updateLaunchStatus         *connect.Client[v1.UpdateLaunchStatusRequest, v1.UpdateLaunchStatusResponse]
+	killLaunch                 *connect.Client[v1.KillLaunchRequest, v1.KillLaunchResponse]
+	unkillLaunch               *connect.Client[v1.UnkillLaunchRequest, v1.UnkillLaunchResponse]
+	acquireSyncFreeze          *connect.Client[v1.AcquireSyncFreezeRequest, v1.AcquireSyncFreezeResponse]
+	releaseSyncFreeze          *connect.Client[v1.ReleaseSyncFreezeRequest, v1.ReleaseSyncFreezeResponse]
+	getSyncFreeze              *connect.Client[v1.GetSyncFreezeRequest, v1.GetSyncFreezeResponse]
+	setConditionOverride       *connect.Client[v1.SetConditionOverrideRequest, v1.SetConditionOverrideResponse]
+	clearConditionOverride     *connect.Client[v1.ClearConditionOverrideRequest, v1.ClearConditionOverrideResponse]
+	clearAllConditionOverrides *connect.Client[v1.ClearAllConditionOverridesRequest, v1.ClearAllConditionOverridesResponse]
+	listConditionOverrides     *connect.Client[v1.ListConditionOverridesRequest, v1.ListConditionOverridesResponse]
 }
 
 // ListFeatures calls pbflags.v1.FlagAdminService.ListFeatures.
@@ -251,6 +330,41 @@ func (c *flagAdminServiceClient) UnkillLaunch(ctx context.Context, req *connect.
 	return c.unkillLaunch.CallUnary(ctx, req)
 }
 
+// AcquireSyncFreeze calls pbflags.v1.FlagAdminService.AcquireSyncFreeze.
+func (c *flagAdminServiceClient) AcquireSyncFreeze(ctx context.Context, req *connect.Request[v1.AcquireSyncFreezeRequest]) (*connect.Response[v1.AcquireSyncFreezeResponse], error) {
+	return c.acquireSyncFreeze.CallUnary(ctx, req)
+}
+
+// ReleaseSyncFreeze calls pbflags.v1.FlagAdminService.ReleaseSyncFreeze.
+func (c *flagAdminServiceClient) ReleaseSyncFreeze(ctx context.Context, req *connect.Request[v1.ReleaseSyncFreezeRequest]) (*connect.Response[v1.ReleaseSyncFreezeResponse], error) {
+	return c.releaseSyncFreeze.CallUnary(ctx, req)
+}
+
+// GetSyncFreeze calls pbflags.v1.FlagAdminService.GetSyncFreeze.
+func (c *flagAdminServiceClient) GetSyncFreeze(ctx context.Context, req *connect.Request[v1.GetSyncFreezeRequest]) (*connect.Response[v1.GetSyncFreezeResponse], error) {
+	return c.getSyncFreeze.CallUnary(ctx, req)
+}
+
+// SetConditionOverride calls pbflags.v1.FlagAdminService.SetConditionOverride.
+func (c *flagAdminServiceClient) SetConditionOverride(ctx context.Context, req *connect.Request[v1.SetConditionOverrideRequest]) (*connect.Response[v1.SetConditionOverrideResponse], error) {
+	return c.setConditionOverride.CallUnary(ctx, req)
+}
+
+// ClearConditionOverride calls pbflags.v1.FlagAdminService.ClearConditionOverride.
+func (c *flagAdminServiceClient) ClearConditionOverride(ctx context.Context, req *connect.Request[v1.ClearConditionOverrideRequest]) (*connect.Response[v1.ClearConditionOverrideResponse], error) {
+	return c.clearConditionOverride.CallUnary(ctx, req)
+}
+
+// ClearAllConditionOverrides calls pbflags.v1.FlagAdminService.ClearAllConditionOverrides.
+func (c *flagAdminServiceClient) ClearAllConditionOverrides(ctx context.Context, req *connect.Request[v1.ClearAllConditionOverridesRequest]) (*connect.Response[v1.ClearAllConditionOverridesResponse], error) {
+	return c.clearAllConditionOverrides.CallUnary(ctx, req)
+}
+
+// ListConditionOverrides calls pbflags.v1.FlagAdminService.ListConditionOverrides.
+func (c *flagAdminServiceClient) ListConditionOverrides(ctx context.Context, req *connect.Request[v1.ListConditionOverridesRequest]) (*connect.Response[v1.ListConditionOverridesResponse], error) {
+	return c.listConditionOverrides.CallUnary(ctx, req)
+}
+
 // FlagAdminServiceHandler is an implementation of the pbflags.v1.FlagAdminService service.
 type FlagAdminServiceHandler interface {
 	ListFeatures(context.Context, *connect.Request[v1.ListFeaturesRequest]) (*connect.Response[v1.ListFeaturesResponse], error)
@@ -266,6 +380,15 @@ type FlagAdminServiceHandler interface {
 	UpdateLaunchStatus(context.Context, *connect.Request[v1.UpdateLaunchStatusRequest]) (*connect.Response[v1.UpdateLaunchStatusResponse], error)
 	KillLaunch(context.Context, *connect.Request[v1.KillLaunchRequest]) (*connect.Response[v1.KillLaunchResponse], error)
 	UnkillLaunch(context.Context, *connect.Request[v1.UnkillLaunchRequest]) (*connect.Response[v1.UnkillLaunchResponse], error)
+	// Global config-sync freeze RPCs.
+	AcquireSyncFreeze(context.Context, *connect.Request[v1.AcquireSyncFreezeRequest]) (*connect.Response[v1.AcquireSyncFreezeResponse], error)
+	ReleaseSyncFreeze(context.Context, *connect.Request[v1.ReleaseSyncFreezeRequest]) (*connect.Response[v1.ReleaseSyncFreezeResponse], error)
+	GetSyncFreeze(context.Context, *connect.Request[v1.GetSyncFreezeRequest]) (*connect.Response[v1.GetSyncFreezeResponse], error)
+	// Per-condition value override RPCs.
+	SetConditionOverride(context.Context, *connect.Request[v1.SetConditionOverrideRequest]) (*connect.Response[v1.SetConditionOverrideResponse], error)
+	ClearConditionOverride(context.Context, *connect.Request[v1.ClearConditionOverrideRequest]) (*connect.Response[v1.ClearConditionOverrideResponse], error)
+	ClearAllConditionOverrides(context.Context, *connect.Request[v1.ClearAllConditionOverridesRequest]) (*connect.Response[v1.ClearAllConditionOverridesResponse], error)
+	ListConditionOverrides(context.Context, *connect.Request[v1.ListConditionOverridesRequest]) (*connect.Response[v1.ListConditionOverridesResponse], error)
 }
 
 // NewFlagAdminServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -347,6 +470,48 @@ func NewFlagAdminServiceHandler(svc FlagAdminServiceHandler, opts ...connect.Han
 		connect.WithSchema(flagAdminServiceMethods.ByName("UnkillLaunch")),
 		connect.WithHandlerOptions(opts...),
 	)
+	flagAdminServiceAcquireSyncFreezeHandler := connect.NewUnaryHandler(
+		FlagAdminServiceAcquireSyncFreezeProcedure,
+		svc.AcquireSyncFreeze,
+		connect.WithSchema(flagAdminServiceMethods.ByName("AcquireSyncFreeze")),
+		connect.WithHandlerOptions(opts...),
+	)
+	flagAdminServiceReleaseSyncFreezeHandler := connect.NewUnaryHandler(
+		FlagAdminServiceReleaseSyncFreezeProcedure,
+		svc.ReleaseSyncFreeze,
+		connect.WithSchema(flagAdminServiceMethods.ByName("ReleaseSyncFreeze")),
+		connect.WithHandlerOptions(opts...),
+	)
+	flagAdminServiceGetSyncFreezeHandler := connect.NewUnaryHandler(
+		FlagAdminServiceGetSyncFreezeProcedure,
+		svc.GetSyncFreeze,
+		connect.WithSchema(flagAdminServiceMethods.ByName("GetSyncFreeze")),
+		connect.WithHandlerOptions(opts...),
+	)
+	flagAdminServiceSetConditionOverrideHandler := connect.NewUnaryHandler(
+		FlagAdminServiceSetConditionOverrideProcedure,
+		svc.SetConditionOverride,
+		connect.WithSchema(flagAdminServiceMethods.ByName("SetConditionOverride")),
+		connect.WithHandlerOptions(opts...),
+	)
+	flagAdminServiceClearConditionOverrideHandler := connect.NewUnaryHandler(
+		FlagAdminServiceClearConditionOverrideProcedure,
+		svc.ClearConditionOverride,
+		connect.WithSchema(flagAdminServiceMethods.ByName("ClearConditionOverride")),
+		connect.WithHandlerOptions(opts...),
+	)
+	flagAdminServiceClearAllConditionOverridesHandler := connect.NewUnaryHandler(
+		FlagAdminServiceClearAllConditionOverridesProcedure,
+		svc.ClearAllConditionOverrides,
+		connect.WithSchema(flagAdminServiceMethods.ByName("ClearAllConditionOverrides")),
+		connect.WithHandlerOptions(opts...),
+	)
+	flagAdminServiceListConditionOverridesHandler := connect.NewUnaryHandler(
+		FlagAdminServiceListConditionOverridesProcedure,
+		svc.ListConditionOverrides,
+		connect.WithSchema(flagAdminServiceMethods.ByName("ListConditionOverrides")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/pbflags.v1.FlagAdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FlagAdminServiceListFeaturesProcedure:
@@ -373,6 +538,20 @@ func NewFlagAdminServiceHandler(svc FlagAdminServiceHandler, opts ...connect.Han
 			flagAdminServiceKillLaunchHandler.ServeHTTP(w, r)
 		case FlagAdminServiceUnkillLaunchProcedure:
 			flagAdminServiceUnkillLaunchHandler.ServeHTTP(w, r)
+		case FlagAdminServiceAcquireSyncFreezeProcedure:
+			flagAdminServiceAcquireSyncFreezeHandler.ServeHTTP(w, r)
+		case FlagAdminServiceReleaseSyncFreezeProcedure:
+			flagAdminServiceReleaseSyncFreezeHandler.ServeHTTP(w, r)
+		case FlagAdminServiceGetSyncFreezeProcedure:
+			flagAdminServiceGetSyncFreezeHandler.ServeHTTP(w, r)
+		case FlagAdminServiceSetConditionOverrideProcedure:
+			flagAdminServiceSetConditionOverrideHandler.ServeHTTP(w, r)
+		case FlagAdminServiceClearConditionOverrideProcedure:
+			flagAdminServiceClearConditionOverrideHandler.ServeHTTP(w, r)
+		case FlagAdminServiceClearAllConditionOverridesProcedure:
+			flagAdminServiceClearAllConditionOverridesHandler.ServeHTTP(w, r)
+		case FlagAdminServiceListConditionOverridesProcedure:
+			flagAdminServiceListConditionOverridesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -428,4 +607,32 @@ func (UnimplementedFlagAdminServiceHandler) KillLaunch(context.Context, *connect
 
 func (UnimplementedFlagAdminServiceHandler) UnkillLaunch(context.Context, *connect.Request[v1.UnkillLaunchRequest]) (*connect.Response[v1.UnkillLaunchResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.UnkillLaunch is not implemented"))
+}
+
+func (UnimplementedFlagAdminServiceHandler) AcquireSyncFreeze(context.Context, *connect.Request[v1.AcquireSyncFreezeRequest]) (*connect.Response[v1.AcquireSyncFreezeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.AcquireSyncFreeze is not implemented"))
+}
+
+func (UnimplementedFlagAdminServiceHandler) ReleaseSyncFreeze(context.Context, *connect.Request[v1.ReleaseSyncFreezeRequest]) (*connect.Response[v1.ReleaseSyncFreezeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.ReleaseSyncFreeze is not implemented"))
+}
+
+func (UnimplementedFlagAdminServiceHandler) GetSyncFreeze(context.Context, *connect.Request[v1.GetSyncFreezeRequest]) (*connect.Response[v1.GetSyncFreezeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.GetSyncFreeze is not implemented"))
+}
+
+func (UnimplementedFlagAdminServiceHandler) SetConditionOverride(context.Context, *connect.Request[v1.SetConditionOverrideRequest]) (*connect.Response[v1.SetConditionOverrideResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.SetConditionOverride is not implemented"))
+}
+
+func (UnimplementedFlagAdminServiceHandler) ClearConditionOverride(context.Context, *connect.Request[v1.ClearConditionOverrideRequest]) (*connect.Response[v1.ClearConditionOverrideResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.ClearConditionOverride is not implemented"))
+}
+
+func (UnimplementedFlagAdminServiceHandler) ClearAllConditionOverrides(context.Context, *connect.Request[v1.ClearAllConditionOverridesRequest]) (*connect.Response[v1.ClearAllConditionOverridesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.ClearAllConditionOverrides is not implemented"))
+}
+
+func (UnimplementedFlagAdminServiceHandler) ListConditionOverrides(context.Context, *connect.Request[v1.ListConditionOverridesRequest]) (*connect.Response[v1.ListConditionOverridesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pbflags.v1.FlagAdminService.ListConditionOverrides is not implemented"))
 }

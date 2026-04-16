@@ -292,6 +292,26 @@ func (s *Store) GetFlag(ctx context.Context, flagID string) (*pbflagsv1.FlagDeta
 		DefaultValue:    defaultVal,
 		SupportedValues: supportedVals,
 		Archived:        archivedAt != nil,
+		ConfigManaged:   syncSHA != nil && *syncSHA != "",
+	}
+
+	// Load any active condition value overrides for this flag.
+	if overrides, oErr := s.ListOverridesForFlag(ctx, flagID); oErr == nil {
+		for _, o := range overrides {
+			d := &pbflagsv1.ConditionOverrideDetail{
+				OverrideValue: o.Value,
+				Source:        o.Source,
+				Actor:         o.Actor,
+				Reason:        o.Reason,
+				CreatedAt:     timestamppb.New(o.CreatedAt),
+			}
+			if o.ConditionIndex != nil {
+				d.ConditionIndex = o.ConditionIndex
+			}
+			fd.ConditionOverrides = append(fd.ConditionOverrides, d)
+		}
+	} else {
+		s.logger.Warn("failed to load condition overrides", "flag_id", flagID, "error", oErr)
 	}
 
 	extra := &FlagExtra{}

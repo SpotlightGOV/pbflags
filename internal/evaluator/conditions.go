@@ -120,6 +120,7 @@ type EvalResult struct {
 	ConditionsChecked int    // how many CEL programs were evaluated
 	LaunchHit         bool   // true if the returned value came from a launch override
 	LaunchID          string // non-empty if LaunchHit
+	OverrideHit       bool   // true if a live condition-value override was applied
 }
 
 // EvaluateConditions iterates the condition chain and returns the value of
@@ -130,6 +131,21 @@ type EvalResult struct {
 // The launches map is keyed by launch ID → CachedLaunch for active launches.
 // Nil or empty map means no active launches.
 func (ce *ConditionEvaluator) EvaluateConditions(flagID string, conditions []CachedCondition, evalCtx proto.Message, launches ...CachedLaunch) *EvalResult {
+	return ce.EvaluateConditionsWithOverrides(flagID, conditions, evalCtx, nil, launches...)
+}
+
+// EvaluateConditionsWithOverrides is EvaluateConditions plus a per-condition
+// override map. When a condition matches and overrides[i] is set, the
+// override value replaces the compiled condition value. Launches still take
+// precedence — if a launch is in ramp for the matched condition, the launch
+// value wins (overrides and launches are orthogonal per the design doc).
+func (ce *ConditionEvaluator) EvaluateConditionsWithOverrides(
+	flagID string,
+	conditions []CachedCondition,
+	evalCtx proto.Message,
+	overrides map[int32]*pbflagsv1.FlagValue,
+	launches ...CachedLaunch,
+) *EvalResult {
 	if len(conditions) == 0 || evalCtx == nil {
 		return &EvalResult{}
 	}
@@ -147,9 +163,8 @@ func (ce *ConditionEvaluator) EvaluateConditions(flagID string, conditions []Cac
 	activation := map[string]any{"ctx": evalCtx}
 	for i, cond := range conditions {
 		if cond.Program == nil {
-			// "otherwise" — always matches. Check launch override.
-			val, launchID := ce.applyLaunchOverride(cond, launchMap, evalCtx)
-			return &EvalResult{Value: val, ConditionsChecked: checked, LaunchHit: launchID != "", LaunchID: launchID}
+			// "otherwise" — always matches.
+			return ce.buildResult(cond, int32(i), overrides, launchMap, evalCtx, checked)
 		}
 		checked++
 		out, _, err := cond.Program.Eval(activation)
@@ -162,28 +177,66 @@ func (ce *ConditionEvaluator) EvaluateConditions(flagID string, conditions []Cac
 			continue // skip failed condition, try next
 		}
 		if b, ok := out.Value().(bool); ok && b {
-			val, launchID := ce.applyLaunchOverride(cond, launchMap, evalCtx)
-			return &EvalResult{Value: val, ConditionsChecked: checked, LaunchHit: launchID != "", LaunchID: launchID}
+			return ce.buildResult(cond, int32(i), overrides, launchMap, evalCtx, checked)
 		}
 	}
 	return &EvalResult{ConditionsChecked: checked}
 }
 
-// applyLaunchOverride checks if a matched condition has a launch override and
-// if the entity is in the launch ramp. Returns the value and the launch ID
-// (empty if no launch override was applied).
-func (ce *ConditionEvaluator) applyLaunchOverride(cond CachedCondition, launchMap map[string]*CachedLaunch, evalCtx proto.Message) (*pbflagsv1.FlagValue, string) {
+// buildResult layers override and launch decisions on top of a matched
+// condition. Precedence: launch (if entity in ramp) > override > compiled
+// condition value.
+func (ce *ConditionEvaluator) buildResult(
+	cond CachedCondition,
+	condIdx int32,
+	overrides map[int32]*pbflagsv1.FlagValue,
+	launchMap map[string]*CachedLaunch,
+	evalCtx proto.Message,
+	checked int,
+) *EvalResult {
+	// Resolve the base value: override (if any) wins over compiled value.
+	base := cond.Value
+	overrideHit := false
+	if ov, ok := overrides[condIdx]; ok && ov != nil {
+		base = ov
+		overrideHit = true
+	}
+
+	// Launch override (if entity is in ramp) wins over both.
+	val, launchID := applyLaunchOverrideValue(cond, base, launchMap, evalCtx)
+	if launchID != "" {
+		return &EvalResult{
+			Value:             val,
+			ConditionsChecked: checked,
+			LaunchHit:         true,
+			LaunchID:          launchID,
+			OverrideHit:       false, // launch took precedence; report launch as the source
+		}
+	}
+	return &EvalResult{
+		Value:             base,
+		ConditionsChecked: checked,
+		OverrideHit:       overrideHit,
+	}
+}
+
+// applyLaunchOverrideValue checks if a matched condition has a launch
+// override and if the entity is in the launch ramp. Returns (value,
+// launchID); launchID is empty when no launch override was applied. The
+// `base` argument is the value to return when no launch fires (i.e. either
+// the compiled value or a live override).
+func applyLaunchOverrideValue(cond CachedCondition, base *pbflagsv1.FlagValue, launchMap map[string]*CachedLaunch, evalCtx proto.Message) (*pbflagsv1.FlagValue, string) {
 	if cond.LaunchID == "" || cond.LaunchValue == nil {
-		return cond.Value, ""
+		return base, ""
 	}
 	launch, ok := launchMap[cond.LaunchID]
 	if !ok {
-		return cond.Value, ""
+		return base, ""
 	}
 	if launch.InRamp(evalCtx) {
 		return cond.LaunchValue, cond.LaunchID
 	}
-	return cond.Value, ""
+	return base, ""
 }
 
 // UnmarshalContext deserializes an anypb.Any into a dynamic proto message

@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/proto"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 )
@@ -98,7 +99,60 @@ func (f *DBFetcher) FetchFlagState(ctx context.Context, flagID string) (*CachedF
 			cs.Launches = launches
 		}
 	}
+
+	// Load any active condition value overrides for this flag. Failures
+	// degrade gracefully: log + continue without overrides applied.
+	overrides, defaultOverride, oErr := f.fetchConditionOverrides(ctx, flagID)
+	if oErr != nil {
+		f.logger.Warn("failed to load condition overrides", "flag_id", flagID, "error", oErr)
+	} else {
+		cs.ConditionOverrides = overrides
+		cs.StaticDefaultOverride = defaultOverride
+	}
 	return cs, nil
+}
+
+// fetchConditionOverrides loads per-condition and static-default value
+// overrides for a flag. Returns (perIndex, staticDefault, err). The
+// per-index map is nil when there are no per-condition overrides; the
+// static default is nil when there's no NULL-index row.
+func (f *DBFetcher) fetchConditionOverrides(ctx context.Context, flagID string) (map[int32]*pbflagsv1.FlagValue, *pbflagsv1.FlagValue, error) {
+	rows, err := f.pool.Query(ctx, `
+		SELECT condition_index, override_value
+		FROM feature_flags.condition_overrides
+		WHERE flag_id = $1`, flagID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("query condition_overrides: %w", err)
+	}
+	defer rows.Close()
+
+	var perIndex map[int32]*pbflagsv1.FlagValue
+	var staticDefault *pbflagsv1.FlagValue
+	for rows.Next() {
+		var condIdx *int32
+		var b []byte
+		if err := rows.Scan(&condIdx, &b); err != nil {
+			return nil, nil, err
+		}
+		fv := &pbflagsv1.FlagValue{}
+		if err := proto.Unmarshal(b, fv); err != nil {
+			// One malformed row shouldn't take down the whole flag — log
+			// loudly (Error, not Warn) and skip. The other overrides and
+			// the compiled chain remain intact.
+			f.logger.Error("malformed condition override value (skipped)",
+				"flag_id", flagID, "cond_index", condIdx, "error", err)
+			continue
+		}
+		if condIdx == nil {
+			staticDefault = fv
+			continue
+		}
+		if perIndex == nil {
+			perIndex = make(map[int32]*pbflagsv1.FlagValue)
+		}
+		perIndex[*condIdx] = fv
+	}
+	return perIndex, staticDefault, rows.Err()
 }
 
 // fetchLaunchesForConditions extracts distinct launch IDs referenced by

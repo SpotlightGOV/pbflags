@@ -57,6 +57,11 @@ func SyncConditions(
 	logger *slog.Logger,
 	sha string,
 ) (ConditionResult, error) {
+	// Freeze gate: fail loudly with no writes if held.
+	if err := checkFreeze(ctx, conn); err != nil {
+		return ConditionResult{}, err
+	}
+
 	files, _, err := evaluator.ParseDescriptorSet(descriptorData)
 	if err != nil {
 		return ConditionResult{}, fmt.Errorf("parse descriptor set: %w", err)
@@ -308,6 +313,28 @@ func SyncConditions(
 				return ConditionResult{}, fmt.Errorf("update sync_sha for %q: %w", featureID, err)
 			}
 		}
+	}
+
+	// Auto-clear stale condition overrides for any flag whose conditions
+	// were rewritten by this sync. Per-index overrides assume a stable
+	// chain shape; once the YAML changes, the safe default is to start
+	// fresh and let operators re-apply if still needed. Runs in the same
+	// tx so the clear and the new conditions land atomically.
+	syncedFlagIDs := make([]string, 0)
+	for featureID, cfg := range parsedConfigs {
+		featureFlags := idx[featureID]
+		for flagName := range cfg.Flags {
+			if info, ok := featureFlags[flagName]; ok {
+				syncedFlagIDs = append(syncedFlagIDs, info.FlagID)
+			}
+		}
+	}
+	cleared, err := clearOverridesForFlagsTx(ctx, tx, syncedFlagIDs, "conditions")
+	if err != nil {
+		return ConditionResult{}, fmt.Errorf("clear stale condition overrides: %w", err)
+	}
+	if cleared > 0 {
+		logger.Info("auto-cleared stale condition overrides", "count", cleared)
 	}
 
 	if err := tx.Commit(ctx); err != nil {

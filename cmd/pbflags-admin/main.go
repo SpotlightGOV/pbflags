@@ -37,6 +37,7 @@
 //	PBFLAGS_AUTH_STRATEGY       Authentication strategy: none, shared-secret, trusted-header (default: none)
 //	PBFLAGS_AUTH_TOKEN           Shared-secret Bearer token (required if strategy=shared-secret)
 //	PBFLAGS_AUTH_HEADER          Header name for trusted-header strategy (default: X-Forwarded-User)
+//	PBFLAGS_ALLOW_CONDITION_OVERRIDES  Enable Set/Clear condition override RPCs (default: false)
 package main
 
 import (
@@ -47,6 +48,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -94,6 +96,7 @@ func main() {
 	envName := fs.String("env-name", "", "Environment label shown in admin UI")
 	envColor := fs.String("env-color", "", "Accent color for admin UI environment banner (hex)")
 	devAssets := fs.String("dev-assets", "", "Read admin UI assets from disk for live reload (dev only)")
+	allowConditionOverrides := fs.Bool("allow-condition-overrides", false, "Enable Set/Clear condition override RPCs (live incident-response writes; default off). Also via PBFLAGS_ALLOW_CONDITION_OVERRIDES.")
 	fs.Parse(args)
 
 	setEnvIfFlag("PBFLAGS_DATABASE", *database)
@@ -163,7 +166,21 @@ func main() {
 		logger.Info("admin auth enabled", "strategy", authCfg.Strategy)
 	}
 
-	if err := run(cfg, *standalone, *configDir, *devAssets, auth, logger); err != nil {
+	// Honor the env var as a fallback.
+	if !*allowConditionOverrides && envBool("PBFLAGS_ALLOW_CONDITION_OVERRIDES") {
+		*allowConditionOverrides = true
+	}
+	if *allowConditionOverrides {
+		logger.Info("condition overrides enabled — Set/Clear RPCs are live")
+	}
+
+	if err := run(cfg, *standalone, *configDir, *devAssets, *allowConditionOverrides, auth, logger); err != nil {
+		if held, ok := defsync.IsFreezeHeld(err); ok {
+			fmt.Fprintf(os.Stderr,
+				"\nSync is FROZEN.\n  holder: %s\n  reason: %s\n  since:  %s\n\nRelease with: pbflags unlock\n\n",
+				held.Info.Actor, held.Info.Reason, held.Info.CreatedAt.Format("2006-01-02 15:04:05 MST"))
+			os.Exit(2)
+		}
 		logger.Error("fatal", "error", err)
 		os.Exit(1)
 	}
@@ -175,13 +192,23 @@ func setEnvIfFlag(key, value string) {
 	}
 }
 
+// envBool returns true when the named env var holds a truthy value
+// ("1", "true", "yes" — case-insensitive). Empty/unset → false.
+func envBool(key string) bool {
+	switch strings.ToLower(os.Getenv(key)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
 func setDurationEnvIfFlag(key string, d time.Duration) {
 	if d > 0 {
 		os.Setenv(key, d.String())
 	}
 }
 
-func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, auth authn.Authenticator, logger *slog.Logger) error {
+func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, allowConditionOverrides bool, auth authn.Authenticator, logger *slog.Logger) error {
 	mode := "normal"
 	if standalone {
 		mode = "standalone"
@@ -397,7 +424,11 @@ func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, 
 
 	adminLogger := logger.With("component", "admin")
 	store := admin.NewStore(pool, adminLogger)
-	adminService := admin.NewAdminService(store, adminLogger)
+	var adminOpts []admin.AdminServiceOption
+	if allowConditionOverrides {
+		adminOpts = append(adminOpts, admin.WithAllowConditionOverrides())
+	}
+	adminService := admin.NewAdminService(store, adminLogger, adminOpts...)
 
 	// Inner mux holds all authenticated admin routes.
 	adminMux := http.NewServeMux()

@@ -23,12 +23,13 @@ type Metrics struct {
 	PollerLastSuccess   prometheus.Gauge
 
 	// Pre-curried hot-path counters — zero map lookups per call.
-	evalDefault   prometheus.Counter
-	evalKilled    prometheus.Counter
-	evalCondition prometheus.Counter
-	evalLaunch    prometheus.Counter
-	evalCached    prometheus.Counter
-	evalStale     prometheus.Counter
+	evalDefault           prometheus.Counter
+	evalKilled            prometheus.Counter
+	evalCondition         prometheus.Counter
+	evalConditionOverride prometheus.Counter
+	evalLaunch            prometheus.Counter
+	evalCached            prometheus.Counter
+	evalStale             prometheus.Counter
 
 	cacheHitKillSet    prometheus.Counter
 	cacheHitFlags      prometheus.Counter
@@ -119,6 +120,7 @@ func (m *Metrics) curryCounters() {
 	m.evalDefault = m.EvaluationsTotal.WithLabelValues("default", "ok")
 	m.evalKilled = m.EvaluationsTotal.WithLabelValues("killed", "ok")
 	m.evalCondition = m.EvaluationsTotal.WithLabelValues("condition", "ok")
+	m.evalConditionOverride = m.EvaluationsTotal.WithLabelValues("condition_override", "ok")
 	m.evalLaunch = m.EvaluationsTotal.WithLabelValues("launch", "ok")
 	m.evalCached = m.EvaluationsTotal.WithLabelValues("cached", "ok")
 	m.evalStale = m.EvaluationsTotal.WithLabelValues("stale", "ok")
@@ -141,6 +143,8 @@ func (m *Metrics) incEval(source pbflagsv1.EvaluationSource) {
 		m.evalKilled.Inc()
 	case pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CONDITION:
 		m.evalCondition.Inc()
+	case pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CONDITION_OVERRIDE:
+		m.evalConditionOverride.Inc()
 	case pbflagsv1.EvaluationSource_EVALUATION_SOURCE_LAUNCH:
 		m.evalLaunch.Inc()
 	case pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CACHED:
@@ -171,6 +175,8 @@ func sourceLabel(source pbflagsv1.EvaluationSource) string {
 		return "stale"
 	case pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CONDITION:
 		return "condition"
+	case pbflagsv1.EvaluationSource_EVALUATION_SOURCE_CONDITION_OVERRIDE:
+		return "condition_override"
 	case pbflagsv1.EvaluationSource_EVALUATION_SOURCE_LAUNCH:
 		return "launch"
 	default:

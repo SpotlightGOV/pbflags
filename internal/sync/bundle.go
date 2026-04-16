@@ -206,10 +206,17 @@ func Compile(descriptorData []byte, configDir string) ([]byte, error) {
 // LoadBundle deserializes a CompiledBundle and writes it to the database.
 // No proto descriptors or CEL compiler needed — all compilation was done
 // at compile time.
+//
+// Returns *FreezeHeldError when the global sync freeze is held.
 func LoadBundle(ctx context.Context, conn *pgx.Conn, bundleData []byte, sha string) (LoadResult, error) {
 	bundle := &pbflagsv1.CompiledBundle{}
 	if err := proto.Unmarshal(bundleData, bundle); err != nil {
 		return LoadResult{}, fmt.Errorf("unmarshal bundle: %w", err)
+	}
+
+	// Freeze gate: fail loudly with no writes if held.
+	if err := checkFreeze(ctx, conn); err != nil {
+		return LoadResult{}, err
 	}
 
 	tx, err := conn.Begin(ctx)
@@ -396,6 +403,19 @@ func LoadBundle(ctx context.Context, conn *pgx.Conn, bundleData []byte, sha stri
 				return LoadResult{}, fmt.Errorf("update sync_sha: %w", err)
 			}
 		}
+	}
+
+	// Auto-clear stale condition overrides for synced flags (see SyncDefinitions).
+	syncedFlagIDs := make([]string, 0, len(allFlagIDs))
+	for fid := range allFlagIDs {
+		syncedFlagIDs = append(syncedFlagIDs, fid)
+	}
+	cleared, err := clearOverridesForFlagsTx(ctx, tx, syncedFlagIDs, "bundle")
+	if err != nil {
+		return LoadResult{}, fmt.Errorf("clear stale condition overrides: %w", err)
+	}
+	if cleared > 0 {
+		slog.Info("auto-cleared stale condition overrides", "count", cleared)
 	}
 
 	if err := tx.Commit(ctx); err != nil {

@@ -27,7 +27,15 @@ type Result struct {
 // transaction. It upserts features and flags, and archives flags that are no
 // longer present in the descriptor. Runtime state (state, value) is never
 // modified.
+//
+// Returns *FreezeHeldError when the global sync freeze is held; callers
+// should map this to a non-zero exit with a friendly unlock hint.
 func SyncDefinitions(ctx context.Context, conn *pgx.Conn, defs []evaluator.FlagDef, logger *slog.Logger) (Result, error) {
+	// Freeze gate: fail loudly with no writes if held.
+	if err := checkFreeze(ctx, conn); err != nil {
+		return Result{}, err
+	}
+
 	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return Result{}, fmt.Errorf("begin transaction: %w", err)
@@ -37,6 +45,22 @@ func SyncDefinitions(ctx context.Context, conn *pgx.Conn, defs []evaluator.FlagD
 	result, err := syncInTx(ctx, tx, defs, logger)
 	if err != nil {
 		return Result{}, err
+	}
+
+	// Auto-clear any condition_overrides for the synced flags. New
+	// definitions can change the condition chain shape, so leaving stale
+	// per-index overrides around would silently misroute incident
+	// responses. Runs inside the same tx → atomic with the sync write.
+	syncedFlagIDs := make([]string, 0, len(defs))
+	for _, d := range defs {
+		syncedFlagIDs = append(syncedFlagIDs, d.FlagID)
+	}
+	cleared, err := clearOverridesForFlagsTx(ctx, tx, syncedFlagIDs, "definitions")
+	if err != nil {
+		return Result{}, fmt.Errorf("clear stale condition overrides: %w", err)
+	}
+	if cleared > 0 {
+		logger.Info("auto-cleared stale condition overrides", "count", cleared)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
