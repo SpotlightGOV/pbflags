@@ -1,4 +1,4 @@
-.PHONY: help generate build test test-e2e lint fmt setup setup-beads clean docker dev dev-db dev-seed release-notes release
+.PHONY: help generate build install test test-e2e lint fmt setup setup-beads clean docker dev dev-db dev-seed release-notes release
 
 .DEFAULT_GOAL := help
 
@@ -14,6 +14,7 @@ help:
 	@echo "Build:"
 	@echo "  build           Build all Go binaries (admin, evaluator, sync, codegen plugin)"
 	@echo "  generate        Regenerate protobuf Go code (builds codegen plugin first)"
+	@echo "  install         Install CLI to GOPATH/bin (pbflags + pb alias)"
 	@echo "  docker          Build the Docker image"
 	@echo "  install-codegen Install protoc-gen-pbflags to GOPATH/bin"
 	@echo ""
@@ -50,6 +51,12 @@ build:
 	go build ./cmd/pbflags-admin
 	go build ./cmd/pbflags-evaluator
 	go build ./cmd/protoc-gen-pbflags
+
+# Install CLI binaries to GOPATH/bin and create the 'pb' alias.
+install:
+	go install ./cmd/pbflags
+	ln -sf "$$(go env GOPATH)/bin/pbflags" "$$(go env GOPATH)/bin/pb"
+	@echo "Installed: pbflags, pb (alias)"
 
 # Run Go tests.
 test:
