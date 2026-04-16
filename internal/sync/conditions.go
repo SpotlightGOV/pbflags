@@ -36,12 +36,10 @@ type flagInfo struct {
 }
 
 // intsToInt32s converts a []int (from YAML config) to []int32 for pgx
-// INTEGER[] binding. Returns nil for empty input so the column gets the
-// table default ('{}').
+// INTEGER[] binding. Returns an empty (non-nil) slice for empty input —
+// launches.ramp_steps is NOT NULL, and pgx encodes a nil slice as SQL
+// NULL which trips the constraint.
 func intsToInt32s(in []int) []int32 {
-	if len(in) == 0 {
-		return nil
-	}
 	out := make([]int32, len(in))
 	for i, v := range in {
 		out[i] = int32(v)

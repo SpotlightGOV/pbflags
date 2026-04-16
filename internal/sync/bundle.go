@@ -315,9 +315,13 @@ func LoadBundle(ctx context.Context, conn *pgx.Conn, bundleData []byte, sha stri
 			rampPct = *launch.RampPercentage
 		}
 		// ramp_steps is config-authoritative — empty list when unset clears
-		// any prior config-set steps. Pass int32 slice straight through to
-		// pgx; the column is INTEGER[].
+		// any prior config-set steps. Coerce nil to an empty slice; pgx
+		// would otherwise encode nil as SQL NULL and trip the NOT NULL
+		// constraint on launches.ramp_steps.
 		rampSteps := launch.RampSteps
+		if rampSteps == nil {
+			rampSteps = []int32{}
+		}
 		if launch.RampPercentage != nil {
 			// Config specifies ramp — authoritative on every sync.
 			if _, err := tx.Exec(ctx, `
