@@ -42,12 +42,31 @@
 </div>
 {{end}}
 
+{{if and .AllowOverrides .ConfigManaged}}
+<div class="config-managed-warning">
+  <span class="config-managed-icon" aria-hidden="true">&#9888;</span>
+  <div class="config-managed-body">
+    <strong>This flag's conditions are managed by config-as-code{{if .SyncSHA}} (synced from <code>{{slice .SyncSHA 0 8}}</code>){{end}}.</strong>
+    Overrides are temporary — the next successful sync will clear them. Hold the global sync lock while you apply overrides and prepare a follow-up config PR.
+  </div>
+</div>
+{{end}}
+
 <!-- Configuration -->
 <div class="detail-section" id="conditions-section">
   {{if .Conditions}}
   <div class="detail-section-header">
     <h3>Conditions</h3>
     <span class="state-hint">Evaluated top-to-bottom; first match wins</span>
+    {{if and .AllowOverrides (gt .OverrideCount 0)}}
+    <form class="clear-all-overrides"
+          hx-post="/api/conditions/clear-all-overrides/{{.FlagID}}"
+          hx-target="#content" hx-swap="innerHTML"
+          onsubmit="var r = prompt('Clear all {{.OverrideCount}} override(s)?\n\nReason (required):'); if (!r) return false; this.reason.value = r;">
+      <input type="hidden" name="reason" value="">
+      <button type="submit" class="btn btn-sm btn-danger">Clear all {{.OverrideCount}} override(s)</button>
+    </form>
+    {{end}}
   </div>
   <table class="condition-table">
     <thead>
@@ -56,55 +75,98 @@
         <th class="cond-col-expr">Condition</th>
         <th class="cond-col-val">Value</th>
         <th class="cond-col-launch">Launch Override</th>
+        {{if .AllowOverrides}}<th class="cond-col-action">Override</th>{{end}}
       </tr>
     </thead>
     <tbody>
+      {{$flag := .Flag}}
+      {{$allow := .AllowOverrides}}
+      {{$flagID := .FlagID}}
+      {{$overrides := .OverridesByCond}}
       {{range $i, $c := .Conditions}}
-      <tr class="condition-row{{if not $c.CEL}} condition-row-otherwise{{end}}">
+      {{$ov := overrideForCond $overrides $i}}
+      {{$isOtherwise := not $c.CEL}}
+      <tr class="condition-row{{if $isOtherwise}} condition-row-otherwise{{end}}{{if hasOverride $ov}} condition-row-overridden{{end}}">
         <td class="cond-num">{{inc $i}}</td>
         <td>
           {{if $c.CEL}}
             <code class="cond-cel">{{$c.CEL}}</code>
           {{else}}
             <span class="cond-otherwise">otherwise</span>
+            {{if $allow}}<span class="cond-otherwise-hint">override via the default row below</span>{{end}}
           {{end}}
           {{if $c.Comment}}
             <span class="cond-comment">{{$c.Comment}}</span>
           {{end}}
         </td>
-        <td><span class="cond-value">{{$c.Value}}</span></td>
+        <td>
+          {{if hasOverride $ov}}
+            <span class="cond-value cond-value-overridden">{{flagValue $ov.Value}}</span>
+            <div class="cond-override-meta">
+              <span class="override-was">was: {{$c.Value}}</span>
+              <span class="override-by">{{$ov.Actor}} &middot; {{timeAgo $ov.CreatedAt}}</span>
+              {{if $ov.Reason}}<span class="override-reason" title="{{$ov.Reason}}">&ldquo;{{$ov.Reason}}&rdquo;</span>{{end}}
+            </div>
+          {{else}}
+            <span class="cond-value">{{$c.Value}}</span>
+          {{end}}
+        </td>
         <td>
           {{if $c.LaunchID}}
             <code class="launch-id">{{$c.LaunchID}}</code>:
             <span class="cond-value">{{$c.LaunchValue}}</span>
           {{end}}
         </td>
+        {{if $allow}}
+        <td class="cond-action-cell">
+          {{if $isOtherwise}}
+            <span class="cond-action-na" title="Use the static-default row below to override the otherwise fallback.">—</span>
+          {{else}}
+            {{template "override_controls" dict "FlagID" $flagID "Flag" $flag "CondIndex" $i "Override" $ov}}
+          {{end}}
+        </td>
+        {{end}}
       </tr>
       {{end}}
     </tbody>
   </table>
-  {{else}}
-  <div class="detail-section-header">
-    <h3>Value</h3>
-    <span class="state-hint">Static value from config</span>
-  </div>
-  <table class="condition-table">
+  {{end}}
+  {{if or .Conditions .AllowOverrides}}
+  {{$defaultOv := index .OverridesByCond "default"}}
+  <table class="condition-table condition-table-default">
     <thead>
       <tr>
-        <th class="cond-col-expr">Default</th>
+        <th class="cond-col-num">*</th>
+        <th class="cond-col-expr">Static default {{if .Conditions}}<span class="cond-otherwise-hint">used when no condition matches and override of the otherwise row</span>{{else}}<span class="cond-otherwise-hint">compiled into the binary</span>{{end}}</th>
         <th class="cond-col-val">Value</th>
+        <th class="cond-col-launch"></th>
+        {{if .AllowOverrides}}<th class="cond-col-action">Override</th>{{end}}
       </tr>
     </thead>
     <tbody>
-      <tr class="condition-row condition-row-otherwise">
+      <tr class="condition-row condition-row-otherwise condition-row-default{{if hasOverride $defaultOv}} condition-row-overridden{{end}}">
+        <td class="cond-num cond-num-default">*</td>
         <td><span class="cond-otherwise">compiled default</span></td>
         <td>
-          {{if isListType .Flag.FlagType}}
+          {{if hasOverride $defaultOv}}
+            <span class="cond-value cond-value-overridden">{{flagValue $defaultOv.Value}}</span>
+            <div class="cond-override-meta">
+              <span class="override-was">was: {{flagValue .Flag.DefaultValue}}</span>
+              <span class="override-by">{{$defaultOv.Actor}} &middot; {{timeAgo $defaultOv.CreatedAt}}</span>
+              {{if $defaultOv.Reason}}<span class="override-reason" title="{{$defaultOv.Reason}}">&ldquo;{{$defaultOv.Reason}}&rdquo;</span>{{end}}
+            </div>
+          {{else if isListType .Flag.FlagType}}
             {{template "list_chips" dict "Items" (listItems .Flag.DefaultValue) "Muted" false}}
           {{else}}
             <span class="cond-value">{{flagValue .Flag.DefaultValue}}</span>
           {{end}}
         </td>
+        <td></td>
+        {{if .AllowOverrides}}
+        <td class="cond-action-cell">
+          {{template "override_controls" dict "FlagID" .FlagID "Flag" .Flag "CondIndex" -1 "Override" $defaultOv}}
+        </td>
+        {{end}}
       </tr>
     </tbody>
   </table>
@@ -207,5 +269,60 @@
   {{else}}
     <span class="val val-muted">[]</span>
   {{end}}
+</div>
+{{end}}
+
+{{/*
+  override_controls renders the action cell for one row of the conditions
+  table. Args: FlagID, Flag (for type / supported_values), CondIndex
+  (-1 for the static-default row), Override (zero ConditionOverride if
+  no override is currently set). The form posts to /api/conditions/...
+  and swaps the whole #content panel so the table re-renders with the
+  new override applied.
+*/}}
+{{define "override_controls"}}
+{{$ov := .Override}}
+{{$condParam := "default"}}
+{{if ge .CondIndex 0}}{{$condParam = printf "%d" .CondIndex}}{{end}}
+<div class="override-action-stack">
+  {{if hasOverride $ov}}
+  <form class="override-clear-form"
+        hx-post="/api/conditions/clear-override/{{.FlagID}}"
+        hx-target="#content" hx-swap="innerHTML">
+    <input type="hidden" name="cond_index" value="{{$condParam}}">
+    <button type="submit" class="btn-icon btn-icon-clear" title="Clear override (restore underlying value)">&times;</button>
+  </form>
+  {{end}}
+  <details class="override-form-details">
+    <summary class="btn btn-sm{{if hasOverride $ov}} btn-on-override{{end}}">{{if hasOverride $ov}}Edit{{else}}Override{{end}}</summary>
+    <form class="override-popover"
+          hx-post="/api/conditions/override/{{.FlagID}}"
+          hx-target="#content" hx-swap="innerHTML">
+      <input type="hidden" name="cond_index" value="{{$condParam}}">
+      <p class="override-popover-help">Temporary live override. Cleared on next successful sync. Acquire the sync lock first if config-managed.</p>
+      <label>New value
+        {{if isBool .Flag.FlagType}}
+        <select name="value" class="flag-value-select">
+          <option value="true">true</option>
+          <option value="false">false</option>
+        </select>
+        {{else if hasSupportedValues .Flag}}
+        <select name="value" class="flag-value-select">
+          {{range supportedOptions .Flag}}<option value="{{.}}">{{.}}</option>{{end}}
+        </select>
+        {{else if isListType .Flag.FlagType}}
+        <textarea name="value" rows="3" placeholder="one value per line"></textarea>
+        {{else}}
+        <input type="text" name="value" required placeholder="new value" autocomplete="off">
+        {{end}}
+      </label>
+      <label>Reason
+        <input type="text" name="reason" required placeholder="why are you overriding?" maxlength="200" autocomplete="off">
+      </label>
+      <div class="override-popover-actions">
+        <button type="submit" class="btn btn-sm btn-primary">Override — I understand this is temporary</button>
+      </div>
+    </form>
+  </details>
 </div>
 {{end}}

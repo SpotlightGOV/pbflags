@@ -8,6 +8,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -33,6 +34,13 @@ type EnvConfig struct {
 	Color        string // CSS color, e.g. "#f87171"
 	Version      string // build version, e.g. "1.2.3"
 	DevAssetsDir string // if set, read assets from disk for live reload (dev only)
+
+	// AllowConditionOverrides mirrors the --allow-condition-overrides
+	// server flag. When false, the override / lock write controls are
+	// hidden in the UI and the corresponding API endpoints return 403.
+	// Read-only state (lock banner, override badges) still renders so
+	// operators can see what's happening on a locked-down environment.
+	AllowConditionOverrides bool
 }
 
 // Handler serves the admin web UI.
@@ -75,6 +83,9 @@ func NewHandler(store *admin.Store, logger *slog.Logger, env ...EnvConfig) (*Han
 		"inc":                func(i int) int { return i + 1 },
 		"slice":              safeSlice,
 		"condCount":          func(m map[string]int, id string) int { return m[id] },
+		"overrideCount":      func(m map[string]int, id string) int { return m[id] },
+		"overrideForCond":    overrideForCond,
+		"hasOverride":        func(o admin.ConditionOverride) bool { return o.FlagID != "" },
 		"deref": func(s *string) string {
 			if s == nil {
 				return ""
@@ -170,6 +181,16 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	inner.HandleFunc("POST /api/launches/kill/{launchID}", h.killLaunch)
 	inner.HandleFunc("POST /api/launches/unkill/{launchID}", h.unkillLaunch)
 
+	// Condition overrides + global sync lock. All gated by
+	// --allow-condition-overrides; the gate handler returns 403 when off
+	// so operators on locked-down environments get a clear signal rather
+	// than 404 (which would look like a bug).
+	inner.HandleFunc("POST /api/conditions/override/{flagID...}", h.gateOverrides(h.setConditionOverride))
+	inner.HandleFunc("POST /api/conditions/clear-override/{flagID...}", h.gateOverrides(h.clearConditionOverride))
+	inner.HandleFunc("POST /api/conditions/clear-all-overrides/{flagID...}", h.gateOverrides(h.clearAllConditionOverrides))
+	inner.HandleFunc("POST /api/lock", h.gateOverrides(h.acquireSyncLock))
+	inner.HandleFunc("POST /api/unlock", h.gateOverrides(h.releaseSyncLock))
+
 	mux.Handle("/", h.csrfProtect(inner))
 }
 
@@ -244,13 +265,24 @@ func generateCSRFToken() string {
 // Page handlers
 // ---------------------------------------------------------------------------
 
-// pageData creates template data with env config injected.
-func (h *Handler) pageData(page string, extra ...any) map[string]any {
+// pageData creates template data with env config injected. Reads the
+// global sync-lock state on every page so the layout can render the
+// freeze banner everywhere consistently — a single extra row read is
+// cheap relative to the page render and keeps templates stateless.
+func (h *Handler) pageData(r *http.Request, page string, extra ...any) map[string]any {
 	m := map[string]any{
-		"Page":     page,
-		"EnvName":  h.env.Name,
-		"EnvColor": h.env.Color,
-		"Version":  h.env.Version,
+		"Page":           page,
+		"EnvName":        h.env.Name,
+		"EnvColor":       h.env.Color,
+		"Version":        h.env.Version,
+		"AllowOverrides": h.env.AllowConditionOverrides,
+	}
+	if lock, err := h.store.GetSyncLock(r.Context()); err == nil && lock != nil {
+		m["SyncLock"] = lock
+	} else if err != nil {
+		// Don't fail the page render on a transient lock-table read
+		// error — the banner just won't appear. Still log it.
+		h.logger.Warn("read sync lock for page render", "error", err)
 	}
 	for i := 0; i < len(extra)-1; i += 2 {
 		if key, ok := extra[i].(string); ok {
@@ -267,10 +299,25 @@ func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := h.pageData("dashboard",
+	// Aggregate override counts per flag for the dashboard badge. The
+	// listing is bounded (defaultOverrideListLimit=100), so on a fleet
+	// with more divergence than that the badge may undercount; that's
+	// acceptable for an at-a-glance indicator — operators dig into
+	// `pb overrides` or the flag detail for the full picture.
+	overrideCounts := map[string]int{}
+	if overrides, err := h.store.ListAllOverrides(r.Context(), admin.OverrideListFilter{}); err == nil {
+		for _, o := range overrides {
+			overrideCounts[o.FlagID]++
+		}
+	} else {
+		h.logger.Warn("dashboard: list overrides", "error", err)
+	}
+
+	data := h.pageData(r, "dashboard",
 		"Features", features,
 		"FlagCount", countFlags(features),
 		"CondCounts", condCounts,
+		"OverrideCounts", overrideCounts,
 	)
 
 	// htmx partial swap: return just the content block.
@@ -315,7 +362,22 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := h.pageData("flag",
+	// Per-flag overrides power both the per-row controls and the
+	// "Clear All" button. Indexed by condition_index for O(1) template
+	// lookup; the static-default override (NULL index) lives at the
+	// special key staticDefaultKey.
+	overridesByCond := map[string]admin.ConditionOverride{}
+	if overrides, oErr := h.store.ListOverridesForFlag(r.Context(), flagID); oErr == nil {
+		for _, o := range overrides {
+			overridesByCond[overrideKey(o.ConditionIndex)] = o
+		}
+	} else {
+		h.logger.Warn("flag detail: list overrides", "flag_id", flagID, "error", oErr)
+	}
+
+	configManaged, _ := h.store.IsConfigManaged(r.Context(), flagID)
+
+	data := h.pageData(r, "flag",
 		"Flag", flag,
 		"Audit", entries,
 		"FlagID", flagID,
@@ -324,6 +386,9 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 		"ConditionsError", extra.ConditionsError,
 		"SyncSHA", extra.SyncSHA,
 		"Launches", launches,
+		"OverridesByCond", overridesByCond,
+		"OverrideCount", len(overridesByCond),
+		"ConfigManaged", configManaged,
 	)
 
 	if r.Header.Get("HX-Request") == "true" {
@@ -356,7 +421,7 @@ func (h *Handler) auditLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := h.pageData("audit",
+	data := h.pageData(r, "audit",
 		"Entries", entries,
 		"FlagFilter", flagFilter,
 		"ActionFilter", actionFilter,
@@ -1025,4 +1090,262 @@ func actorFromRequest(r *http.Request) string {
 		return actor
 	}
 	return "admin-ui"
+}
+
+// ---------------------------------------------------------------------------
+// Condition overrides + sync lock (gated by --allow-condition-overrides)
+// ---------------------------------------------------------------------------
+
+// staticDefaultKey is the lookup key in OverridesByCond for the row that
+// overrides the static / compiled default (condition_index = NULL).
+const staticDefaultKey = "default"
+
+// overrideKey produces the map key for an override given its condition
+// index. nil → staticDefaultKey; otherwise the decimal string.
+func overrideKey(idx *int32) string {
+	if idx == nil {
+		return staticDefaultKey
+	}
+	return strconv.FormatInt(int64(*idx), 10)
+}
+
+// overrideForCond is a template helper that returns the override (or the
+// zero value) at a given condition position. Templates compare against the
+// zero value (FlagID == "") to test for presence — keeping the lookup
+// branch out of Go-side data prep means the caller doesn't have to
+// duplicate the map-shape contract.
+func overrideForCond(m map[string]admin.ConditionOverride, idx int) admin.ConditionOverride {
+	return m[strconv.Itoa(idx)]
+}
+
+// gateOverrides wraps a handler with the --allow-condition-overrides
+// check. Returns 403 (not 404) when off so operators see a clear "this
+// is intentionally disabled" signal rather than thinking the route is
+// missing.
+func (h *Handler) gateOverrides(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !h.env.AllowConditionOverrides {
+			http.Error(w, "condition overrides are disabled on this server (start with --allow-condition-overrides to enable)", http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	}
+}
+
+// renderFlagDetailContent re-renders the full flag_content fragment. Used
+// after a mutation to swap in the updated detail view.
+func (h *Handler) renderFlagDetailContent(w http.ResponseWriter, r *http.Request, flagID string) {
+	flag, extra, err := h.store.GetFlag(r.Context(), flagID)
+	if err != nil {
+		h.serverError(w, "get flag after override", err)
+		return
+	}
+	entries, err := h.store.GetAuditLog(r.Context(), admin.AuditLogFilter{FlagID: flagID, Limit: 20})
+	if err != nil {
+		h.logger.Warn("get audit log after override", "flag_id", flagID, "error", err)
+	}
+	overridesByCond := map[string]admin.ConditionOverride{}
+	if overrides, oErr := h.store.ListOverridesForFlag(r.Context(), flagID); oErr == nil {
+		for _, o := range overrides {
+			overridesByCond[overrideKey(o.ConditionIndex)] = o
+		}
+	}
+	configManaged, _ := h.store.IsConfigManaged(r.Context(), flagID)
+	featureID := strings.Split(flagID, "/")[0]
+
+	data := h.pageData(r, "flag",
+		"Flag", flag,
+		"Audit", entries,
+		"FlagID", flagID,
+		"Feature", featureID,
+		"Conditions", extra.Conditions,
+		"ConditionsError", extra.ConditionsError,
+		"SyncSHA", extra.SyncSHA,
+		"OverridesByCond", overridesByCond,
+		"OverrideCount", len(overridesByCond),
+		"ConfigManaged", configManaged,
+	)
+	h.render(w, "flag_content", data)
+}
+
+// parseCondIndex reads the cond_index form field. The empty string and
+// the literal "default" both mean "static / compiled-default override"
+// (NULL in the DB) — accepting both keeps the form ergonomic regardless
+// of how the template emits it.
+func parseCondIndex(raw string) (*int32, error) {
+	if raw == "" || raw == staticDefaultKey {
+		return nil, nil
+	}
+	n, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("cond_index: %w", err)
+	}
+	v := int32(n)
+	return &v, nil
+}
+
+// setConditionOverride handles POST /api/conditions/override/{flagID...}.
+// Form: cond_index ("default" or N), value, reason.
+func (h *Handler) setConditionOverride(w http.ResponseWriter, r *http.Request) {
+	flagID := r.PathValue("flagID")
+	if !validFlagID.MatchString(flagID) {
+		http.Error(w, "invalid flag_id format", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	condIdx, err := parseCondIndex(r.FormValue("cond_index"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	reason := strings.TrimSpace(r.FormValue("reason"))
+	if reason == "" {
+		http.Error(w, "reason is required", http.StatusBadRequest)
+		return
+	}
+
+	// Need the flag's type to parse the raw value form field. A second
+	// GetFlag here is the price of a stateless form — alternative is to
+	// pass the type in a hidden field, but that lets a tampered client
+	// pick a parser, so the server lookup is the safer default.
+	flag, _, err := h.store.GetFlag(r.Context(), flagID)
+	if err != nil || flag == nil {
+		http.Error(w, "flag not found", http.StatusNotFound)
+		return
+	}
+	value, err := parseFlagValue(flag.FlagType.String(), r.FormValue("value"))
+	if err != nil {
+		http.Error(w, "invalid value: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	actor := actorFromRequest(r)
+	if _, err := h.store.SetConditionOverride(r.Context(), flagID, condIdx, value, "ui", actor, reason); err != nil {
+		h.logger.Error("set condition override", "flag_id", flagID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	h.renderFlagDetailContent(w, r, flagID)
+}
+
+// clearConditionOverride handles POST /api/conditions/clear-override/{flagID...}.
+// Form: cond_index, reason.
+func (h *Handler) clearConditionOverride(w http.ResponseWriter, r *http.Request) {
+	flagID := r.PathValue("flagID")
+	if !validFlagID.MatchString(flagID) {
+		http.Error(w, "invalid flag_id format", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	condIdx, err := parseCondIndex(r.FormValue("cond_index"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	reason := strings.TrimSpace(r.FormValue("reason"))
+	if reason == "" {
+		// The single-row clear is a recoverable action (the prior
+		// override is in audit), but a reason still travels into the
+		// audit log so it remains greppable. Default to "cleared via
+		// admin UI" rather than blocking — operators clicking the X
+		// button shouldn't be forced through a modal for the common
+		// case.
+		reason = "cleared via admin UI"
+	}
+	actor := actorFromRequest(r)
+	if err := h.store.ClearConditionOverride(r.Context(), flagID, condIdx, actor, reason); err != nil {
+		h.logger.Error("clear condition override", "flag_id", flagID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	h.renderFlagDetailContent(w, r, flagID)
+}
+
+// clearAllConditionOverrides handles POST /api/conditions/clear-all-overrides/{flagID...}.
+// Form: reason (required).
+func (h *Handler) clearAllConditionOverrides(w http.ResponseWriter, r *http.Request) {
+	flagID := r.PathValue("flagID")
+	if !validFlagID.MatchString(flagID) {
+		http.Error(w, "invalid flag_id format", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	reason := strings.TrimSpace(r.FormValue("reason"))
+	if reason == "" {
+		http.Error(w, "reason is required", http.StatusBadRequest)
+		return
+	}
+	actor := actorFromRequest(r)
+	if _, err := h.store.ClearAllConditionOverrides(r.Context(), flagID, actor, reason); err != nil {
+		h.logger.Error("clear all overrides", "flag_id", flagID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	h.renderFlagDetailContent(w, r, flagID)
+}
+
+// acquireSyncLock handles POST /api/lock. Form: reason (required).
+// Refreshes the page so every banner / button updates uniformly — there
+// are too many surface areas (sidebar, dashboard, every flag page) to
+// swap individually and keep consistent.
+func (h *Handler) acquireSyncLock(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	reason := strings.TrimSpace(r.FormValue("reason"))
+	if reason == "" {
+		http.Error(w, "reason is required", http.StatusBadRequest)
+		return
+	}
+	actor := actorFromRequest(r)
+	if _, err := h.store.AcquireSyncLock(r.Context(), actor, reason); err != nil {
+		// Already-locked is the common "race on the button" outcome
+		// rather than an error — surface the holder so the operator
+		// understands why their lock attempt didn't take.
+		var held *admin.SyncLockHeldError
+		if errors.As(err, &held) {
+			http.Error(w, fmt.Sprintf("already locked by %s: %s", held.Info.Actor, held.Info.Reason), http.StatusConflict)
+			return
+		}
+		h.logger.Error("acquire sync lock", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("HX-Refresh", "true")
+	w.WriteHeader(http.StatusOK)
+}
+
+// releaseSyncLock handles POST /api/unlock. Form: reason (required).
+func (h *Handler) releaseSyncLock(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	reason := strings.TrimSpace(r.FormValue("reason"))
+	if reason == "" {
+		http.Error(w, "reason is required", http.StatusBadRequest)
+		return
+	}
+	actor := actorFromRequest(r)
+	if err := h.store.ReleaseSyncLock(r.Context(), actor, reason); err != nil {
+		if errors.Is(err, admin.ErrSyncNotLocked) {
+			http.Error(w, "sync is not locked", http.StatusConflict)
+			return
+		}
+		h.logger.Error("release sync lock", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("HX-Refresh", "true")
+	w.WriteHeader(http.StatusOK)
 }

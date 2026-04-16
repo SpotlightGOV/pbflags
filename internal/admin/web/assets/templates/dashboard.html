@@ -51,8 +51,9 @@
       </thead>
       <tbody>
         {{$cc := $.CondCounts}}
+        {{$oc := $.OverrideCounts}}
         {{range .Flags}}
-        {{template "flag_row" dict "Flag" . "CondCounts" $cc}}
+        {{template "flag_row" dict "Flag" . "CondCounts" $cc "OverrideCounts" $oc}}
         {{end}}
       </tbody>
     </table>
@@ -63,15 +64,18 @@
 
 {{define "flag_row"}}
 {{$n := condCount .CondCounts .Flag.FlagId}}
+{{$ov := overrideCount .OverrideCounts .Flag.FlagId}}
 <tr id="flag-row-{{flagIDEscape .Flag.FlagId}}"
     data-flag="{{.Flag.FlagId}}" data-flag-desc="{{.Flag.Description}}"
     data-flag-name="{{flagLabel .Flag}}"
-    data-state="{{stateLabel .Flag.State}}">
+    data-state="{{stateLabel .Flag.State}}"
+    {{if gt $ov 0}}data-overridden="true"{{end}}>
   <td>
     <a class="flag-name" href="/flags/{{.Flag.FlagId}}"
        hx-get="/flags/{{.Flag.FlagId}}" hx-target="#content" hx-push-url="true">
       {{flagLabel .Flag}}
     </a>
+    {{if gt $ov 0}}<span class="override-badge" title="{{$ov}} active override(s) — this flag is diverged from config">{{$ov}} OVR</span>{{end}}
     <div class="flag-id-sub">{{.Flag.FlagId}}</div>
     {{if .Flag.Description}}<div class="flag-desc">{{.Flag.Description}}</div>{{end}}
   </td>

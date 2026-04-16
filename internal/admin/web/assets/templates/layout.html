@@ -16,8 +16,33 @@
     });
   </script>
 </head>
-<body>
+<body{{if .SyncLock}} class="sync-locked"{{end}}>
   {{if .EnvName}}<div class="env-banner" style="background: {{.EnvColor}}">{{.EnvName}}</div>{{end}}
+  {{if .SyncLock}}
+  <div class="lock-banner" role="status">
+    <div class="lock-banner-inner">
+      <span class="lock-banner-icon" aria-hidden="true">&#9888;</span>
+      <span class="lock-banner-label">SYNC LOCKED</span>
+      <span class="lock-banner-divider"></span>
+      <span class="lock-banner-actor">{{.SyncLock.Actor}}</span>
+      <span class="lock-banner-reason">{{.SyncLock.Reason}}</span>
+      <span class="lock-banner-age">held {{timeAgo .SyncLock.CreatedAt}}</span>
+      {{if .AllowOverrides}}
+      <details class="lock-form lock-form-release">
+        <summary class="btn btn-sm btn-on-warning">Release</summary>
+        <form class="lock-form-popover"
+              hx-post="/api/unlock" hx-swap="none"
+              onsubmit="return confirm('Release the global sync lock? Pending sync runs will be allowed to proceed.');">
+          <label>Reason
+            <input type="text" name="reason" placeholder="why are you releasing?" required maxlength="200" autofocus>
+          </label>
+          <button type="submit" class="btn btn-sm btn-primary">Release lock</button>
+        </form>
+      </details>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
   <div class="shell">
     <nav class="sidebar">
       <div class="sidebar-brand">
@@ -40,6 +65,24 @@
           <span class="nav-icon">&#9776;</span> Audit Log
         </a>
       </div>
+      {{if and .AllowOverrides (not .SyncLock)}}
+      <div class="sidebar-lock">
+        <details class="lock-form lock-form-acquire">
+          <summary class="sidebar-lock-trigger">
+            <span class="lock-dot"></span>
+            <span>Lock sync</span>
+          </summary>
+          <form class="lock-form-popover lock-form-popover-side"
+                hx-post="/api/lock" hx-swap="none">
+            <p class="lock-form-help">Pause config sync while you apply overrides. Anyone can release.</p>
+            <label>Reason
+              <input type="text" name="reason" placeholder="incident #1234 — pinning value X" required maxlength="200" autofocus>
+            </label>
+            <button type="submit" class="btn btn-sm btn-primary">Acquire lock</button>
+          </form>
+        </details>
+      </div>
+      {{end}}
       <div class="sidebar-stats">
         {{if .FlagCount}}flags: <span class="stat-val">{{.FlagCount}}</span>{{end}}
         {{if .Version}}<div class="sidebar-version"><a href="https://github.com/SpotlightGOV/pbflags" target="_blank" rel="noopener">pbflags</a> {{.Version}}</div>{{end}}

@@ -297,6 +297,9 @@ func TestHandlerFlagIDValidation(t *testing.T) {
 		{"flagDetail no slash", "noslash", http.MethodGet, h.flagDetail},
 		{"updateFlagState path traversal", "../evil", http.MethodPost, h.updateFlagState},
 		{"updateFlagState no slash", "noslash", http.MethodPost, h.updateFlagState},
+		{"setConditionOverride path traversal", "../evil", http.MethodPost, h.setConditionOverride},
+		{"clearConditionOverride no slash", "noslash", http.MethodPost, h.clearConditionOverride},
+		{"clearAllConditionOverrides path traversal", "../evil", http.MethodPost, h.clearAllConditionOverrides},
 	}
 
 	for _, tt := range tests {
@@ -311,6 +314,79 @@ func TestHandlerFlagIDValidation(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Override / lock helpers (pb-wff.11/.12/.13)
+// ---------------------------------------------------------------------------
+
+func TestParseCondIndex(t *testing.T) {
+	tests := []struct {
+		in      string
+		want    *int32
+		wantErr bool
+	}{
+		{"", nil, false},
+		{"default", nil, false},
+		{"0", ptr(int32(0)), false},
+		{"5", ptr(int32(5)), false},
+		{"abc", nil, true},
+		{"-1", ptr(int32(-1)), false}, // server still validates against chain length downstream
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			got, err := parseCondIndex(tt.in)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			if tt.want == nil {
+				assert.Nil(t, got)
+			} else {
+				require.NotNil(t, got)
+				assert.Equal(t, *tt.want, *got)
+			}
+		})
+	}
+}
+
+func TestOverrideKey(t *testing.T) {
+	assert.Equal(t, "default", overrideKey(nil))
+	assert.Equal(t, "0", overrideKey(ptr(int32(0))))
+	assert.Equal(t, "42", overrideKey(ptr(int32(42))))
+}
+
+func TestGateOverridesDisabled(t *testing.T) {
+	h := &Handler{env: EnvConfig{AllowConditionOverrides: false}}
+	called := false
+	gated := h.gateOverrides(func(w http.ResponseWriter, r *http.Request) { called = true })
+
+	req := httptest.NewRequest(http.MethodPost, "/api/lock", nil)
+	w := httptest.NewRecorder()
+	gated(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.False(t, called, "downstream handler should not be invoked when gated off")
+	assert.Contains(t, w.Body.String(), "--allow-condition-overrides")
+}
+
+func TestGateOverridesEnabled(t *testing.T) {
+	h := &Handler{env: EnvConfig{AllowConditionOverrides: true}}
+	called := false
+	gated := h.gateOverrides(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/lock", nil)
+	w := httptest.NewRecorder()
+	gated(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, called)
+}
+
+func ptr[T any](v T) *T { return &v }
 
 // ---------------------------------------------------------------------------
 // List flag support

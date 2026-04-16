@@ -1658,6 +1658,432 @@ select {
   color: var(--text);
 }
 
+/* ─── Sync lock banner (pb-wff.12 / .13) ────────────────────────────
+   Visible on every page when the global sync lock is held. Sticky beneath
+   the env banner so it's always in the operator's eye line — the lock has
+   real consequences (sync paused, overrides won't auto-clear) and it must
+   not be possible to forget it's on. */
+.lock-banner {
+  position: sticky;
+  top: 0;
+  z-index: 99;
+  background: linear-gradient(180deg, var(--amber) 0%, #f59e0b 100%);
+  color: #0b0d12;
+  border-bottom: 1px solid #92710b;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  /* Subtle warning hatch so it reads as a "stop" surface even at a glance
+     and doesn't blend with the page chrome. */
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(0, 0, 0, 0.05) 0,
+    rgba(0, 0, 0, 0.05) 8px,
+    transparent 8px,
+    transparent 16px
+  ), linear-gradient(180deg, var(--amber) 0%, #f59e0b 100%);
+}
+.env-banner + .lock-banner { top: 25px; }
+
+.lock-banner-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 8px 40px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lock-banner-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.lock-banner-label {
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.lock-banner-divider {
+  width: 1px;
+  height: 14px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.lock-banner-actor {
+  font-weight: 600;
+}
+
+.lock-banner-reason {
+  font-style: italic;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lock-banner-age {
+  color: rgba(0, 0, 0, 0.65);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.btn-on-warning {
+  background: rgba(0, 0, 0, 0.7);
+  border-color: rgba(0, 0, 0, 0.7);
+  color: var(--amber);
+}
+.btn-on-warning:hover {
+  background: #0b0d12;
+  border-color: #0b0d12;
+  color: #fff;
+}
+
+/* When sync is locked, dim the entire shell slightly so the banner is
+   the brightest thing on screen — keeps the operator focused on the
+   abnormal global state. */
+body.sync-locked .shell {
+  filter: saturate(0.9);
+}
+
+/* Sidebar lock acquire trigger (collapsed; expands into a popover form) */
+.sidebar-lock {
+  padding: 12px 20px 0;
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-lock-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  padding: 6px 0;
+  list-style: none;
+  user-select: none;
+  transition: color var(--transition);
+}
+
+.sidebar-lock-trigger::-webkit-details-marker { display: none; }
+
+.sidebar-lock-trigger:hover {
+  color: var(--amber);
+}
+
+.lock-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.18);
+  flex-shrink: 0;
+}
+
+.sidebar-lock-trigger:hover .lock-dot {
+  background: var(--amber);
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.22);
+}
+
+/* Lock acquire/release popover form. <details><summary> drives open state. */
+.lock-form { display: inline-block; position: relative; }
+.lock-form[open] > summary { color: var(--text); }
+.lock-form summary { list-style: none; cursor: pointer; }
+.lock-form summary::-webkit-details-marker { display: none; }
+
+.lock-form-popover {
+  position: absolute;
+  z-index: 50;
+  margin-top: 6px;
+  min-width: 320px;
+  padding: 14px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lock-form-release .lock-form-popover {
+  right: 0;
+}
+
+.lock-form-popover-side {
+  /* Sidebar variant: open right of the trigger so it doesn't clip the
+     narrow sidebar column. */
+  left: 100%;
+  top: 0;
+  margin-left: 8px;
+  margin-top: 0;
+}
+
+.lock-form-popover label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.lock-form-popover input[type="text"] {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
+}
+
+.lock-form-help {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: normal;
+  line-height: 1.4;
+}
+
+/* ─── Override controls (pb-wff.11) ────────────────────────────────── */
+
+.config-managed-warning {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  background: var(--amber-dim);
+  border: 1px solid #66490c;
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.config-managed-icon {
+  color: var(--amber);
+  font-size: 16px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.config-managed-body strong {
+  color: var(--amber);
+  font-weight: 600;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.config-managed-body code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1px 6px;
+  border-radius: 2px;
+}
+
+.cond-col-action { width: 140px; text-align: right; }
+.cond-action-cell { text-align: right; vertical-align: middle; }
+.cond-action-na {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: help;
+}
+
+.cond-otherwise-hint {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: normal;
+  margin-top: 2px;
+}
+
+.condition-table-default {
+  border-top: 1px dashed var(--border);
+}
+
+.cond-num-default {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+/* Overridden value: amber-tinted row + value with "was: X" muted line. */
+.condition-row-overridden td {
+  background: rgba(251, 191, 36, 0.05);
+  border-left: 2px solid var(--amber);
+}
+
+.condition-row-overridden td:first-child {
+  border-left: 2px solid var(--amber);
+}
+
+.cond-value-overridden {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.cond-override-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.override-was {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--text-dim);
+}
+
+.override-by {
+  color: var(--text-dim);
+}
+
+.override-reason {
+  color: var(--text-muted);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: italic;
+}
+
+/* Override action stack: clear (×) + override (pencil) buttons */
+.override-action-stack {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.override-clear-form { display: inline-flex; }
+
+.btn-on-override {
+  border-color: var(--amber-dim);
+  color: var(--amber);
+}
+.btn-on-override:hover {
+  background: var(--amber-dim);
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+/* Override popover form (per-row inline). Uses absolute positioning
+   anchored to the action cell; right-aligned so it can't push the
+   table to overflow. */
+.override-form-details {
+  display: inline-block;
+  position: relative;
+}
+
+.override-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  min-width: 360px;
+  padding: 14px;
+  background: var(--bg-raised);
+  border: 1px solid var(--amber-dim);
+  border-top-width: 2px;
+  border-top-color: var(--amber);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+}
+
+.override-popover label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.override-popover input[type="text"],
+.override-popover textarea,
+.override-popover select {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
+}
+
+.override-popover textarea {
+  font-family: var(--font-mono);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  resize: vertical;
+}
+
+.override-popover-help {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--amber);
+  text-transform: none;
+  letter-spacing: normal;
+  line-height: 1.4;
+  background: rgba(251, 191, 36, 0.06);
+  border-left: 2px solid var(--amber);
+  padding: 6px 10px;
+}
+
+.override-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* "Clear all overrides" button in the conditions section header. */
+.clear-all-overrides {
+  display: inline-flex;
+}
+
+/* ─── Dashboard override badge (pb-wff.12) ─────────────────────────── */
+
+.override-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  background: var(--amber-dim);
+  color: var(--amber);
+  border: 1px solid var(--amber);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  cursor: help;
+}
+
+tr[data-overridden="true"] td:first-child {
+  box-shadow: inset 2px 0 0 var(--amber);
+}
+
 /* Responsive: collapse sidebar on narrow screens */
 @media (max-width: 800px) {
   .shell {

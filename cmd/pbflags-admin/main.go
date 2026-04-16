@@ -436,10 +436,11 @@ func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, 
 	adminMux.Handle(adminPath, adminHandler)
 
 	webHandler, err := adminweb.NewHandler(store, adminLogger, adminweb.EnvConfig{
-		Name:         cfg.EnvName,
-		Color:        cfg.EnvColor,
-		Version:      version,
-		DevAssetsDir: devAssetsDir,
+		Name:                    cfg.EnvName,
+		Color:                   cfg.EnvColor,
+		Version:                 version,
+		DevAssetsDir:            devAssetsDir,
+		AllowConditionOverrides: allowConditionOverrides,
 	})
 	if err != nil {
 		return fmt.Errorf("create web handler: %w", err)
