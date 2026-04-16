@@ -56,6 +56,7 @@ Admin commands:
   lock       Acquire the global sync lock (--reason required, --status to view)
   unlock     Release the global sync lock
   condition  Per-condition value overrides (override, clear, list)
+  overrides  List active condition overrides across all flags (--min-age, --actor)
 
 Auth commands:
   auth login   Save API credentials
@@ -110,6 +111,8 @@ func main() {
 		runUnlock(args[1:])
 	case "condition":
 		runCondition(args[1:])
+	case "overrides":
+		runOverrides(args[1:])
 	case "auth":
 		runAuth(args[1:])
 	case "-h", "--help", "help":
