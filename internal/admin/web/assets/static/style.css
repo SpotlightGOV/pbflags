@@ -1936,14 +1936,14 @@ body.sync-locked .shell {
   font-weight: 700;
 }
 
-/* Overridden value: amber-tinted row + value with "was: X" muted line. */
+/* Overridden value: amber-tinted row + value with "was: X" muted line.
+   pb-wff.38: keep accent row-scoped, not striped across each cell. */
 .condition-row-overridden td {
-  background: rgba(251, 191, 36, 0.05);
-  border-left: 2px solid var(--amber);
+  background: rgba(251, 191, 36, 0.06);
 }
 
 .condition-row-overridden td:first-child {
-  border-left: 2px solid var(--amber);
+  border-left: 3px solid var(--amber);
 }
 
 .cond-value-overridden {

@@ -146,7 +146,9 @@ func TestSyncLockBannerAndRelease(t *testing.T) {
 	})
 
 	page := env.newPage(t)
-	_, err := page.Goto(env.baseURL + "/")
+	// The lock acquire control lives on the flag detail header (pb-wff.37),
+	// not the sidebar — start there.
+	_, err := page.Goto(env.baseURL + "/flags/" + env.tf.FlagID(1))
 	require.NoError(t, err)
 
 	// No banner before lock is acquired.
@@ -154,7 +156,7 @@ func TestSyncLockBannerAndRelease(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
 
-	// Open the sidebar acquire popover.
+	// Open the flag-header acquire popover.
 	acquire := page.Locator(".lock-form-acquire")
 	require.NoError(t, acquire.WaitFor(playwright.LocatorWaitForOptions{
 		State: playwright.WaitForSelectorStateVisible,
@@ -182,13 +184,13 @@ func TestSyncLockBannerAndRelease(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, bodyClass, "sync-locked")
 
-	// Sidebar acquire control should be hidden while locked.
+	// Header acquire control should be hidden while locked.
 	count, err = page.Locator(".lock-form-acquire").Count()
 	require.NoError(t, err)
 	assert.Equal(t, 0, count, "acquire control should hide while locked")
 
-	// Banner persists across navigation — visit a flag detail page.
-	_, err = page.Goto(env.baseURL + "/flags/" + env.tf.FlagID(1))
+	// Banner persists across navigation — visit another flag detail page.
+	_, err = page.Goto(env.baseURL + "/flags/" + env.tf.FlagID(2))
 	require.NoError(t, err)
 	require.NoError(t, page.Locator(".lock-banner").WaitFor(playwright.LocatorWaitForOptions{
 		State: playwright.WaitForSelectorStateVisible,

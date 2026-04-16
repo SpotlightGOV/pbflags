@@ -70,24 +70,6 @@
           <span class="nav-icon">&#9776;</span> Audit Log
         </a>
       </div>
-      {{if and .AllowOverrides (not .SyncLock)}}
-      <div class="sidebar-lock">
-        <details class="lock-form lock-form-acquire">
-          <summary class="sidebar-lock-trigger">
-            <span class="lock-dot"></span>
-            <span>Lock sync</span>
-          </summary>
-          <form class="lock-form-popover lock-form-popover-side"
-                hx-post="/api/lock" hx-swap="none">
-            <p class="lock-form-help">Pause config sync while you apply overrides. Anyone can release.</p>
-            <label>Reason
-              <input type="text" name="reason" placeholder="incident #1234 — pinning value X" required maxlength="200" autofocus>
-            </label>
-            <button type="submit" class="btn btn-sm btn-primary">Acquire lock</button>
-          </form>
-        </details>
-      </div>
-      {{end}}
       <div class="sidebar-stats">
         {{if .FlagCount}}flags: <span class="stat-val">{{.FlagCount}}</span>{{end}}
         {{if .Version}}<div class="sidebar-version"><a href="https://github.com/SpotlightGOV/pbflags" target="_blank" rel="noopener">pbflags</a> {{.Version}}</div>{{end}}
@@ -101,6 +83,17 @@
     </main>
   </div>
   <script>
+    // pb-wff.40: clicking outside any open <details> popover closes it.
+    // Applies uniformly to override forms, sync-lock acquire/release, and
+    // any future details-based popovers without per-element wiring.
+    document.addEventListener('click', function(e) {
+      document.querySelectorAll('details[open]').forEach(function(d) {
+        if (!d.contains(e.target)) {
+          d.removeAttribute('open');
+        }
+      });
+    });
+
     // Update active nav on htmx navigation.
     document.body.addEventListener('htmx:pushedIntoHistory', function(e) {
       document.querySelectorAll('.sidebar-nav a').forEach(function(a) {

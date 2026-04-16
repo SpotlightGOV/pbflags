@@ -357,10 +357,28 @@ func (h *Handler) flagDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	featureID := strings.Split(flagID, "/")[0]
-	launches, err := h.store.ListLaunchesAffecting(r.Context(), featureID)
+	launchesAffectingFeature, err := h.store.ListLaunchesAffecting(r.Context(), featureID)
 	if err != nil {
 		h.serverError(w, "get launches", err)
 		return
+	}
+
+	// Filter the feature-scoped launch list to only those actually
+	// referenced by THIS flag (its conditions or its static-value launch
+	// override, both surfaced as FlagCondition.LaunchID). Sibling flags
+	// in the same feature can pull in launches that aren't relevant
+	// here, so the panel was getting noisy.
+	flagLaunchIDs := map[string]bool{}
+	for _, c := range extra.Conditions {
+		if c.LaunchID != "" {
+			flagLaunchIDs[c.LaunchID] = true
+		}
+	}
+	launches := make([]admin.Launch, 0, len(flagLaunchIDs))
+	for _, l := range launchesAffectingFeature {
+		if flagLaunchIDs[l.LaunchID] {
+			launches = append(launches, l)
+		}
 	}
 
 	// Per-flag overrides power both the per-row controls and the
