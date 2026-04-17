@@ -1,15 +1,7 @@
 // pbflags is the unified CLI for the pbflags feature flag system.
-// It provides subcommands for syncing definitions, validating configs,
-// compiling config bundles, and inspecting flag state.
-//
-// Usage:
-//
-//	pbflags sync       Sync definitions and conditions to the database
-//	pbflags validate   Validate YAML config files against proto descriptors
-//	pbflags show       Show resolved config for a specific flag
-//	pbflags export     Export DB state as YAML config files
-//	pbflags compile    Compile YAML configs into a binary bundle
-//	pbflags load       Load a compiled bundle into the database
+// It provides subcommands for scaffolding features, syncing definitions,
+// validating configs, compiling config bundles, and inspecting flag
+// state. See `pb -h` for the full command list.
 package main
 
 import (
@@ -37,15 +29,21 @@ const usage = `pb — feature flag CLI
 Usage:
   pb <command> [flags]
 
+Scaffolding:
+  init           Initialize a new pbflags project
+  feature new    Scaffold a new feature .proto
+  config new     Scaffold a new feature YAML from proto defaults
+
 Config commands:
-  init       Initialize a new pbflags project
+  config show       Show resolved config for a specific flag
+  config validate   Validate YAML config files against proto descriptors
+  config format     Format YAML config files into canonical form
+  config compile    Compile YAML configs into a binary bundle
+  config load       Load a compiled bundle into the database
+  config export     Export DB state as YAML config files
+
+Sync / database:
   sync       Sync definitions and conditions to the database
-  validate   Validate YAML config files against proto descriptors
-  show       Show resolved config for a specific flag
-  export     Export DB state as YAML config files
-  compile    Compile YAML configs into a binary bundle
-  load       Load a compiled bundle into the database
-  format     Format YAML config files into canonical form
   lint       Detect breaking changes in proto definitions
   migrate    Run database migrations
 
@@ -81,20 +79,12 @@ func main() {
 	switch args[0] {
 	case "init":
 		runInit(args[1:])
+	case "feature":
+		runFeature(args[1:])
+	case "config":
+		runConfig(args[1:])
 	case "sync":
 		runSync(args[1:])
-	case "validate":
-		runValidate(args[1:])
-	case "show":
-		runShow(args[1:])
-	case "export":
-		runExport(args[1:])
-	case "compile":
-		runCompile(args[1:])
-	case "load":
-		runLoad(args[1:])
-	case "format":
-		runFormat(args[1:])
 	case "lint":
 		runLint(args[1:])
 	case "migrate":

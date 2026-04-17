@@ -18,6 +18,22 @@ type Config struct {
 	FeaturesPath    string `yaml:"features_path"`
 	DescriptorsPath string `yaml:"descriptors_path"`
 	ProtoPath       string `yaml:"proto_path"`
+	// Package prefixes used by `pb feature new` when scaffolding a new
+	// .proto file. Both are optional — when missing, the scaffold emits
+	// `// TODO: set go_package` / `// TODO: set java_package` placeholders
+	// for the user to fill in. Examples:
+	//   go_package_prefix: github.com/myorg/myapp/gen
+	//   java_package_prefix: org.myorg.myapp
+	GoPackagePrefix   string `yaml:"go_package_prefix"`
+	JavaPackagePrefix string `yaml:"java_package_prefix"`
+
+	// FeatureLayout controls where `pb feature new <name>` writes the
+	// scaffolded .proto:
+	//   "" or "nested" → {proto_path}/{name}/{name}.proto, one Go package
+	//                    per feature (the buf+protoc-gen-go default).
+	//   "flat"          → {proto_path}/{name}.proto, all features share
+	//                     one Go/Java package (Spotlight-style monorepo).
+	FeatureLayout string `yaml:"feature_layout"`
 }
 
 // Discover walks up from startDir looking for .pbflags.yaml.
