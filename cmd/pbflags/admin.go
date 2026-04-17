@@ -27,14 +27,17 @@ func runFlag(args []string) {
 		fmt.Fprintln(os.Stderr, `usage: pb flag <subcommand>
 
 Subcommands:
-  list           List features and flags
-  get <id>       Show flag detail
-  kill <id>      Kill a flag (emergency disable)
-  unkill <id>    Restore a killed flag`)
+  new <feat> <flag>   Add a new flag field to <feat>'s .proto (--type=bool|str|int|double|[]…)
+  list                List features and flags
+  get <id>            Show flag detail
+  kill <id>           Kill a flag (emergency disable)
+  unkill <id>         Restore a killed flag`)
 		os.Exit(1)
 	}
 
 	switch args[0] {
+	case "new":
+		runFlagNew(args[1:])
 	case "list":
 		runFlagList(args[1:])
 	case "get":
