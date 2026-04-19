@@ -67,6 +67,7 @@ func main() {
 	killTTL := fs.Duration("cache-kill-ttl", 0, "Kill set cache TTL (default 30s)")
 	flagTTL := fs.Duration("cache-flag-ttl", 0, "Global flag state cache TTL (default 10m)")
 	overrideTTL := fs.Duration("cache-override-ttl", 0, "Per-entity override cache TTL (default 10m)")
+	logLevel := fs.String("log-level", "", "Log level: debug, info, warn, error (default info)")
 	fs.Parse(args)
 
 	setEnvIfFlag("PBFLAGS_DATABASE", *database)
@@ -75,6 +76,7 @@ func main() {
 	setDurationEnvIfFlag("PBFLAGS_CACHE_KILL_TTL", *killTTL)
 	setDurationEnvIfFlag("PBFLAGS_CACHE_FLAG_TTL", *flagTTL)
 	setDurationEnvIfFlag("PBFLAGS_CACHE_OVERRIDE_TTL", *overrideTTL)
+	setEnvIfFlag("PBFLAGS_LOG_LEVEL", *logLevel)
 
 	cfg := evaluator.LoadConfig()
 

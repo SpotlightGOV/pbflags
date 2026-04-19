@@ -98,6 +98,7 @@ func main() {
 	envColor := fs.String("env-color", "", "Accent color for admin UI environment banner (hex)")
 	devAssets := fs.String("dev-assets", "", "Read admin UI assets from disk for live reload (dev only)")
 	allowRuntimeOverrides := fs.Bool("allow-runtime-overrides", true, "Allow state-changing admin RPCs and UI controls (condition overrides, sync lock, flag/launch kill, launch ramp adjustments). Default on. Set =false for read-only admin. Also via PBFLAGS_ALLOW_RUNTIME_OVERRIDES.")
+	logLevel := fs.String("log-level", "", "Log level: debug, info, warn, error (default info)")
 	fs.Parse(args)
 
 	setEnvIfFlag("PBFLAGS_DATABASE", *database)
@@ -109,6 +110,7 @@ func main() {
 	setEnvIfFlag("PBFLAGS_ENV_COLOR", *envColor)
 	setDurationEnvIfFlag("PBFLAGS_CACHE_KILL_TTL", *killTTL)
 	setDurationEnvIfFlag("PBFLAGS_CACHE_FLAG_TTL", *flagTTL)
+	setEnvIfFlag("PBFLAGS_LOG_LEVEL", *logLevel)
 	// PBFLAGS_CACHE_OVERRIDE_TTL removed — overrides no longer exist.
 
 	// Load project config for defaults.

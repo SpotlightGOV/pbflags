@@ -230,7 +230,7 @@ Environment variables override CLI flags:
 | `PBFLAGS_CACHE_KILL_TTL` | admin, evaluator | `--cache-kill-ttl` | Kill set poll interval (default `30s`) |
 | `PBFLAGS_CACHE_FLAG_TTL` | admin, evaluator | `--cache-flag-ttl` | Flag state cache TTL (default `10m`, `0` for write-through) |
 | `PBFLAGS_CACHE_CONDITION_TTL` | admin, evaluator | `--cache-condition-ttl` | Condition evaluation cache TTL (default `10m`, `0` for write-through) |
-| `PBFLAGS_LOG_LEVEL` | admin, evaluator | — | Log level: `debug`, `info`, `warn`, `error` (default `info`). Set to `debug` to enable per-evaluation decision logging |
+| `PBFLAGS_LOG_LEVEL` | admin, evaluator | `--log-level` | Log level: `debug`, `info`, `warn`, `error` (default `info`). Set to `debug` to enable per-evaluation decision logging |
 | `PBFLAGS_AUTH_STRATEGY` | admin | — | Authentication strategy: `none`, `shared-secret`, `trusted-header` (default `none`) |
 | `PBFLAGS_AUTH_TOKEN` | admin | — | Bearer token for `shared-secret` strategy |
 | `PBFLAGS_AUTH_HEADER` | admin | — | Header name for `trusted-header` strategy (default `X-Forwarded-User`) |
