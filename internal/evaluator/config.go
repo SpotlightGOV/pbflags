@@ -1,7 +1,9 @@
 package evaluator
 
 import (
+	"log/slog"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -30,6 +32,7 @@ type Config struct {
 	Cache       CacheConfig
 	EnvName     string
 	EnvColor    string
+	LogLevel    slog.Level
 }
 
 // CacheConfig controls cache TTLs and sizes.
@@ -89,5 +92,25 @@ func LoadConfig() Config {
 	if d, ok := parseDurationEnv("PBFLAGS_CACHE_FLAG_TTL"); ok {
 		cfg.Cache.FlagTTL = d
 	}
+	if v := os.Getenv("PBFLAGS_LOG_LEVEL"); v != "" {
+		cfg.LogLevel = ParseLogLevel(v)
+	}
 	return cfg
+}
+
+// ParseLogLevel parses a log level string (debug, info, warn, error).
+// Returns slog.LevelInfo for unrecognized values.
+func ParseLogLevel(s string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }

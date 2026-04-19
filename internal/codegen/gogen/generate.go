@@ -162,10 +162,11 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 
 	p("// New creates a ", pascalFeat, "Flags client backed by a pbflags.Evaluator.")
 	p("// By default, evaluation errors are logged via slog.Default(). Use")
-	p("// flagmeta.WithLogger to override.")
+	p("// flagmeta.WithLogger to override, and flagmeta.WithLogLevel(slog.LevelDebug)")
+	p("// to enable per-evaluation debug logging.")
 	p("func New(eval pbflags.Evaluator, opts ...flagmeta.Option) ", pascalFeat, "Flags {")
 	p("	cfg := flagmeta.Apply(opts...)")
-	p("	return &", clientType, "{eval: eval, logger: cfg.Logger}")
+	p("	return &", clientType, "{eval: eval, logger: cfg.Logger, logLevel: cfg.LogLevel}")
 	p("}")
 	p()
 
@@ -179,8 +180,9 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 	p()
 
 	p("type ", clientType, " struct {")
-	p("	eval   pbflags.Evaluator")
-	p("	logger *slog.Logger")
+	p("	eval     pbflags.Evaluator")
+	p("	logger   *slog.Logger")
+	p("	logLevel slog.Level")
 	p("}")
 	p()
 
@@ -195,11 +197,13 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 		emitReturnDefault(p, fl)
 		p("	}")
 		p("	if result == nil || result.Value == nil {")
+		emitDebugLog(p, fl, clientType)
 		emitReturnDefault(p, fl)
 		p("	}")
 		p("	val := result.Value.GetValue()")
 		p("	if val == nil {")
 		// Evaluator returned no value — normal DEFAULT/KILLED path, no warning.
+		emitDebugLog(p, fl, clientType)
 		emitReturnDefault(p, fl)
 		p("	}")
 		p("	if _, ok := val.(*pbflagsv1.", fl.oneofType, "); !ok {")
@@ -210,10 +214,12 @@ func generateFeature(plugin *protogen.Plugin, msg *protogen.Message, feat *featu
 		emitReturnDefault(p, fl)
 		p("	}")
 		if fl.isList {
-			p("	return result.Value.", fl.getterName, "().GetValues()")
+			p("	v := result.Value.", fl.getterName, "().GetValues()")
 		} else {
-			p("	return result.Value.", fl.getterName, "()")
+			p("	v := result.Value.", fl.getterName, "()")
 		}
+		emitDebugLogWithValue(p, fl, clientType)
+		p("	return v")
 		p("}")
 		p()
 	}
@@ -874,6 +880,30 @@ func skipField(b []byte, typ protowire.Type) int {
 	default:
 		return -1
 	}
+}
+
+// emitDebugLog emits a conditional Debug log for a default-path evaluation
+// (nil result / nil value / killed). Uses the Enabled() guard so the log
+// allocation is skipped entirely at Info level.
+func emitDebugLog(p func(...interface{}), fl flagInfo, clientType string) {
+	p("	if c.logger.Enabled(ctx, c.logLevel) {")
+	p("		c.logger.DebugContext(ctx, \"flag evaluated\",")
+	p("			\"flag_id\", ", fl.goName, "ID,")
+	p("			\"source\", result.Source.String(),")
+	p("		)")
+	p("	}")
+}
+
+// emitDebugLogWithValue emits a conditional Debug log for a successful
+// evaluation that resolved to a concrete value.
+func emitDebugLogWithValue(p func(...interface{}), fl flagInfo, clientType string) {
+	p("	if c.logger.Enabled(ctx, c.logLevel) {")
+	p("		c.logger.DebugContext(ctx, \"flag evaluated\",")
+	p("			\"flag_id\", ", fl.goName, "ID,")
+	p("			\"source\", result.Source.String(),")
+	p("			\"value\", v,")
+	p("		)")
+	p("	}")
 }
 
 // emitReturnDefault emits a return statement for a flag's default value.

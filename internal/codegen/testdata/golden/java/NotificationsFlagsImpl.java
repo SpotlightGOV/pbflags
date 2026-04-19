@@ -62,7 +62,11 @@ public final class NotificationsFlagsImpl implements NotificationsFlags {
       Class<T> type, T compiledDefault) {
     return () -> {
       try {
-        return evaluator.evaluate(flagId, type, compiledDefault);
+        T value = evaluator.evaluate(flagId, type, compiledDefault);
+        if (logger.isDebugEnabled()) {
+          logger.debug("flag evaluated: {} = {} ({})", flagId, value, type.getSimpleName());
+        }
+        return value;
       } catch (Exception e) {
         logger.error("Flag evaluation failed for {}, returning default", flagId, e);
         return compiledDefault;
@@ -74,7 +78,11 @@ public final class NotificationsFlagsImpl implements NotificationsFlags {
       Class<E> elementType, java.util.List<E> compiledDefault) {
     return () -> {
       try {
-        return evaluator.evaluateList(flagId, elementType, compiledDefault);
+        java.util.List<E> value = evaluator.evaluateList(flagId, elementType, compiledDefault);
+        if (logger.isDebugEnabled()) {
+          logger.debug("list flag evaluated: {} = {} (List<{}>)", flagId, value, elementType.getSimpleName());
+        }
+        return value;
       } catch (Exception e) {
         logger.error("List flag evaluation failed for {}, returning default", flagId, e);
         return compiledDefault;

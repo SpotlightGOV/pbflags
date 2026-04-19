@@ -202,6 +202,18 @@ means TTL-expired entries are being served while refreshes complete in
 the background. A spike in `CACHED` evaluations indicates the database
 may be unreachable.
 
+### Debug logging
+
+Set `PBFLAGS_LOG_LEVEL=debug` to enable per-evaluation decision logging on the evaluator server. Each flag evaluation emits a structured JSON log entry:
+
+```json
+{"level":"DEBUG","msg":"flag evaluated","flag_id":"notifications/1","source":"EVALUATION_SOURCE_CONDITION","value":"true"}
+```
+
+This is useful for troubleshooting why a specific flag is resolving to a particular value. At the default `info` level, these logs are suppressed with zero overhead (the slog handler discards them before any formatting occurs).
+
+Client-side debug logging is also available — see the [agent setup guide](agent-setup.md#debug-logging) for Go and Java examples.
+
 ### Environment variables
 
 Environment variables override CLI flags:
@@ -218,6 +230,7 @@ Environment variables override CLI flags:
 | `PBFLAGS_CACHE_KILL_TTL` | admin, evaluator | `--cache-kill-ttl` | Kill set poll interval (default `30s`) |
 | `PBFLAGS_CACHE_FLAG_TTL` | admin, evaluator | `--cache-flag-ttl` | Flag state cache TTL (default `10m`, `0` for write-through) |
 | `PBFLAGS_CACHE_CONDITION_TTL` | admin, evaluator | `--cache-condition-ttl` | Condition evaluation cache TTL (default `10m`, `0` for write-through) |
+| `PBFLAGS_LOG_LEVEL` | admin, evaluator | — | Log level: `debug`, `info`, `warn`, `error` (default `info`). Set to `debug` to enable per-evaluation decision logging |
 | `PBFLAGS_AUTH_STRATEGY` | admin | — | Authentication strategy: `none`, `shared-secret`, `trusted-header` (default `none`) |
 | `PBFLAGS_AUTH_TOKEN` | admin | — | Bearer token for `shared-secret` strategy |
 | `PBFLAGS_AUTH_HEADER` | admin | — | Header name for `trusted-header` strategy (default `X-Forwarded-User`) |

@@ -9,7 +9,8 @@ type Option func(*Config)
 
 // Config holds settings for a generated flag client.
 type Config struct {
-	Logger *slog.Logger
+	Logger   *slog.Logger
+	LogLevel slog.Level // Minimum level for evaluation logging (default: Info — suppresses Debug).
 }
 
 // WithLogger sets a custom logger for flag evaluation errors.
@@ -18,10 +19,16 @@ func WithLogger(l *slog.Logger) Option {
 	return func(c *Config) { c.Logger = l }
 }
 
+// WithLogLevel sets the minimum log level. Use slog.LevelDebug to enable
+// per-evaluation debug logging showing flag ID, resolved value, and source.
+func WithLogLevel(l slog.Level) Option {
+	return func(c *Config) { c.LogLevel = l }
+}
+
 // Apply builds a Config from the given options, using slog.Default() when
 // no logger is provided.
 func Apply(opts ...Option) Config {
-	cfg := Config{Logger: slog.Default()}
+	cfg := Config{Logger: slog.Default(), LogLevel: slog.LevelInfo}
 	for _, o := range opts {
 		o(&cfg)
 	}

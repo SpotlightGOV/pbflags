@@ -340,6 +340,16 @@ import "<MODULE>/gen/flags/flagmeta"
 <feature> := <feature>flags.New(eval, flagmeta.WithLogger(myLogger))
 ```
 
+To enable per-evaluation debug logging (flag ID, resolved value, and evaluation source on every call):
+
+```go
+import "log/slog"
+
+<feature> := <feature>flags.New(eval, flagmeta.WithLogLevel(slog.LevelDebug))
+```
+
+At the default `Info` level, debug logs are suppressed with zero overhead.
+
 Note: flag methods take only `context.Context` — dimensions are bound on the evaluator via `With()`, not passed per-call.
 
 #### Scope-based access (recommended)
@@ -423,6 +433,40 @@ If the consumer project needs the production topology instead of standalone mode
 - `pbflags-sync validate --descriptors=descriptors.pb --features=./features` passes (if using YAML configs)
 - `pbflags-admin --standalone --descriptors=descriptors.pb --features=./features ...` starts cleanly
 - A sample flag read returns the compiled default before any config changes
+
+## Debug logging
+
+Both the server and generated clients support conditional debug logging for flag evaluation decisions. This is useful for troubleshooting why a flag resolves to a particular value.
+
+### Server-side
+
+Set `PBFLAGS_LOG_LEVEL=debug` on the evaluator or admin process. Each evaluation emits a structured JSON log entry with flag ID, resolved value, and evaluation source.
+
+### Go clients
+
+Pass `flagmeta.WithLogLevel(slog.LevelDebug)` when constructing a feature client:
+
+```go
+import (
+    "log/slog"
+    "<MODULE>/gen/flags/flagmeta"
+)
+
+flags := <feature>flags.New(eval, flagmeta.WithLogLevel(slog.LevelDebug))
+```
+
+Each flag method call logs `"flag evaluated"` at Debug level with `flag_id`, `source`, and `value` attributes. Combine with `flagmeta.WithLogger(...)` to direct output to a specific logger.
+
+### Java clients
+
+Generated Java clients use SLF4J. Enable debug logging for the `org.spotlightgov.pbflags` package in your logging configuration:
+
+```xml
+<!-- logback.xml -->
+<logger name="org.spotlightgov.pbflags" level="DEBUG" />
+```
+
+Both the generated `*FlagsImpl` classes and the `FlagEvaluatorClient` emit debug logs on every evaluation showing flag ID and resolved value.
 
 ## Common mistakes
 

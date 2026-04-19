@@ -22,6 +22,7 @@
 //	PBFLAGS_CACHE_KILL_TTL      Kill set cache TTL (default: 30s)
 //	PBFLAGS_CACHE_FLAG_TTL      Global flag state cache TTL (default: 10m)
 //	PBFLAGS_CACHE_OVERRIDE_TTL  Per-entity override cache TTL (default: 10m)
+//	PBFLAGS_LOG_LEVEL           Log level: debug, info, warn, error (default: info)
 package main
 
 import (
@@ -84,7 +85,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
 
 	if err := run(cfg, logger); err != nil {
 		logger.Error("fatal", "error", err)

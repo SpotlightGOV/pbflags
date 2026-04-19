@@ -38,6 +38,7 @@
 //	PBFLAGS_AUTH_TOKEN           Shared-secret Bearer token (required if strategy=shared-secret)
 //	PBFLAGS_AUTH_HEADER          Header name for trusted-header strategy (default: X-Forwarded-User)
 //	PBFLAGS_ALLOW_RUNTIME_OVERRIDES  Allow state-changing admin RPCs and UI controls (default: true; set =false for read-only admin)
+//	PBFLAGS_LOG_LEVEL           Log level: debug, info, warn, error (default: info)
 package main
 
 import (
@@ -154,7 +155,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
 
 	authCfg := authn.LoadConfig()
 	auth, err := authn.NewAuthenticator(authCfg)

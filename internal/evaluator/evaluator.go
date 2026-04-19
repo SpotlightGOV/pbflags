@@ -2,6 +2,7 @@ package evaluator
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -277,6 +278,47 @@ func (e *Evaluator) evalFlagStateWithSource(state *CachedFlagState, _ pbflagsv1.
 	}
 	// No global value — conditions and default handle everything.
 	return nil, pbflagsv1.EvaluationSource_EVALUATION_SOURCE_DEFAULT
+}
+
+// logEvalDecision emits a Debug-level log for a completed flag evaluation.
+// At Info level (the default) the slog handler discards this, so it is
+// zero-cost on the hot path unless debug logging is enabled.
+func (e *Evaluator) logEvalDecision(ctx context.Context, flagID string, value *pbflagsv1.FlagValue, source pbflagsv1.EvaluationSource) {
+	if !e.logger.Enabled(ctx, slog.LevelDebug) {
+		return
+	}
+	e.logger.DebugContext(ctx, "flag evaluated",
+		"flag_id", flagID,
+		"source", source.String(),
+		"value", formatFlagValue(value),
+	)
+}
+
+// formatFlagValue returns a human-readable string for a flag value.
+func formatFlagValue(v *pbflagsv1.FlagValue) string {
+	if v == nil {
+		return "<default>"
+	}
+	switch val := v.GetValue().(type) {
+	case *pbflagsv1.FlagValue_BoolValue:
+		return fmt.Sprintf("%v", val.BoolValue)
+	case *pbflagsv1.FlagValue_StringValue:
+		return val.StringValue
+	case *pbflagsv1.FlagValue_Int64Value:
+		return fmt.Sprintf("%d", val.Int64Value)
+	case *pbflagsv1.FlagValue_DoubleValue:
+		return fmt.Sprintf("%g", val.DoubleValue)
+	case *pbflagsv1.FlagValue_BoolListValue:
+		return fmt.Sprintf("%v", val.BoolListValue.GetValues())
+	case *pbflagsv1.FlagValue_StringListValue:
+		return fmt.Sprintf("%v", val.StringListValue.GetValues())
+	case *pbflagsv1.FlagValue_Int64ListValue:
+		return fmt.Sprintf("%v", val.Int64ListValue.GetValues())
+	case *pbflagsv1.FlagValue_DoubleListValue:
+		return fmt.Sprintf("%v", val.DoubleListValue.GetValues())
+	default:
+		return "<default>"
+	}
 }
 
 // backgroundRefreshFlag triggers a singleflight-guarded background fetch for

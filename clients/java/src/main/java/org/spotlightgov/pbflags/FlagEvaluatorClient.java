@@ -157,10 +157,18 @@ public final class FlagEvaluatorClient implements FlagEvaluator {
           stub.withDeadlineAfter(EVALUATE_DEADLINE_MS, TimeUnit.MILLISECONDS).evaluate(req.build());
 
       if (!resp.hasValue()) {
+        if (logger.isDebugEnabled()) {
+          logger.debug(
+              "flag evaluated: {} = {} (source={})", flagId, compiledDefault, resp.getSource());
+        }
         return compiledDefault;
       }
 
-      return extractValue(resp.getValue(), type, compiledDefault);
+      T value = extractValue(resp.getValue(), type, compiledDefault);
+      if (logger.isDebugEnabled()) {
+        logger.debug("flag evaluated: {} = {} (source={})", flagId, value, resp.getSource());
+      }
+      return value;
     } catch (StatusRuntimeException e) {
       logger.error("Evaluator call failed for flag {}: {}", flagId, e.getStatus(), e);
       return compiledDefault;
@@ -209,10 +217,21 @@ public final class FlagEvaluatorClient implements FlagEvaluator {
           stub.withDeadlineAfter(EVALUATE_DEADLINE_MS, TimeUnit.MILLISECONDS).evaluate(req.build());
 
       if (!resp.hasValue()) {
+        if (logger.isDebugEnabled()) {
+          logger.debug(
+              "list flag evaluated: {} = {} (source={})",
+              flagId,
+              compiledDefault,
+              resp.getSource());
+        }
         return compiledDefault;
       }
 
-      return extractListValue(resp.getValue(), elementType, compiledDefault);
+      List<E> value = extractListValue(resp.getValue(), elementType, compiledDefault);
+      if (logger.isDebugEnabled()) {
+        logger.debug("list flag evaluated: {} = {} (source={})", flagId, value, resp.getSource());
+      }
+      return value;
     } catch (StatusRuntimeException e) {
       logger.error("Evaluator call failed for list flag {}: {}", flagId, e.getStatus(), e);
       return compiledDefault;

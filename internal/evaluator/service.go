@@ -55,6 +55,8 @@ func (s *Service) Evaluate(ctx context.Context, req *connect.Request[pbflagsv1.E
 
 	value, source := s.evaluator.EvaluateWithContext(ctx, req.Msg.FlagId, evalCtx)
 
+	s.evaluator.logEvalDecision(ctx, req.Msg.FlagId, value, source)
+
 	return connect.NewResponse(&pbflagsv1.EvaluateResponse{
 		FlagId: req.Msg.FlagId,
 		Value:  value,
@@ -77,6 +79,7 @@ func (s *Service) BulkEvaluate(ctx context.Context, req *connect.Request[pbflags
 	evaluations := make([]*pbflagsv1.EvaluateResponse, 0, len(flagIDs))
 	for _, flagID := range flagIDs {
 		value, source := s.evaluator.EvaluateWithContext(ctx, flagID, evalCtx)
+		s.evaluator.logEvalDecision(ctx, flagID, value, source)
 		evaluations = append(evaluations, &pbflagsv1.EvaluateResponse{
 			FlagId: flagID,
 			Value:  value,
