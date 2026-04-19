@@ -234,15 +234,15 @@ func TestConditionEvaluate(t *testing.T) {
 		require.Equal(t, 0, res.ConditionsChecked)
 	})
 
-	t.Run("nil evalCtx returns empty result", func(t *testing.T) {
+	t.Run("nil evalCtx with only CEL conditions returns empty result", func(t *testing.T) {
 		t.Parallel()
 		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
-			{Cel: "", Value: boolFlagValueBytes(t, true)},
+			{Cel: `ctx.is_internal`, Value: boolFlagValueBytes(t, true)},
 		}))
 		require.NotNil(t, conds)
 		res := ce.EvaluateConditions("flag-1", conds, nil)
 		require.NotNil(t, res)
-		require.Nil(t, res.Value)
+		require.Nil(t, res.Value, "CEL conditions should be skipped with nil evalCtx")
 	})
 
 	t.Run("first matching condition returns its value", func(t *testing.T) {
@@ -406,6 +406,75 @@ func TestConditionEvaluate(t *testing.T) {
 		require.Equal(t, "launch-val", res.Value.GetStringValue())
 		require.True(t, res.LaunchHit)
 		require.Equal(t, "launch-2", res.LaunchID)
+	})
+
+	t.Run("nil evalCtx returns otherwise value", func(t *testing.T) {
+		t.Parallel()
+		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
+			{
+				Cel:   "", // otherwise — no CEL expression
+				Value: stringFlagValueBytes(t, "static-val"),
+			},
+		}))
+		require.NotNil(t, conds)
+
+		res := ce.EvaluateConditions("flag-1", conds, nil)
+		require.NotNil(t, res.Value, "otherwise clause should match even with nil evalCtx")
+		require.Equal(t, "static-val", res.Value.GetStringValue())
+		require.Equal(t, 0, res.ConditionsChecked)
+	})
+
+	t.Run("nil evalCtx skips CEL but returns otherwise", func(t *testing.T) {
+		t.Parallel()
+		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
+			{
+				Cel:   `ctx.plan == PlanLevel.ENTERPRISE`,
+				Value: stringFlagValueBytes(t, "enterprise-val"),
+			},
+			{
+				Cel:   "",
+				Value: stringFlagValueBytes(t, "fallback-val"),
+			},
+		}))
+		require.NotNil(t, conds)
+
+		res := ce.EvaluateConditions("flag-1", conds, nil)
+		require.NotNil(t, res.Value, "should fall through CEL to otherwise")
+		require.Equal(t, "fallback-val", res.Value.GetStringValue())
+		require.Equal(t, 0, res.ConditionsChecked, "CEL conditions should be skipped, not checked")
+	})
+
+	t.Run("nil evalCtx with launch on otherwise skips launch", func(t *testing.T) {
+		t.Parallel()
+		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
+			{
+				Cel:         "",
+				Value:       stringFlagValueBytes(t, "base-val"),
+				LaunchId:    "launch-1",
+				LaunchValue: stringFlagValueBytes(t, "launch-val"),
+			},
+		}))
+		require.NotNil(t, conds)
+
+		launch := CachedLaunch{LaunchID: "launch-1", Dimension: "user_id", RampPct: 100}
+		res := ce.EvaluateConditions("flag-1", conds, nil, launch)
+		require.NotNil(t, res.Value)
+		require.Equal(t, "base-val", res.Value.GetStringValue(), "launch should not fire without evalCtx")
+		require.False(t, res.LaunchHit)
+	})
+
+	t.Run("nil evalCtx no otherwise returns empty", func(t *testing.T) {
+		t.Parallel()
+		conds := ce.CompileConditions("flag-1", mustMarshalConditions(t, []*pbflagsv1.CompiledCondition{
+			{
+				Cel:   `ctx.plan == PlanLevel.ENTERPRISE`,
+				Value: stringFlagValueBytes(t, "enterprise-val"),
+			},
+		}))
+		require.NotNil(t, conds)
+
+		res := ce.EvaluateConditions("flag-1", conds, nil)
+		require.Nil(t, res.Value, "no otherwise clause means no match")
 	})
 
 	t.Run("CEL evaluation error skips condition", func(t *testing.T) {

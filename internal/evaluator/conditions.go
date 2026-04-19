@@ -146,7 +146,7 @@ func (ce *ConditionEvaluator) EvaluateConditionsWithOverrides(
 	overrides map[int32]*pbflagsv1.FlagValue,
 	launches ...CachedLaunch,
 ) *EvalResult {
-	if len(conditions) == 0 || evalCtx == nil {
+	if len(conditions) == 0 {
 		return &EvalResult{}
 	}
 
@@ -165,6 +165,9 @@ func (ce *ConditionEvaluator) EvaluateConditionsWithOverrides(
 		if cond.Program == nil {
 			// "otherwise" — always matches.
 			return ce.buildResult(cond, int32(i), overrides, launchMap, evalCtx, checked)
+		}
+		if evalCtx == nil {
+			continue // CEL conditions require evaluation context
 		}
 		checked++
 		out, _, err := cond.Program.Eval(activation)
@@ -226,7 +229,7 @@ func (ce *ConditionEvaluator) buildResult(
 // `base` argument is the value to return when no launch fires (i.e. either
 // the compiled value or a live override).
 func applyLaunchOverrideValue(cond CachedCondition, base *pbflagsv1.FlagValue, launchMap map[string]*CachedLaunch, evalCtx proto.Message) (*pbflagsv1.FlagValue, string) {
-	if cond.LaunchID == "" || cond.LaunchValue == nil {
+	if cond.LaunchID == "" || cond.LaunchValue == nil || evalCtx == nil {
 		return base, ""
 	}
 	launch, ok := launchMap[cond.LaunchID]

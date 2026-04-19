@@ -145,7 +145,10 @@ func (e *Evaluator) EvaluateWithContext(ctx context.Context, flagID string, eval
 	}
 
 	// 3. Conditions (with inline launch overrides) — check cache, then evaluate CEL chain.
-	if state != nil && len(state.Conditions) > 0 && e.condEval != nil && evalCtx != nil {
+	//    When evalCtx is nil, CEL conditions are skipped but "otherwise" (static
+	//    value) clauses still match — this is required for flags configured with
+	//    only `value:` in YAML and no conditions.
+	if state != nil && len(state.Conditions) > 0 && e.condEval != nil {
 		var version uint64
 		if e.condCache != nil {
 			version = e.condCache.FlagVersion(flagID)
