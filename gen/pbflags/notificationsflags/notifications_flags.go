@@ -83,11 +83,13 @@ func (c *notificationsFlagsClient) EmailEnabled(ctx context.Context) bool {
 		return EmailEnabledDefault
 	}
 	if result == nil || result.Value == nil {
-		if c.logger.Enabled(ctx, c.logLevel) {
-			c.logger.DebugContext(ctx, "flag evaluated",
-				"flag_id", EmailEnabledID,
-				"source", result.Source.String(),
-			)
+		if result != nil {
+			if c.logger.Enabled(ctx, c.logLevel) {
+				c.logger.DebugContext(ctx, "flag evaluated",
+					"flag_id", EmailEnabledID,
+					"source", result.Source.String(),
+				)
+			}
 		}
 		return EmailEnabledDefault
 	}
@@ -129,11 +131,13 @@ func (c *notificationsFlagsClient) DigestFrequency(ctx context.Context) string {
 		return DigestFrequencyDefault
 	}
 	if result == nil || result.Value == nil {
-		if c.logger.Enabled(ctx, c.logLevel) {
-			c.logger.DebugContext(ctx, "flag evaluated",
-				"flag_id", DigestFrequencyID,
-				"source", result.Source.String(),
-			)
+		if result != nil {
+			if c.logger.Enabled(ctx, c.logLevel) {
+				c.logger.DebugContext(ctx, "flag evaluated",
+					"flag_id", DigestFrequencyID,
+					"source", result.Source.String(),
+				)
+			}
 		}
 		return DigestFrequencyDefault
 	}
@@ -175,11 +179,13 @@ func (c *notificationsFlagsClient) MaxRetries(ctx context.Context) int64 {
 		return MaxRetriesDefault
 	}
 	if result == nil || result.Value == nil {
-		if c.logger.Enabled(ctx, c.logLevel) {
-			c.logger.DebugContext(ctx, "flag evaluated",
-				"flag_id", MaxRetriesID,
-				"source", result.Source.String(),
-			)
+		if result != nil {
+			if c.logger.Enabled(ctx, c.logLevel) {
+				c.logger.DebugContext(ctx, "flag evaluated",
+					"flag_id", MaxRetriesID,
+					"source", result.Source.String(),
+				)
+			}
 		}
 		return MaxRetriesDefault
 	}
@@ -221,11 +227,13 @@ func (c *notificationsFlagsClient) ScoreThreshold(ctx context.Context) float64 {
 		return ScoreThresholdDefault
 	}
 	if result == nil || result.Value == nil {
-		if c.logger.Enabled(ctx, c.logLevel) {
-			c.logger.DebugContext(ctx, "flag evaluated",
-				"flag_id", ScoreThresholdID,
-				"source", result.Source.String(),
-			)
+		if result != nil {
+			if c.logger.Enabled(ctx, c.logLevel) {
+				c.logger.DebugContext(ctx, "flag evaluated",
+					"flag_id", ScoreThresholdID,
+					"source", result.Source.String(),
+				)
+			}
 		}
 		return ScoreThresholdDefault
 	}
@@ -267,11 +275,13 @@ func (c *notificationsFlagsClient) NotificationEmails(ctx context.Context) []str
 		return NotificationEmailsDefault()
 	}
 	if result == nil || result.Value == nil {
-		if c.logger.Enabled(ctx, c.logLevel) {
-			c.logger.DebugContext(ctx, "flag evaluated",
-				"flag_id", NotificationEmailsID,
-				"source", result.Source.String(),
-			)
+		if result != nil {
+			if c.logger.Enabled(ctx, c.logLevel) {
+				c.logger.DebugContext(ctx, "flag evaluated",
+					"flag_id", NotificationEmailsID,
+					"source", result.Source.String(),
+				)
+			}
 		}
 		return NotificationEmailsDefault()
 	}
@@ -313,11 +323,13 @@ func (c *notificationsFlagsClient) RetryDelays(ctx context.Context) []int64 {
 		return RetryDelaysDefault()
 	}
 	if result == nil || result.Value == nil {
-		if c.logger.Enabled(ctx, c.logLevel) {
-			c.logger.DebugContext(ctx, "flag evaluated",
-				"flag_id", RetryDelaysID,
-				"source", result.Source.String(),
-			)
+		if result != nil {
+			if c.logger.Enabled(ctx, c.logLevel) {
+				c.logger.DebugContext(ctx, "flag evaluated",
+					"flag_id", RetryDelaysID,
+					"source", result.Source.String(),
+				)
+			}
 		}
 		return RetryDelaysDefault()
 	}

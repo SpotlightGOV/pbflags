@@ -197,6 +197,19 @@ func LoadContextDescriptorFromDB(ctx context.Context, pool *pgxpool.Pool) ([]byt
 	return data, nil
 }
 
+// HasConditionsInDB returns true if any flags have non-null conditions stored.
+// Used to warn when the ConditionEvaluator could not be created but conditions exist.
+func HasConditionsInDB(ctx context.Context, pool *pgxpool.Pool) (bool, error) {
+	var count int
+	err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM feature_flags.flags WHERE conditions IS NOT NULL`,
+	).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 // UpsertContextDescriptor writes the pruned context descriptor set to the DB.
 func UpsertContextDescriptor(ctx context.Context, tx pgx.Tx, descriptorSet []byte) error {
 	_, err := tx.Exec(ctx,

@@ -351,6 +351,13 @@ func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, 
 	}
 	if condEval != nil {
 		logger.Info("condition evaluator created")
+	} else {
+		hasConds, checkErr := evaluator.HasConditionsInDB(ctx, pool)
+		if checkErr != nil {
+			logger.Warn("failed to check for existing conditions", "error", checkErr)
+		} else if hasConds {
+			logger.Warn("flags with conditions exist in DB but no context descriptor found — conditions will not be evaluated; re-run sync to populate the descriptor")
+		}
 	}
 
 	// ── Cache + Evaluator ───────────────────────────────────────────
