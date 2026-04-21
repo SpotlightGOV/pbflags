@@ -87,8 +87,14 @@ func Compile(descriptorData []byte, configDir string) ([]byte, error) {
 	scopeDims := celenv.ScopeDimsFromFiles(files, contextMsg)
 	featureScopes := celenv.FeatureScopesFromFiles(files)
 
+	prunedDesc, err := evaluator.PruneContextDescriptorSet(descriptorData)
+	if err != nil {
+		return nil, fmt.Errorf("prune context descriptor: %w", err)
+	}
+
 	bundle := &pbflagsv1.CompiledBundle{
-		CelVersion: compileCELVersion(),
+		CelVersion:           compileCELVersion(),
+		ContextDescriptorSet: prunedDesc,
 	}
 
 	// Process config files.
@@ -432,6 +438,14 @@ func LoadBundle(ctx context.Context, conn *pgx.Conn, bundleData []byte, sha stri
 	}
 	if cleared > 0 {
 		slog.Info("auto-cleared stale condition overrides", "count", cleared)
+	}
+
+	// Store pruned context descriptor so runtime binaries can reconstruct
+	// the ConditionEvaluator without proto sources.
+	if len(bundle.ContextDescriptorSet) > 0 {
+		if err := evaluator.UpsertContextDescriptor(ctx, tx, bundle.ContextDescriptorSet); err != nil {
+			return LoadResult{}, fmt.Errorf("upsert context descriptor: %w", err)
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {

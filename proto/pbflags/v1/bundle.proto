@@ -17,6 +17,10 @@ message CompiledBundle {
   // All defined launches from config (feature-scoped and cross-feature).
   // Active/soaking/unkilled filtering happens at the evaluator.
   repeated CompiledLaunch launches = 3;
+  // Pruned FileDescriptorSet containing the EvaluationContext message file
+  // and its transitive imports. Written to the DB during load so runtime
+  // binaries can reconstruct the ConditionEvaluator without proto sources.
+  bytes context_descriptor_set = 4;
 }
 
 // CompiledFeature holds the compiled state for a single feature.

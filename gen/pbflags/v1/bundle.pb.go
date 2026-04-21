@@ -7,12 +7,11 @@
 package pbflagsv1
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -33,9 +32,13 @@ type CompiledBundle struct {
 	CelVersion string                 `protobuf:"bytes,2,opt,name=cel_version,json=celVersion,proto3" json:"cel_version,omitempty"` // CEL library version used during compilation
 	// All defined launches from config (feature-scoped and cross-feature).
 	// Active/soaking/unkilled filtering happens at the evaluator.
-	Launches      []*CompiledLaunch `protobuf:"bytes,3,rep,name=launches,proto3" json:"launches,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Launches []*CompiledLaunch `protobuf:"bytes,3,rep,name=launches,proto3" json:"launches,omitempty"`
+	// Pruned FileDescriptorSet containing the EvaluationContext message file
+	// and its transitive imports. Written to the DB during load so runtime
+	// binaries can reconstruct the ConditionEvaluator without proto sources.
+	ContextDescriptorSet []byte `protobuf:"bytes,4,opt,name=context_descriptor_set,json=contextDescriptorSet,proto3" json:"context_descriptor_set,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *CompiledBundle) Reset() {
@@ -85,6 +88,13 @@ func (x *CompiledBundle) GetCelVersion() string {
 func (x *CompiledBundle) GetLaunches() []*CompiledLaunch {
 	if x != nil {
 		return x.Launches
+	}
+	return nil
+}
+
+func (x *CompiledBundle) GetContextDescriptorSet() []byte {
+	if x != nil {
+		return x.ContextDescriptorSet
 	}
 	return nil
 }
@@ -595,12 +605,13 @@ var File_pbflags_v1_bundle_proto protoreflect.FileDescriptor
 const file_pbflags_v1_bundle_proto_rawDesc = "" +
 	"\n" +
 	"\x17pbflags/v1/bundle.proto\x12\n" +
-	"pbflags.v1\"\xa2\x01\n" +
+	"pbflags.v1\"\xd8\x01\n" +
 	"\x0eCompiledBundle\x127\n" +
 	"\bfeatures\x18\x01 \x03(\v2\x1b.pbflags.v1.CompiledFeatureR\bfeatures\x12\x1f\n" +
 	"\vcel_version\x18\x02 \x01(\tR\n" +
 	"celVersion\x126\n" +
-	"\blaunches\x18\x03 \x03(\v2\x1a.pbflags.v1.CompiledLaunchR\blaunches\"\xc1\x01\n" +
+	"\blaunches\x18\x03 \x03(\v2\x1a.pbflags.v1.CompiledLaunchR\blaunches\x124\n" +
+	"\x16context_descriptor_set\x18\x04 \x01(\fR\x14contextDescriptorSet\"\xc1\x01\n" +
 	"\x0fCompiledFeature\x12\x1d\n" +
 	"\n" +
 	"feature_id\x18\x01 \x01(\tR\tfeatureId\x12!\n" +

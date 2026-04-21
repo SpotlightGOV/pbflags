@@ -9,7 +9,7 @@ import (
 )
 
 // MinSchemaVersion is the minimum migration version required by this binary.
-const MinSchemaVersion = 1
+const MinSchemaVersion = 14
 
 // CheckSchemaVersion verifies the database schema meets the minimum required
 // migration version. Returns an error with an actionable message if the schema

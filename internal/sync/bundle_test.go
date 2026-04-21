@@ -10,6 +10,7 @@ import (
 
 	example "github.com/SpotlightGOV/pbflags/gen/example"
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
+	"github.com/SpotlightGOV/pbflags/internal/evaluator"
 )
 
 func TestCompile(t *testing.T) {
@@ -238,6 +239,40 @@ flags:
 	require.NoError(t, proto.Unmarshal(retriesFlag.DefaultValue, &defaultVal))
 	require.Equal(t, int64(10), defaultVal.GetInt64Value(),
 		"DefaultValue should be the otherwise value (10), not proto default (3)")
+}
+
+func TestCompile_ContextDescriptorSet(t *testing.T) {
+	t.Parallel()
+
+	descData, err := buildDescriptorSet(&example.Notifications{}, &example.EvaluationContext{})
+	require.NoError(t, err)
+
+	configDir := t.TempDir()
+	configYAML := `
+feature: notifications
+flags:
+  email_enabled:
+    value: true
+`
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "notifications.yaml"), []byte(configYAML), 0o644))
+
+	bundleData, err := Compile(descData, configDir)
+	require.NoError(t, err)
+
+	bundle := &pbflagsv1.CompiledBundle{}
+	require.NoError(t, proto.Unmarshal(bundleData, bundle))
+
+	require.NotEmpty(t, bundle.ContextDescriptorSet,
+		"compiled bundle should contain pruned context descriptor set")
+
+	// Verify the embedded descriptor is no larger than the full set.
+	require.LessOrEqual(t, len(bundle.ContextDescriptorSet), len(descData),
+		"pruned descriptor should not be larger than full")
+
+	// Verify the embedded descriptor can produce a working ConditionEvaluator.
+	ce, err := evaluator.LoadConditionEvaluatorFromDescriptorSet(bundle.ContextDescriptorSet, nil)
+	require.NoError(t, err)
+	require.NotNil(t, ce, "should create a ConditionEvaluator from bundle's descriptor")
 }
 
 func TestFlagTypeString(t *testing.T) {

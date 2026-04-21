@@ -355,6 +355,16 @@ func SyncConditions(
 		logger.Info("auto-cleared stale condition overrides", "count", cleared)
 	}
 
+	// Store pruned context descriptor so runtime binaries can reconstruct
+	// the ConditionEvaluator without proto sources.
+	prunedDesc, err := evaluator.PruneContextDescriptorSet(descriptorData)
+	if err != nil {
+		return ConditionResult{}, fmt.Errorf("prune context descriptor: %w", err)
+	}
+	if err := evaluator.UpsertContextDescriptor(ctx, tx, prunedDesc); err != nil {
+		return ConditionResult{}, fmt.Errorf("upsert context descriptor: %w", err)
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return ConditionResult{}, fmt.Errorf("commit transaction: %w", err)
 	}

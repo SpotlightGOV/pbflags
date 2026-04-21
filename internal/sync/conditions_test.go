@@ -250,4 +250,25 @@ flags:
 	if staticCelVersion == nil || *staticCelVersion == "" {
 		t.Error("static flag cel_version should be set")
 	}
+
+	// Verify context descriptor was written to DB.
+	var storedDescData []byte
+	err = pool.QueryRow(ctx,
+		`SELECT descriptor_set FROM feature_flags.context_descriptor WHERE id = 1`,
+	).Scan(&storedDescData)
+	if err != nil {
+		t.Fatalf("query context descriptor: %v", err)
+	}
+	if storedDescData == nil {
+		t.Fatal("context descriptor should have been written to DB")
+	}
+
+	// Verify the stored descriptor can be used to create a ConditionEvaluator.
+	condEval, loadErr := evaluator.LoadConditionEvaluatorFromDescriptorSet(storedDescData, slog.Default())
+	if loadErr != nil {
+		t.Fatalf("LoadConditionEvaluatorFromDescriptorSet: %v", loadErr)
+	}
+	if condEval == nil {
+		t.Fatal("should produce a non-nil ConditionEvaluator from stored descriptor")
+	}
 }

@@ -136,6 +136,7 @@ func run(cfg evaluator.Config, logger *slog.Logger) error {
 		fetcher     evaluator.Fetcher
 		killFetcher evaluator.KillFetcher
 		state       evaluator.StateServer
+		evalOpts    []evaluator.EvaluatorOption
 	)
 
 	if cfg.Database != "" {
@@ -155,10 +156,25 @@ func run(cfg evaluator.Config, logger *slog.Logger) error {
 		}
 		logger.Info("database connected")
 
-		dbFetcher := evaluator.NewDBFetcher(pool, tracker, logger.With("component", "db-fetcher"), metrics, tracer)
+		descSetData, err := evaluator.LoadContextDescriptorFromDB(ctx, pool)
+		if err != nil {
+			return fmt.Errorf("load context descriptor: %w", err)
+		}
+		condEval, err := evaluator.LoadConditionEvaluatorFromDescriptorSet(
+			descSetData, logger.With("component", "conditions"))
+		if err != nil {
+			return fmt.Errorf("create condition evaluator: %w", err)
+		}
+		if condEval != nil {
+			logger.Info("condition evaluator created")
+		}
+
+		dbFetcher := evaluator.NewDBFetcher(pool, tracker, logger.With("component", "db-fetcher"), metrics, tracer,
+			evaluator.WithDBConditionEvaluator(condEval))
 		fetcher = dbFetcher
 		killFetcher = dbFetcher
 		state = dbFetcher
+		evalOpts = append(evalOpts, evaluator.WithConditionEvaluator(condEval))
 	} else {
 		// Upstream proxy: forward all RPCs to upstream evaluator.
 		otelInt, err := otelconnect.NewInterceptor()
@@ -185,7 +201,6 @@ func run(cfg evaluator.Config, logger *slog.Logger) error {
 	}
 	defer cache.Close()
 
-	var evalOpts []evaluator.EvaluatorOption
 	if cfg.Cache.FlagTTL > cfg.Cache.KillTTL {
 		killPoller := evaluator.NewKillPoller(killFetcher, cache, tracker,
 			cfg.Cache.KillTTL, cfg.Cache.FetchTimeout,

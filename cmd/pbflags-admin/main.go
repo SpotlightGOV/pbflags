@@ -338,6 +338,21 @@ func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, 
 		syncConn.Close(ctx)
 	}
 
+	// ── Condition Evaluator ────────────────────────────────────────
+
+	descSetData, err := evaluator.LoadContextDescriptorFromDB(ctx, pool)
+	if err != nil {
+		return fmt.Errorf("load context descriptor: %w", err)
+	}
+	condEval, err := evaluator.LoadConditionEvaluatorFromDescriptorSet(
+		descSetData, logger.With("component", "conditions"))
+	if err != nil {
+		return fmt.Errorf("create condition evaluator: %w", err)
+	}
+	if condEval != nil {
+		logger.Info("condition evaluator created")
+	}
+
 	// ── Cache + Evaluator ───────────────────────────────────────────
 
 	cache, err := evaluator.NewCacheStore(evaluator.CacheStoreConfig{
@@ -350,9 +365,11 @@ func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, 
 	defer cache.Close()
 
 	dbFetcher := evaluator.NewDBFetcher(pool, tracker,
-		logger.With("component", "db-fetcher"), metrics, tracer)
+		logger.With("component", "db-fetcher"), metrics, tracer,
+		evaluator.WithDBConditionEvaluator(condEval))
 
 	var evalOpts []evaluator.EvaluatorOption
+	evalOpts = append(evalOpts, evaluator.WithConditionEvaluator(condEval))
 	if cfg.Cache.FlagTTL > cfg.Cache.KillTTL {
 		killPoller := evaluator.NewKillPoller(dbFetcher, cache, tracker,
 			cfg.Cache.KillTTL, cfg.Cache.FetchTimeout,

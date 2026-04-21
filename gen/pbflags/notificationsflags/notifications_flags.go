@@ -53,10 +53,11 @@ type NotificationsFlags interface {
 
 // New creates a NotificationsFlags client backed by a pbflags.Evaluator.
 // By default, evaluation errors are logged via slog.Default(). Use
-// flagmeta.WithLogger to override.
+// flagmeta.WithLogger to override, and flagmeta.WithLogLevel(slog.LevelDebug)
+// to enable per-evaluation debug logging.
 func New(eval pbflags.Evaluator, opts ...flagmeta.Option) NotificationsFlags {
 	cfg := flagmeta.Apply(opts...)
-	return &notificationsFlagsClient{eval: eval, logger: cfg.Logger}
+	return &notificationsFlagsClient{eval: eval, logger: cfg.Logger, logLevel: cfg.LogLevel}
 }
 
 // NewNotificationsFlagsClient is a deprecated alias for New.
@@ -67,8 +68,9 @@ func NewNotificationsFlagsClient(eval pbflags.Evaluator, opts ...flagmeta.Option
 }
 
 type notificationsFlagsClient struct {
-	eval   pbflags.Evaluator
-	logger *slog.Logger
+	eval     pbflags.Evaluator
+	logger   *slog.Logger
+	logLevel slog.Level
 }
 
 func (c *notificationsFlagsClient) EmailEnabled(ctx context.Context) bool {
@@ -81,10 +83,22 @@ func (c *notificationsFlagsClient) EmailEnabled(ctx context.Context) bool {
 		return EmailEnabledDefault
 	}
 	if result == nil || result.Value == nil {
+		if c.logger.Enabled(ctx, c.logLevel) {
+			c.logger.DebugContext(ctx, "flag evaluated",
+				"flag_id", EmailEnabledID,
+				"source", result.Source.String(),
+			)
+		}
 		return EmailEnabledDefault
 	}
 	val := result.Value.GetValue()
 	if val == nil {
+		if c.logger.Enabled(ctx, c.logLevel) {
+			c.logger.DebugContext(ctx, "flag evaluated",
+				"flag_id", EmailEnabledID,
+				"source", result.Source.String(),
+			)
+		}
 		return EmailEnabledDefault
 	}
 	if _, ok := val.(*pbflagsv1.FlagValue_BoolValue); !ok {
@@ -94,7 +108,15 @@ func (c *notificationsFlagsClient) EmailEnabled(ctx context.Context) bool {
 		)
 		return EmailEnabledDefault
 	}
-	return result.Value.GetBoolValue()
+	v := result.Value.GetBoolValue()
+	if c.logger.Enabled(ctx, c.logLevel) {
+		c.logger.DebugContext(ctx, "flag evaluated",
+			"flag_id", EmailEnabledID,
+			"source", result.Source.String(),
+			"value", v,
+		)
+	}
+	return v
 }
 
 func (c *notificationsFlagsClient) DigestFrequency(ctx context.Context) string {
@@ -107,10 +129,22 @@ func (c *notificationsFlagsClient) DigestFrequency(ctx context.Context) string {
 		return DigestFrequencyDefault
 	}
 	if result == nil || result.Value == nil {
+		if c.logger.Enabled(ctx, c.logLevel) {
+			c.logger.DebugContext(ctx, "flag evaluated",
+				"flag_id", DigestFrequencyID,
+				"source", result.Source.String(),
+			)
+		}
 		return DigestFrequencyDefault
 	}
 	val := result.Value.GetValue()
 	if val == nil {
+		if c.logger.Enabled(ctx, c.logLevel) {
+			c.logger.DebugContext(ctx, "flag evaluated",
+				"flag_id", DigestFrequencyID,
+				"source", result.Source.String(),
+			)
+		}
 		return DigestFrequencyDefault
 	}
 	if _, ok := val.(*pbflagsv1.FlagValue_StringValue); !ok {
@@ -120,7 +154,15 @@ func (c *notificationsFlagsClient) DigestFrequency(ctx context.Context) string {
 		)
 		return DigestFrequencyDefault
 	}
-	return result.Value.GetStringValue()
+	v := result.Value.GetStringValue()
+	if c.logger.Enabled(ctx, c.logLevel) {
+		c.logger.DebugContext(ctx, "flag evaluated",
+			"flag_id", DigestFrequencyID,
+			"source", result.Source.String(),
+			"value", v,
+		)
+	}
+	return v
 }
 
 func (c *notificationsFlagsClient) MaxRetries(ctx context.Context) int64 {
@@ -133,10 +175,22 @@ func (c *notificationsFlagsClient) MaxRetries(ctx context.Context) int64 {
 		return MaxRetriesDefault
 	}
 	if result == nil || result.Value == nil {
+		if c.logger.Enabled(ctx, c.logLevel) {
+			c.logger.DebugContext(ctx, "flag evaluated",
+				"flag_id", MaxRetriesID,
+				"source", result.Source.String(),
+			)
+		}
 		return MaxRetriesDefault
 	}
 	val := result.Value.GetValue()
 	if val == nil {
+		if c.logger.Enabled(ctx, c.logLevel) {
+			c.logger.DebugContext(ctx, "flag evaluated",
+				"flag_id", MaxRetriesID,
+				"source", result.Source.String(),
+			)
+		}
 		return MaxRetriesDefault
 	}
 	if _, ok := val.(*pbflagsv1.FlagValue_Int64Value); !ok {
@@ -146,7 +200,15 @@ func (c *notificationsFlagsClient) MaxRetries(ctx context.Context) int64 {
 		)
 		return MaxRetriesDefault
 	}
-	return result.Value.GetInt64Value()
+	v := result.Value.GetInt64Value()
+	if c.logger.Enabled(ctx, c.logLevel) {
+		c.logger.DebugContext(ctx, "flag evaluated",
+			"flag_id", MaxRetriesID,
+			"source", result.Source.String(),
+			"value", v,
+		)
+	}
+	return v
 }
 
 func (c *notificationsFlagsClient) ScoreThreshold(ctx context.Context) float64 {
@@ -159,10 +221,22 @@ func (c *notificationsFlagsClient) ScoreThreshold(ctx context.Context) float64 {
 		return ScoreThresholdDefault
 	}
 	if result == nil || result.Value == nil {
+		if c.logger.Enabled(ctx, c.logLevel) {
+			c.logger.DebugContext(ctx, "flag evaluated",
+				"flag_id", ScoreThresholdID,
+				"source", result.Source.String(),
+			)
+		}
 		return ScoreThresholdDefault
 	}
 	val := result.Value.GetValue()
 	if val == nil {
+		if c.logger.Enabled(ctx, c.logLevel) {
+			c.logger.DebugContext(ctx, "flag evaluated",
+				"flag_id", ScoreThresholdID,
+				"source", result.Source.String(),
+			)
+		}
 		return ScoreThresholdDefault
 	}
 	if _, ok := val.(*pbflagsv1.FlagValue_DoubleValue); !ok {
@@ -172,7 +246,15 @@ func (c *notificationsFlagsClient) ScoreThreshold(ctx context.Context) float64 {
 		)
 		return ScoreThresholdDefault
 	}
-	return result.Value.GetDoubleValue()
+	v := result.Value.GetDoubleValue()
+	if c.logger.Enabled(ctx, c.logLevel) {
+		c.logger.DebugContext(ctx, "flag evaluated",
+			"flag_id", ScoreThresholdID,
+			"source", result.Source.String(),
+			"value", v,
+		)
+	}
+	return v
 }
 
 func (c *notificationsFlagsClient) NotificationEmails(ctx context.Context) []string {
@@ -185,10 +267,22 @@ func (c *notificationsFlagsClient) NotificationEmails(ctx context.Context) []str
 		return NotificationEmailsDefault()
 	}
 	if result == nil || result.Value == nil {
+		if c.logger.Enabled(ctx, c.logLevel) {
+			c.logger.DebugContext(ctx, "flag evaluated",
+				"flag_id", NotificationEmailsID,
+				"source", result.Source.String(),
+			)
+		}
 		return NotificationEmailsDefault()
 	}
 	val := result.Value.GetValue()
 	if val == nil {
+		if c.logger.Enabled(ctx, c.logLevel) {
+			c.logger.DebugContext(ctx, "flag evaluated",
+				"flag_id", NotificationEmailsID,
+				"source", result.Source.String(),
+			)
+		}
 		return NotificationEmailsDefault()
 	}
 	if _, ok := val.(*pbflagsv1.FlagValue_StringListValue); !ok {
@@ -198,7 +292,15 @@ func (c *notificationsFlagsClient) NotificationEmails(ctx context.Context) []str
 		)
 		return NotificationEmailsDefault()
 	}
-	return result.Value.GetStringListValue().GetValues()
+	v := result.Value.GetStringListValue().GetValues()
+	if c.logger.Enabled(ctx, c.logLevel) {
+		c.logger.DebugContext(ctx, "flag evaluated",
+			"flag_id", NotificationEmailsID,
+			"source", result.Source.String(),
+			"value", v,
+		)
+	}
+	return v
 }
 
 func (c *notificationsFlagsClient) RetryDelays(ctx context.Context) []int64 {
@@ -211,10 +313,22 @@ func (c *notificationsFlagsClient) RetryDelays(ctx context.Context) []int64 {
 		return RetryDelaysDefault()
 	}
 	if result == nil || result.Value == nil {
+		if c.logger.Enabled(ctx, c.logLevel) {
+			c.logger.DebugContext(ctx, "flag evaluated",
+				"flag_id", RetryDelaysID,
+				"source", result.Source.String(),
+			)
+		}
 		return RetryDelaysDefault()
 	}
 	val := result.Value.GetValue()
 	if val == nil {
+		if c.logger.Enabled(ctx, c.logLevel) {
+			c.logger.DebugContext(ctx, "flag evaluated",
+				"flag_id", RetryDelaysID,
+				"source", result.Source.String(),
+			)
+		}
 		return RetryDelaysDefault()
 	}
 	if _, ok := val.(*pbflagsv1.FlagValue_Int64ListValue); !ok {
@@ -224,7 +338,15 @@ func (c *notificationsFlagsClient) RetryDelays(ctx context.Context) []int64 {
 		)
 		return RetryDelaysDefault()
 	}
-	return result.Value.GetInt64ListValue().GetValues()
+	v := result.Value.GetInt64ListValue().GetValues()
+	if c.logger.Enabled(ctx, c.logLevel) {
+		c.logger.DebugContext(ctx, "flag evaluated",
+			"flag_id", RetryDelaysID,
+			"source", result.Source.String(),
+			"value", v,
+		)
+	}
+	return v
 }
 
 // Defaults returns a NotificationsFlags that always returns the compiled
