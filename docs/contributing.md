@@ -181,14 +181,34 @@ make release VERSION=v1.0.0  # explicit version
 
 This runs lint, tests, and E2E tests, then generates release notes (if none exist), opens `$EDITOR` for review, and prompts for confirmation before tagging and pushing.
 
+#### Non-interactive releases
+
+Set `INTERACTIVE=false` to skip the editor and confirmation prompts. This is useful for scripted releases or when you want to prepare release notes separately:
+
+```bash
+# Step 1: Generate release notes (skips $EDITOR)
+make release-notes INTERACTIVE=false
+
+# Step 2: Edit the notes in your own editor/workflow
+vim docs/releasenotes/v0.24.0.md
+
+# Step 3: Run the release without interactive prompts
+make release INTERACTIVE=false
+```
+
+In non-interactive mode, `make release` requires release notes to already exist — it will error if they're missing rather than generating and opening an editor.
+
 ### Release notes
 
 ```bash
-make release-notes                # auto-detect version from branch
-make release-notes VERSION=v0.7.0 # explicit version
+make release-notes                          # auto-detect version from branch
+make release-notes VERSION=v0.7.0           # explicit version
+make release-notes INTERACTIVE=false        # generate without opening $EDITOR
 ```
 
 Generates notes to `docs/releasenotes/<VERSION>.md` via the Claude API, opens `$EDITOR` for review, and stages the file. You can prepare release notes ahead of time this way — `make release` will skip generation if the file already exists.
+
+With `INTERACTIVE=false`, the notes are generated and staged but the editor is not opened — edit the file yourself before running `make release`.
 
 ### What the CI release workflow does
 

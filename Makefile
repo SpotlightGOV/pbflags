@@ -34,7 +34,9 @@ help:
 	@echo "Release:"
 	@echo "  release         Lint, test, test-e2e, then tag and push (VERSION=, MAJOR=1, or auto)"
 	@echo "                  Opens \$$EDITOR for release notes if none exist for the version"
+	@echo "                  Set INTERACTIVE=false to skip editor and confirmation prompts"
 	@echo "  release-notes   Generate release notes, open in \$$EDITOR, and git-add (VERSION= or auto)"
+	@echo "                  Set INTERACTIVE=false to skip opening \$$EDITOR"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  clean           Remove build artifacts"
@@ -154,12 +156,14 @@ endif
 	$(MAKE) lint
 	$(MAKE) test
 	$(MAKE) test-e2e
-	.github/scripts/release.sh $(RELEASE_TAG)
+	INTERACTIVE=$(or $(INTERACTIVE),true) .github/scripts/release.sh $(RELEASE_TAG)
 
 # Generate release notes, open in $EDITOR, and stage for commit.
 # Auto-detects version from branch (same as make release). Override with VERSION=.
-#   make release-notes                — auto-detect version
-#   make release-notes VERSION=v0.6.0 — explicit version
+# Set INTERACTIVE=false to skip opening $EDITOR.
+#   make release-notes                        — auto-detect version
+#   make release-notes VERSION=v0.6.0         — explicit version
+#   make release-notes INTERACTIVE=false       — generate without opening editor
 release-notes:
 ifndef VERSION
 	$(eval RELEASE_TAG := $(shell .github/scripts/next-tag.sh $(if $(MAJOR),--major)))
@@ -176,11 +180,16 @@ endif
 	RELEASE_TAG=$(RELEASE_TAG) OUTPUT_FILE=$$NOTES \
 		.github/scripts/generate-release-notes.sh; \
 	echo ""; \
-	echo "Opening release notes for review..."; \
-	$${EDITOR:-vi} "$$NOTES"; \
+	if [ "$(or $(INTERACTIVE),true)" = "false" ]; then \
+		echo "Release notes generated: $$NOTES"; \
+		echo "Edit the file, then run 'make release INTERACTIVE=false' to finish the release."; \
+	else \
+		echo "Opening release notes for review..."; \
+		$${EDITOR:-vi} "$$NOTES"; \
+		echo "Commit when ready, or run 'make release' to finish the release."; \
+	fi; \
 	git add "$$NOTES"; \
-	echo "Release notes staged: $$NOTES"; \
-	echo "Commit when ready, or run 'make release' to finish the release."
+	echo "Release notes staged: $$NOTES"
 
 # Build descriptors.pb from proto sources for local development.
 dev/descriptors.pb: $(shell find proto -name '*.proto' -type f)

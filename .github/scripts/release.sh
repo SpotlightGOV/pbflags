@@ -1,22 +1,37 @@
 #!/usr/bin/env bash
-# release.sh — Interactive release flow: generate release notes, review/edit, tag, push.
+# release.sh — Release flow: generate release notes, review/edit, tag, push.
 #
 # Steps:
 #   1. Generate release notes if they don't already exist
-#   2. Open in $EDITOR for review and editing
-#   3. Show final notes and prompt for confirmation
+#   2. Open in $EDITOR for review and editing (interactive only)
+#   3. Show final notes and prompt for confirmation (interactive only)
 #   4. Commit and push the release notes
 #   5. Tag and push the release
 #
-# Usage: ./scripts/release.sh <version>
+# Usage: ./scripts/release.sh [--no-interactive] <version>
 #   e.g. .github/scripts/release.sh v0.7.0
+#        .github/scripts/release.sh --no-interactive v0.7.0
+#
+# Non-interactive mode can also be enabled via INTERACTIVE=false env var.
+# In non-interactive mode, release notes must already exist — the script
+# will not generate them or open an editor.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Parse flags
+INTERACTIVE="${INTERACTIVE:-true}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-interactive) INTERACTIVE=false; shift ;;
+    -*) echo "Unknown flag: $1" >&2; exit 1 ;;
+    *) break ;;
+  esac
+done
+
 if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <version>" >&2
+  echo "Usage: $0 [--no-interactive] <version>" >&2
   exit 1
 fi
 
@@ -29,42 +44,57 @@ echo ""
 # --- Step 1: Generate release notes if they don't exist ---
 
 if [[ ! -f "$RELEASE_NOTES_FILE" ]]; then
+  if [[ "$INTERACTIVE" == "false" ]]; then
+    echo "ERROR: Release notes not found: docs/releasenotes/${TAG}.md" >&2
+    echo "  In non-interactive mode, release notes must already exist." >&2
+    echo "  Run 'make release-notes' first to generate and edit them." >&2
+    exit 1
+  fi
   RELEASE_TAG="$TAG" OUTPUT_FILE="$RELEASE_NOTES_FILE" \
     "${SCRIPT_DIR}/generate-release-notes.sh"
   echo ""
 fi
 
-# --- Step 2: Open for review/editing ---
-
-echo "==> Opening release notes for review..."
-echo "    File: docs/releasenotes/${TAG}.md"
-echo ""
-
-if [[ -n "${EDITOR:-}" ]]; then
-  "$EDITOR" "$RELEASE_NOTES_FILE"
-elif command -v vim &>/dev/null; then
-  vim "$RELEASE_NOTES_FILE"
-elif command -v nano &>/dev/null; then
-  nano "$RELEASE_NOTES_FILE"
-else
-  cat "$RELEASE_NOTES_FILE"
+if [[ "$INTERACTIVE" == "false" ]]; then
+  # --- Non-interactive: show notes and proceed ---
   echo ""
-  echo "    No \$EDITOR found. Edit docs/releasenotes/${TAG}.md manually, then re-run."
-  exit 1
-fi
+  echo "──── Release Notes (${TAG}) ────"
+  cat "$RELEASE_NOTES_FILE"
+  echo "──── End Release Notes ────"
+  echo ""
+else
+  # --- Step 2: Open for review/editing ---
 
-# --- Step 3: Show final notes and confirm ---
+  echo "==> Opening release notes for review..."
+  echo "    File: docs/releasenotes/${TAG}.md"
+  echo ""
 
-echo ""
-echo "──── Release Notes (${TAG}) ────"
-cat "$RELEASE_NOTES_FILE"
-echo "──── End Release Notes ────"
-echo ""
-read -r -p "Proceed with release? [y/N] " REPLY
-if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
-  echo "Aborted. Release notes saved at docs/releasenotes/${TAG}.md"
-  echo "Edit and re-run 'make release' when ready."
-  exit 0
+  if [[ -n "${EDITOR:-}" ]]; then
+    "$EDITOR" "$RELEASE_NOTES_FILE"
+  elif command -v vim &>/dev/null; then
+    vim "$RELEASE_NOTES_FILE"
+  elif command -v nano &>/dev/null; then
+    nano "$RELEASE_NOTES_FILE"
+  else
+    cat "$RELEASE_NOTES_FILE"
+    echo ""
+    echo "    No \$EDITOR found. Edit docs/releasenotes/${TAG}.md manually, then re-run."
+    exit 1
+  fi
+
+  # --- Step 3: Show final notes and confirm ---
+
+  echo ""
+  echo "──── Release Notes (${TAG}) ────"
+  cat "$RELEASE_NOTES_FILE"
+  echo "──── End Release Notes ────"
+  echo ""
+  read -r -p "Proceed with release? [y/N] " REPLY
+  if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
+    echo "Aborted. Release notes saved at docs/releasenotes/${TAG}.md"
+    echo "Edit and re-run 'make release' when ready."
+    exit 0
+  fi
 fi
 
 # --- Step 4: Commit and push release notes ---
