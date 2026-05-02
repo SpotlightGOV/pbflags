@@ -482,6 +482,13 @@ func (h *Handler) loadFlagPageData(w http.ResponseWriter, r *http.Request, flagI
 		}
 	}
 
+	// compiledDefault is the formatted compiled-in default. When an
+	// otherwise condition masks it, the template shows it as an
+	// annotation so operators know the SDK fallback value (pb-sid9).
+	compiledDefault := formatFlagValue(flag.DefaultValue)
+	defaultMasked := otherwiseCondition != nil && flag.DefaultValue != nil &&
+		otherwiseCondition.Value != compiledDefault
+
 	data := h.pageData(r, "flag",
 		"Flag", flag,
 		"Audit", entries,
@@ -498,6 +505,8 @@ func (h *Handler) loadFlagPageData(w http.ResponseWriter, r *http.Request, flagI
 		"OtherwiseCondition", otherwiseCondition,
 		"HasCELConditions", hasCELConditions,
 		"FlagsByLaunch", flagsByLaunch,
+		"CompiledDefault", compiledDefault,
+		"DefaultMasked", defaultMasked,
 	)
 	return data, true
 }
@@ -934,7 +943,7 @@ func stateHint(s pbflagsv1.State) string {
 	case pbflagsv1.State_STATE_DEFAULT:
 		return "Using compiled default"
 	case pbflagsv1.State_STATE_KILLED:
-		return "Emergency off — returns default"
+		return "Emergency off — SDKs return compiled default"
 	default:
 		return ""
 	}

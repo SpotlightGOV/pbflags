@@ -2066,6 +2066,54 @@ body.sync-locked .shell {
   cursor: help;
 }
 
+/* pb-sid9: killed-state banner showing actual SDK value */
+.killed-default-banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  background: var(--red-dim);
+  border: 1px solid var(--red);
+  border-left: 3px solid var(--red);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.killed-default-icon {
+  color: var(--red);
+  font-size: 16px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.killed-default-body code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+/* pb-sid9: compiled default hint under otherwise value */
+.compiled-default-hint {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.compiled-default-hint code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
 .cond-otherwise-hint {
   display: block;
   font-family: var(--font-sans);

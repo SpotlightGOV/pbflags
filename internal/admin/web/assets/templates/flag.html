@@ -36,6 +36,18 @@
   </div>
 </div>
 
+{{/* Killed-state banner: when a flag is killed and the compiled default
+     is masked by an otherwise condition, show what value SDKs actually
+     receive so operators aren't flying blind (pb-sid9). */}}
+{{if and (eq (stateLabel .Flag.State) "KILLED") .DefaultMasked}}
+<div class="killed-default-banner">
+  <span class="killed-default-icon" aria-hidden="true">&#9888;</span>
+  <div class="killed-default-body">
+    Flag is killed — SDKs return the compiled default: <code>{{.CompiledDefault}}</code>
+  </div>
+</div>
+{{end}}
+
 {{if .ConditionsError}}
 <div class="detail-section detail-section-error">
   <div class="detail-section-body">
@@ -179,6 +191,9 @@
             </div>
           {{else if $ow}}
             <span class="cond-value">{{$ow.Value}}</span>
+            {{if $.DefaultMasked}}
+            <div class="compiled-default-hint">compiled default: <code>{{$.CompiledDefault}}</code></div>
+            {{end}}
           {{else if isListType .Flag.FlagType}}
             {{template "list_chips" dict "Items" (listItems .Flag.DefaultValue) "Muted" false}}
           {{else}}
