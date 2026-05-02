@@ -189,6 +189,9 @@
               <span class="override-by">{{$defaultOv.Actor}} &middot; {{timeAgo $defaultOv.CreatedAt}}</span>
               {{if $defaultOv.Reason}}<span class="override-reason" title="{{$defaultOv.Reason}}">&ldquo;{{$defaultOv.Reason}}&rdquo;</span>{{end}}
             </div>
+            {{if $.DefaultMasked}}
+            <div class="compiled-default-hint">compiled default: <code>{{$.CompiledDefault}}</code></div>
+            {{end}}
           {{else if $ow}}
             <span class="cond-value">{{$ow.Value}}</span>
             {{if $.DefaultMasked}}
