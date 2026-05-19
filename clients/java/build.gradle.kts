@@ -37,7 +37,7 @@ dependencies {
     api("io.grpc:grpc-protobuf:$grpcVersion")
 
     implementation("io.grpc:grpc-netty-shaded:$grpcVersion")
-    implementation("org.slf4j:slf4j-api:2.0.17")
+    implementation("org.slf4j:slf4j-api:2.0.18")
     compileOnly("javax.annotation:javax.annotation-api:1.3.2")
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.0.3")
