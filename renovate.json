@@ -3,6 +3,7 @@
   "extends": [
     "config:recommended"
   ],
+  "postUpdateOptions": ["goModTidy"],
   "automerge": true,
   "platformAutomerge": true
 }
