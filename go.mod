@@ -7,7 +7,7 @@ require (
 	connectrpc.com/otelconnect v0.9.0
 	github.com/dgraph-io/ristretto/v2 v2.4.0
 	github.com/fsnotify/fsnotify v1.10.1
-	github.com/google/cel-go v0.28.0
+	github.com/google/cel-go v0.28.1
 	github.com/jackc/pgx/v5 v5.9.1
 	github.com/playwright-community/playwright-go v0.5700.1
 	github.com/pressly/goose/v3 v3.27.0
