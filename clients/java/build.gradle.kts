@@ -28,7 +28,7 @@ repositories {
     mavenCentral()
 }
 
-val protocVersion = "4.34.1"
+val protocVersion = "4.35.0"
 val grpcVersion = "1.81.0"
 
 dependencies {
