@@ -60,8 +60,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"github.com/SpotlightGOV/pbflags/db"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
@@ -495,9 +493,12 @@ func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, 
 	outerMux.Handle("/", authn.Middleware(auth, adminMux))
 
 	adminServer := &http.Server{
-		Addr:    cfg.Admin,
-		Handler: h2c.NewHandler(outerMux, &http2.Server{}),
+		Addr:      cfg.Admin,
+		Handler:   outerMux,
+		Protocols: &http.Protocols{},
 	}
+	adminServer.Protocols.SetHTTP1(true)
+	adminServer.Protocols.SetUnencryptedHTTP2(true)
 
 	go func() {
 		adminLogger.Info("admin server listening", "addr", cfg.Admin)
@@ -528,9 +529,12 @@ func run(cfg evaluator.Config, standalone bool, configDir, devAssetsDir string, 
 	})
 
 	evalServer := &http.Server{
-		Addr:    cfg.Listen,
-		Handler: h2c.NewHandler(evalMux, &http2.Server{}),
+		Addr:      cfg.Listen,
+		Handler:   evalMux,
+		Protocols: &http.Protocols{},
 	}
+	evalServer.Protocols.SetHTTP1(true)
+	evalServer.Protocols.SetUnencryptedHTTP2(true)
 
 	go func() {
 		logger.Info("evaluator server listening", "addr", cfg.Listen)

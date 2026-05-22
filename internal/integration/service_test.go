@@ -18,8 +18,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	pbflagsv1 "github.com/SpotlightGOV/pbflags/gen/pbflags/v1"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
@@ -81,7 +79,9 @@ func setupServiceEnv(t *testing.T) *serviceTestEnv {
 	evalMux.Handle(evalPath, evalHandler)
 	evalLn, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	evalSrv := &http.Server{Handler: h2c.NewHandler(evalMux, &http2.Server{})}
+	evalSrv := &http.Server{Handler: evalMux, Protocols: &http.Protocols{}}
+	evalSrv.Protocols.SetHTTP1(true)
+	evalSrv.Protocols.SetUnencryptedHTTP2(true)
 	go evalSrv.Serve(evalLn)
 
 	// Admin server.
@@ -95,7 +95,9 @@ func setupServiceEnv(t *testing.T) *serviceTestEnv {
 	adminMux.Handle(adminPath, adminHandler)
 	adminLn, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	adminSrv := &http.Server{Handler: h2c.NewHandler(adminMux, &http2.Server{})}
+	adminSrv := &http.Server{Handler: adminMux, Protocols: &http.Protocols{}}
+	adminSrv.Protocols.SetHTTP1(true)
+	adminSrv.Protocols.SetUnencryptedHTTP2(true)
 	go adminSrv.Serve(adminLn)
 
 	t.Cleanup(func() {

@@ -42,8 +42,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"github.com/SpotlightGOV/pbflags/db"
 	"github.com/SpotlightGOV/pbflags/gen/pbflags/v1/pbflagsv1connect"
@@ -242,9 +240,12 @@ func run(cfg evaluator.Config, logger *slog.Logger) error {
 	})
 
 	httpServer := &http.Server{
-		Addr:    cfg.Listen,
-		Handler: h2c.NewHandler(mux, &http2.Server{}),
+		Addr:      cfg.Listen,
+		Handler:   mux,
+		Protocols: &http.Protocols{},
 	}
+	httpServer.Protocols.SetHTTP1(true)
+	httpServer.Protocols.SetUnencryptedHTTP2(true)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
