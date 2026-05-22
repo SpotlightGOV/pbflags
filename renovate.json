@@ -3,7 +3,8 @@
   "extends": [
     "config:recommended"
   ],
-  "postUpdateOptions": ["goModTidy"],
+  "rangeStrategy": "update-lockfile",
+  "postUpdateOptions": ["gomodTidyE"],
   "automerge": true,
   "platformAutomerge": true
 }
