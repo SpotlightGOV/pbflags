@@ -1,6 +1,6 @@
 module github.com/SpotlightGOV/pbflags
 
-go 1.26.1
+go 1.26.3
 
 require (
 	connectrpc.com/connect v1.20.0
@@ -61,12 +61,12 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
-	github.com/evilmartians/lefthook/v2 v2.1.8 // indirect
+	github.com/evilmartians/lefthook/v2 v2.1.9 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
-	github.com/go-json-experiment/json v0.0.0-20260214004413-d219187c3433 // indirect
+	github.com/go-json-experiment/json v0.0.0-20260505212615-e40f80bf6836 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
@@ -79,10 +79,10 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	github.com/kaptinlin/go-i18n v0.3.0 // indirect
-	github.com/kaptinlin/jsonpointer v0.4.17 // indirect
-	github.com/kaptinlin/jsonschema v0.7.7 // indirect
-	github.com/kaptinlin/messageformat-go v0.4.19 // indirect
+	github.com/kaptinlin/go-i18n v0.4.8 // indirect
+	github.com/kaptinlin/jsonpointer v0.4.23 // indirect
+	github.com/kaptinlin/jsonschema v0.7.14 // indirect
+	github.com/kaptinlin/messageformat-go v0.6.4 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect
 	github.com/knadh/koanf/parsers/json v1.0.0 // indirect
@@ -116,7 +116,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
-	github.com/pelletier/go-toml/v2 v2.3.0 // indirect
+	github.com/pelletier/go-toml/v2 v2.3.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
@@ -132,7 +132,7 @@ require (
 	github.com/tidwall/jsonc v0.3.3 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
-	github.com/urfave/cli/v3 v3.8.0 // indirect
+	github.com/urfave/cli/v3 v3.9.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
