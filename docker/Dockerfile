@@ -11,7 +11,7 @@ RUN CGO_ENABLED=0 go build -o /pbflags-admin ./cmd/pbflags-admin
 RUN CGO_ENABLED=0 go build -o /pbflags-evaluator ./cmd/pbflags-evaluator
 RUN CGO_ENABLED=0 go build -o /pbflags ./cmd/pbflags
 
-FROM alpine:3.23
+FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /pbflags-admin /usr/local/bin/pbflags-admin
