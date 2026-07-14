@@ -9,7 +9,7 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/google/cel-go v0.29.2
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/playwright-community/playwright-go v0.5700.1
+	github.com/mxschmitt/playwright-go v0.6100.0
 	github.com/pressly/goose/v3 v3.27.2
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
@@ -65,7 +65,7 @@ require (
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
-	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
+	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-json-experiment/json v0.0.0-20260623181947-01eb4420fa68 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -159,7 +159,7 @@ require (
 
 tool (
 	github.com/evilmartians/lefthook/v2
-	github.com/playwright-community/playwright-go/cmd/playwright
+	github.com/mxschmitt/playwright-go/cmd/playwright
 	golang.org/x/perf/cmd/benchstat
 	golang.org/x/tools/cmd/goimports
 	honnef.co/go/tools/cmd/staticcheck
