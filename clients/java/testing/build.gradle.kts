@@ -3,7 +3,7 @@ plugins {
     `java-library`
     `maven-publish`
     signing
-    id("com.diffplug.spotless") version "8.6.0"
+    id("com.diffplug.spotless") version "8.8.0"
 }
 
 group = "org.spotlightgov.pbflags"
