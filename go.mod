@@ -5,7 +5,7 @@ go 1.26.3
 require (
 	connectrpc.com/connect v1.20.0
 	connectrpc.com/otelconnect v0.9.0
-	github.com/dgraph-io/ristretto/v2 v2.4.0
+	github.com/dgraph-io/ristretto/v2 v2.4.2
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/google/cel-go v0.28.1
 	github.com/jackc/pgx/v5 v5.10.0
