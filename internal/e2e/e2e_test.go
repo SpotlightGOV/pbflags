@@ -6,7 +6,7 @@
 //
 // Prerequisites:
 //
-//	go run github.com/playwright-community/playwright-go/cmd/playwright install --with-deps
+//	go run github.com/mxschmitt/playwright-go/cmd/playwright install --with-deps
 //
 // Run:
 //
@@ -20,7 +20,7 @@ package e2e
 import (
 	"testing"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
