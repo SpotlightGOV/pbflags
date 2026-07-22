@@ -29,7 +29,7 @@ repositories {
 }
 
 val protocVersion = "4.35.1"
-val grpcVersion = "1.82.2"
+val grpcVersion = "1.83.0"
 
 dependencies {
     api("com.google.protobuf:protobuf-java:$protocVersion")
