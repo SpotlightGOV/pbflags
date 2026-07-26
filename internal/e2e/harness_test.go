@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 	"github.com/stretchr/testify/require"
 
 	"github.com/SpotlightGOV/pbflags/internal/admin"
@@ -94,7 +94,7 @@ func setupEnv(t *testing.T, opts ...envOpt) *testEnv {
 
 	// Launch Playwright.
 	pw, err := playwright.Run()
-	require.NoError(t, err, "failed to start playwright — have you run `go run github.com/playwright-community/playwright-go/cmd/playwright install --with-deps`?")
+	require.NoError(t, err, "failed to start playwright — have you run `go run github.com/mxschmitt/playwright-go/cmd/playwright install --with-deps`?")
 	t.Cleanup(func() { pw.Stop() })
 
 	headed := os.Getenv("HEADED") == "1"
