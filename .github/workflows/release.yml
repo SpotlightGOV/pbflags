@@ -64,7 +64,7 @@ jobs:
           fi
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.26"
+          go-version: "1.27"
       - name: Generate AI release notes
         run: .github/scripts/generate-release-notes.sh
         env:
