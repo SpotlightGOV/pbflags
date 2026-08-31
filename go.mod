@@ -1,6 +1,6 @@
 module github.com/SpotlightGOV/pbflags
 
-go 1.26.4
+go 1.26.6
 
 require (
 	connectrpc.com/connect v1.20.0
@@ -61,7 +61,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
-	github.com/evilmartians/lefthook/v2 v2.1.10 // indirect
+	github.com/evilmartians/lefthook/v2 v2.1.12 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
