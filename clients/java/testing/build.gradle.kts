@@ -26,7 +26,7 @@ repositories {
 
 dependencies {
     api(project(":"))
-    compileOnly("org.junit.jupiter:junit-jupiter-api:6.1.2")
+    compileOnly("org.junit.jupiter:junit-jupiter-api:6.1.3")
     compileOnly("javax.annotation:javax.annotation-api:1.3.2")
 }
 
